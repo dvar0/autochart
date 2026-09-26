@@ -1,0 +1,24 @@
+node_modules
+dist
+release/
+Projects/
+/release-onboarding/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.playwright-cli/
+
+# ONNX models are downloaded during setup. Never commit model binaries or
+# development symlinks; the source tree retains the descriptor manifest.json.
+engine/models-onnx/**/*.onnx
+engine/models-onnx/**/*.npz
+engine/models-onnx/**/*_summary.json
+engine/models-onnx/**/transcriber_manifest.json
+
+# Machine-local prototype tool paths
+.yarg-prototype.local.json
+
+# Local launch-video production notes, recordings, and edits
+/production/launch-video/

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "engineVersion": "2026.06.16-cross-platform-runtime",
+  "targetMatrix": "../config/supported-targets.json",
+  "entry": {
+    "command": "node",
+    "args": [
+      "{engineRoot}/bin/autochart-engine.cjs"
+    ]
+  },
+  "generators": [
+    {
+      "id": "autochart.fretformer.v1-onnx",
+      "label": "Fretformer",
+      "titleTag": "Fretformer",
+      "description": "Fully-local ONNX chart engine (Demucs separation -> Beat This detection -> transcriber) running entirely on onnxruntime-node. GPU-accelerated via WebGPU with automatic CPU fallback; no Python at runtime.",
+      "status": "stable",
+      "platforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ],
+      "capabilities": {
+        "difficulties": [
+          "easy",
+          "medium",
+          "hard",
+          "expert"
+        ],
+        "sustains": "never-strip",
+        "triples": true,
+        "requiresGpu": false,
+        "usesTimingCache": true,
+        "usesStemCache": true,
+        "descriptorKnobs": true
+      },
+      "models": {
+        "onnxFolder": "fretformer-v1"
+      },
+      "runtime": {
+        "backend": "onnxruntime-node",
+        "executionProvider": "cpu",
+        "devices": {
+          "linux": { "demucs": "cpu" },
+          "darwin": { "demucs": "cpu" },
+          "win32": { "demucs": "cpu" }
+        }
+      }
+    }
+  ]
+}

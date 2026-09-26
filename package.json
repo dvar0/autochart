@@ -1,0 +1,208 @@
+{
+  "name": "autochart",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-assisted Clone Hero and YARG chart generation.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Autochart",
+  "productName": "Autochart",
+  "desktopName": "Autochart",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
+    "electron:build": "vite build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --config.mac.identity=-",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:linux": "npm run build && electron-builder --linux --x64",
+    "release:checksums": "node scripts/write-release-checksums.cjs",
+    "release:stage": "node scripts/stage-public-release.cjs",
+    "test:release-staging": "node scripts/test-public-release-staging.cjs",
+    "release:verify": "node scripts/release-verify.cjs",
+    "smoke:generate": "node scripts/smoke-generate.cjs",
+    "test:installer": "node scripts/test-asset-installer.cjs",
+    "test:ffmpeg-source": "node scripts/test-ffmpeg-source-gate.cjs",
+    "test:video-preview": "node scripts/test-video-preview.cjs",
+    "test:v010:frontend": "node scripts/test-v010-frontend.cjs",
+    "test:highway": "node scripts/test-highway.cjs",
+    "test:highway-playback": "electron scripts/test-highway-playback-electron.cjs",
+    "test:generation-navigation": "electron scripts/test-generation-navigation.cjs",
+    "test:library-folder-prompt": "electron scripts/test-library-folder-prompt-electron.cjs",
+    "test:window-fit": "node scripts/test-window-fit.cjs",
+    "test:owned-fullscreen": "electron scripts/test-owned-fullscreen-electron.cjs",
+    "test:theme": "node scripts/test-theme.cjs",
+    "test:v010:backend": "node scripts/test-v010-backend.cjs",
+    "test:release-smoke": "node scripts/test-release-smoke.cjs",
+    "test:release-smoke:electron": "electron scripts/test-release-smoke-electron.cjs",
+    "artifact:check": "node scripts/assert-package-contents.cjs",
+    "test:package-allowlist": "node scripts/test-package-allowlist.cjs",
+    "runtime:verify": "node scripts/verify-runtime-artifacts.cjs",
+    "test:notice-paths": "node scripts/test-notice-paths.cjs",
+    "test:chart-metadata": "node scripts/test-chart-metadata.cjs",
+    "test:chart-interoperability": "node scripts/test-chart-interoperability.cjs",
+    "test:clone-hero-export": "node scripts/test-clone-hero-export.cjs",
+    "test:yarg-export": "node scripts/test-yarg-export.cjs",
+    "test:source-chart-timing": "node engine/test/source-chart-timing.cjs",
+    "test:source-chart-stage": "node engine/test/source-chart-stage.cjs",
+    "test:imported-final-chart": "node scripts/test-imported-final-chart.cjs",
+    "test:release-docs": "node scripts/test-release-docs.cjs",
+    "ffmpeg:prepare": "node scripts/prepare-ffmpeg.cjs",
+    "test:wave-metadata": "node scripts/test-wave-metadata.cjs",
+    "test:media-metadata": "node scripts/test-media-metadata.cjs"
+  },
+  "dependencies": {
+    "@fontsource/baloo-2": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "onnxruntime-node": "^1.27.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tar": "^7.5.22",
+    "yauzl": "^3.2.0"
+  },
+  "overrides": {
+    "onnxruntime-node": {
+      "adm-zip": "0.6.1"
+    }
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "adm-zip": "0.6.1",
+    "concurrently": "^9.2.4",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "vite": "^6.0.3",
+    "wait-on": "^8.0.1"
+  },
+  "allowScripts": {
+    "electron@43.4.1": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.25.12": true,
+    "onnxruntime-node@1.27.0": true
+  },
+  "build": {
+    "appId": "app.autochart.desktop",
+    "productName": "Autochart",
+    "publish": null,
+    "icon": "public/app-icon.png",
+    "asar": false,
+    "beforePack": "scripts/prepare-node-runtime.cjs",
+    "npmRebuild": false,
+    "afterPack": "scripts/assert-package-contents.cjs",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "!node_modules/**/*",
+      "LICENSE",
+      "dist/**/*",
+      "config/supported-targets.json",
+      "config/human-labels.json",
+      "config/human-labels.cjs",
+      "config/supported-targets.cjs",
+      "electron/**/*",
+      "engine/manifest.json",
+      "engine/catalog.json",
+      "engine/bin/**/*",
+      "engine/lib/**/*",
+      "shared/chartWriter.cjs",
+      "shared/generatedVersion.js",
+      "shared/chartProvenance.js",
+      "shared/finalSlots.js",
+      "engine/licenses/**/*",
+      "docs/third-party-notices.md",
+      "docs/privacy.md",
+      "docs/release-notes.md",
+      "docs/install.md",
+      "docs/blueoak-1.0.0.txt",
+      "docs/fs-minipass-isc.txt",
+      "docs/minizlib-mit.txt",
+      "docs/onnxruntime-third-party-notices.txt",
+      "node_modules/onnxruntime-node/package.json",
+      "node_modules/onnxruntime-node/dist/*.js",
+      "node_modules/onnxruntime-node/bin/napi-v6/${platform}/${arch}/**/*",
+      "node_modules/onnxruntime-common/package.json",
+      "node_modules/onnxruntime-common/dist/cjs/*.js",
+      "node_modules/onnxruntime-common/dist/cjs/package.json",
+      "node_modules/tar/package.json",
+      "node_modules/tar/dist/commonjs/index.min.js",
+      "node_modules/tar/dist/commonjs/package.json",
+      "node_modules/yauzl/package.json",
+      "node_modules/yauzl/*.js",
+      "node_modules/pend/package.json",
+      "node_modules/pend/index.js",
+      "package.json",
+      "docs/lgpl-2.1.txt",
+      "docs/xiph-bsd.txt",
+      "docs/libvpx-bsd.txt",
+      "docs/dav1d-bsd.txt"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/.cache/autochart-ffmpeg/${platform}-${arch}",
+        "to": "ffmpeg",
+        "filter": [
+          "ffmpeg",
+          "ffmpeg.exe",
+          "build.json"
+        ]
+      },
+      {
+        "from": "node_modules/.cache/autochart-node/${platform}-${arch}",
+        "to": "node-runtime",
+        "filter": [
+          "node",
+          "node.exe",
+          "LICENSE"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        "dir",
+        "dmg"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "signExts": [
+        "!node.exe",
+        "!ffmpeg.exe"
+      ],
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      }
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "packElevateHelper": false
+    },
+    "linux": {
+      "category": "AudioVideo;Audio",
+      "syncDesktopName": true,
+      "target": [
+        "AppImage"
+      ]
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+  }
+}

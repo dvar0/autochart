@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 2,
+  "updatedAt": "2026-08-21",
+  "channel": "stable",
+  "defaults": {
+    "packId": "standard-onnx",
+    "generatorId": "autochart.fretformer.v1-onnx",
+    "timingDetector": "beat_this_custom_timing"
+  },
+  "components": [
+    {
+      "id": "fretformer-v1-onnx",
+      "kind": "chart-model",
+      "label": "Fretformer v1 (ONNX)",
+      "version": "1.0.0",
+      "channel": "stable",
+      "license": "CC-BY-NC-SA-4.0",
+      "source": "autochart",
+      "attribution": {
+        "title": "Fretformer v1 model weights and ONNX export",
+        "creator": "Autochart contributors",
+        "source": "Autochart engine catalog component fretformer-v1-onnx, version 1.0.0",
+        "license": "CC-BY-NC-SA-4.0",
+        "licenseUri": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "modified": "Exported and adapted to Autochart's local ONNX Runtime graph/session format."
+      },
+      "generatorIds": [
+        "autochart.fretformer.v1-onnx"
+      ],
+      "capabilities": {
+        "difficulties": [
+          "easy",
+          "medium",
+          "hard",
+          "expert"
+        ],
+        "bestFor": [
+          "default",
+          "difficulty-conditioned-charts"
+        ]
+      },
+      "licenseNotice": "engine/licenses/model-pack-attribution.txt",
+      "licenseFiles": [
+        "licenses/model-pack-attribution.txt",
+        "licenses/cc-by-nc-sa-4.0.txt",
+        "licenses/demucs-mit.txt",
+        "licenses/beat-this-mit.txt"
+      ],
+      "files": [
+        {
+          "path": "fretformer-v1/manifest.json",
+          "source": "remote",
+          "size": 13598,
+          "sha256": "eddbfabc5c81cecc8079a89fbdf4ec8998acb8ea5a6016f68bf55beb6596a6a6"
+        },
+        {
+          "path": "fretformer-v1/beat_this_core_fp32.onnx",
+          "source": "remote",
+          "size": 82098873,
+          "sha256": "a43a278873f3307fce96c991e6d8caf3f6543a383f1dbede5977320d0f4cff87"
+        },
+        {
+          "path": "fretformer-v1/beat_this_mel_fp32.onnx",
+          "source": "remote",
+          "size": 4469414,
+          "sha256": "6b48f0b394c6f1ccefc73b9322f7f8fc696928737c1fbcb72decc009d6dd4244"
+        },
+        {
+          "path": "fretformer-v1/decoder_step_fp32.onnx",
+          "source": "remote",
+          "size": 164678653,
+          "sha256": "2f44b6fe6de45100cb6b22d6545becc1e2c8193408bb9f87894ce8a245794247"
+        },
+        {
+          "path": "fretformer-v1/demucs_analysis_stft.onnx",
+          "source": "remote",
+          "size": 67145401,
+          "sha256": "17d5dc54db30bffad2b08741eba1bb16af87256e8138379075c5a0b911897337"
+        },
+        {
+          "path": "fretformer-v1/demucs_core_network.onnx",
+          "source": "remote",
+          "size": 168616952,
+          "sha256": "7415314db8c9768de95de769184c8a8c0be2b84370d72eeb0328cc2c0a30b25a"
+        },
+        {
+          "path": "fretformer-v1/demucs_synthesis_istft.onnx",
+          "source": "remote",
+          "size": 67163573,
+          "sha256": "b3b329bd0c28d6189f6706114e6f42e63f1e2e6e2cd4a8e33a11c2cf0443601a"
+        },
+        {
+          "path": "fretformer-v1/encoder_fp32.onnx",
+          "source": "remote",
+          "size": 121896237,
+          "sha256": "d82e60345bd2c3bb7a540e60ff52d7a2f3085974e42633d6249805871c732467"
+        },
+        {
+          "path": "fretformer-v1/transcriber_mel_fp32.onnx",
+          "source": "remote",
+          "size": 17126036,
+          "sha256": "4963c18b55e83c4f8f6bf22fc6690fe0303a78c685f0aa27571bbcb425d31965"
+        },
+        {
+          "path": "fretformer-v1/prefix_tables.npz",
+          "source": "remote",
+          "size": 83322,
+          "sha256": "b0e9abbb73d36fefc82bed02f44c34bccaf4ac6a8a54a31c76905015eadd00e1"
+        },
+        {
+          "path": "fretformer-v1/transcriber_manifest.json",
+          "source": "remote",
+          "size": 6627,
+          "sha256": "29260ccbeb9e1e4a14af9592c09196fff8871d4f63f8c8571fa3b270935b7336"
+        },
+        {
+          "path": "licenses/model-pack-attribution.txt",
+          "source": "bundled-license",
+          "size": 2813,
+          "sha256": "545df812fa9fdeb35cebb9c45b99292e58a419d5698084e4507f10566622df47"
+        },
+        {
+          "path": "licenses/cc-by-nc-sa-4.0.txt",
+          "source": "bundled-license",
+          "size": 20850,
+          "sha256": "e66c269d4819aaab34b49ef5220c4ddab6756f21bb5180761a4eb8561f2b7bbd"
+        },
+        {
+          "path": "licenses/demucs-mit.txt",
+          "source": "bundled-license",
+          "size": 1123,
+          "sha256": "cce848e475e9ea404912fff89f84456dc84fb70975387d621b44343cf890effd"
+        },
+        {
+          "path": "licenses/beat-this-mit.txt",
+          "source": "bundled-license",
+          "size": 1124,
+          "sha256": "4262b3df2b88fa83f180185c8ba762c9575f97affa478df57831de6eab51f3af"
+        }
+      ]
+    }
+  ],
+  "packs": [
+    {
+      "id": "standard-onnx",
+      "label": "Autochart ONNX Setup",
+      "channel": "stable",
+      "defaultGeneratorId": "autochart.fretformer.v1-onnx",
+      "defaultTimingDetector": "beat_this_custom_timing",
+      "downloadBytes": 693298686,
+      "downloadFileCount": 11,
+      "installContents": [
+        {
+          "id": "demucs",
+          "label": "Demucs audio separation",
+          "description": "Separates instruments from the song.",
+          "delivery": "download",
+          "fileCount": 3
+        },
+        {
+          "id": "beat-this",
+          "label": "Beat This timing detection",
+          "description": "Finds the song's beats and timing.",
+          "delivery": "download",
+          "fileCount": 2
+        },
+        {
+          "id": "fretformer",
+          "label": "Fretformer chart generation",
+          "description": "Creates the playable note chart.",
+          "delivery": "download",
+          "fileCount": 6
+        },
+        {
+          "id": "ffmpeg",
+          "label": "FFmpeg media support",
+          "description": "Reads and prepares audio and video files.",
+          "delivery": "bundled"
+        },
+        {
+          "id": "local-runtime",
+          "label": "Local model runtime",
+          "description": "Runs the models locally using ONNX Runtime and Node.js.",
+          "delivery": "bundled"
+        },
+        {
+          "id": "licenses",
+          "label": "Licenses and attribution",
+          "description": "Installs the required model, Demucs, and Beat This license notices with the files.",
+          "delivery": "bundled-copy",
+          "fileCount": 4
+        }
+      ],
+      "components": [
+        "fretformer-v1-onnx"
+      ]
+    }
+  ],
+  "timingOptions": [
+    {
+      "id": "source_chart_sync",
+      "label": "Imported chart sync",
+      "default": false,
+      "detector": "source_chart",
+      "raw": false,
+      "smoothing": {
+        "enabled": false
+      },
+      "componentIds": []
+    },
+    {
+      "id": "beat_this_custom_timing",
+      "label": "Beat-This Custom",
+      "default": true,
+      "detector": "beat_this_custom_timing",
+      "raw": true,
+      "smoothing": {
+        "enabled": false
+      },
+      "componentIds": []
+    }
+  ],
+  "generatorRequirements": {
+    "autochart.fretformer.v1-onnx": [
+      "fretformer-v1-onnx"
+    ]
+  }
+}

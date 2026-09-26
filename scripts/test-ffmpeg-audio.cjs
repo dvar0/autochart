@@ -1,0 +1,32 @@
+"use strict";
+const assert = require("assert/strict");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { execFileSync } = require("child_process");
+const { readBuild } = require("./prepare-ffmpeg.cjs");
+const build = readBuild();
+const run = (args) => execFileSync(build.executable, ["-hide_banner", "-loglevel", "error", ...args], { maxBuffer: 32 * 1024 * 1024 });
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "autochart-ffmpeg-audio-"));
+try {
+  const license = run(["-L"]).toString();
+  assert.match(license, /GNU Lesser General Public\s+License/);
+  const configuration = run(["-buildconf"]).toString();
+  assert.doesNotMatch(configuration, /--enable-(?:gpl|nonfree|version3)/);
+  const input = path.join(__dirname, "..", "fixtures", "demo", "autochart-demo-30s.wav");
+  const ogg = path.join(root, "song.ogg");
+  run(["-i", input, "-map", "0:a:0", "-vn", "-c:a", "libvorbis", "-q:a", "5", ogg]);
+  assert(fs.statSync(ogg).size > 10000);
+  const pcm = run(["-i", ogg, "-vn", "-ar", "22050", "-ac", "1", "-f", "f32le", "pipe:1"]);
+  assert(Math.abs(pcm.length / 4 / 22050 - 30) < 0.1, "Ogg export must preserve duration");
+  const flac = path.join(root, "lead-in.flac");
+  run(["-i", input, "-filter_complex", "anullsrc=channel_layout=stereo:sample_rate=48000:d=2[s];[0:a]aresample=48000,asetpts=PTS-STARTPTS[a];[s][a]concat=n=2:v=0:a=1[out]", "-map", "[out]", "-c:a", "flac", "-compression_level", "8", flac]);
+  const lead = run(["-i", flac, "-ar", "22050", "-ac", "1", "-f", "f32le", "pipe:1"]);
+  assert.equal(lead.length, 32 * 22050 * 4);
+  assert(lead.subarray(0, 22050 * 4).every((byte) => byte === 0), "Lead-in must contain silence");
+  const decoders = run(["-decoders"]).toString();
+  for (const name of ["aac", "alac", "flac", "mp3", "opus", "vorbis", "pcm_s16le", "pcm_s24be"]) assert.match(decoders, new RegExp(`\\b${name}\\b`));
+  const demuxers = run(["-demuxers"]).toString();
+  for (const name of ["aac", "aiff", "flac", "matroska", "mov", "mp3", "ogg", "wav"]) assert.match(demuxers, new RegExp(`\\b${name}\\b`));
+  console.log("Bundled LGPL FFmpeg audio decode, Ogg export and lead-in FLAC checks passed.");
+} finally { fs.rmSync(root, { recursive: true, force: true }); }

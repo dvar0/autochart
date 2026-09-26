@@ -1,0 +1,410 @@
+name: Target-native release smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      diagnostics_only:
+        description: Only inspect the Windows runner graphics adapters.
+        required: false
+        default: false
+        type: boolean
+      source_ref:
+        description: Optional source tag or commit to verify with this workflow.
+        required: false
+        default: ''
+        type: string
+      target:
+        description: Build all supported platforms or retry one platform.
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - linux
+          - windows
+          - macos
+      distribution:
+        description: Public unsigned is the free release path; signed additionally requires paid platform credentials.
+        required: true
+        default: public-unsigned
+        type: choice
+        options:
+          - personal
+          - public-unsigned
+          - public-signed
+
+permissions:
+  contents: read
+
+jobs:
+  windows-graphics:
+    if: ${{ inputs.diagnostics_only }}
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - name: Inspect graphics adapters
+        shell: pwsh
+        run: Get-CimInstance Win32_VideoController | Select-Object Name, AdapterCompatibility, PNPDeviceID, VideoProcessor | ConvertTo-Json
+
+  release-smoke:
+    if: ${{ !inputs.diagnostics_only }}
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(
+            inputs.target == 'linux' && '[{"name":"Linux x64","runner":"ubuntu-24.04","platform":"linux","arch":"x64"}]' ||
+            inputs.target == 'windows' && '[{"name":"Windows x64","runner":"windows-2025","platform":"win32","arch":"x64"}]' ||
+            inputs.target == 'macos' && '[{"name":"macOS arm64","runner":"macos-15","platform":"darwin","arch":"arm64"}]' ||
+            '[{"name":"Linux x64","runner":"ubuntu-24.04","platform":"linux","arch":"x64"},{"name":"Windows x64","runner":"windows-2025","platform":"win32","arch":"x64"},{"name":"macOS arm64","runner":"macos-15","platform":"darwin","arch":"arm64"}]'
+          ) }}
+
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.source_ref || github.ref }}
+
+      - name: Use target Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          architecture: ${{ matrix.arch }}
+          cache: npm
+
+      - name: Assert target-native runner
+        shell: bash
+        run: |
+          node -e "if (process.platform !== '${{ matrix.platform }}' || process.arch !== '${{ matrix.arch }}') { throw new Error('Expected ${{ matrix.platform }}-${{ matrix.arch }}, got ' + process.platform + '-' + process.arch); }"
+
+      - name: Install clean dependencies
+        run: npm ci
+
+      - name: Use canonical Windows test temporary paths
+        if: ${{ matrix.platform == 'win32' }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const temp = fs.realpathSync(process.env.RUNNER_TEMP);
+          // The runner's default TEMP uses an 8.3 alias. Safety harnesses expect
+          // canonical roots, just like the app's validated storage settings.
+          for (const name of ['TEMP', 'TMP']) fs.appendFileSync(process.env.GITHUB_ENV, `${name}=${temp}\n`);
+          NODE
+
+      - name: Check Windows test paths before native compilation
+        if: ${{ matrix.platform == 'win32' }}
+        shell: bash
+        run: |
+          node scripts/test-application-security.cjs
+          node scripts/test-v010-backend.cjs
+          node <<'NODE'
+          const loader = require('./engine/lib/onnx/sessionLoader.cjs');
+          loader.setRuntimeFallbackCallback(event => console.log(event));
+          loader.resolveDevice('webgpu', '').then(mode => {
+            if (mode !== 'cpu') throw new Error('Standard Windows runner did not identify its software-only graphics; inspect its adapter inventory before compiling.');
+            console.log('Windows software graphics correctly select CPU.');
+          }).catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
+
+      - name: Install Linux FFmpeg build tools
+        if: ${{ matrix.platform == 'linux' }}
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends build-essential pkg-config xz-utils meson ninja-build nasm
+
+      - name: Install macOS FFmpeg build tools
+        if: ${{ matrix.platform == 'darwin' }}
+        run: brew install pkgconf meson ninja
+
+      - name: Install Windows FFmpeg build tools
+        id: msys2
+        if: ${{ matrix.platform == 'win32' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: make tar xz mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-meson mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-nasm
+
+      - name: Install Linux virtual display
+        if: ${{ matrix.platform == 'linux' }}
+        shell: bash
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes xvfb
+          fi
+
+      - name: Require Windows signed-release secrets
+        if: ${{ inputs.distribution == 'public-signed' && matrix.platform == 'win32' }}
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) { throw "WINDOWS_CSC_LINK is required" }
+          if ([string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) { throw "WINDOWS_CSC_KEY_PASSWORD is required" }
+
+      - name: Prepare macOS signed-release and notarization secrets
+        id: macos-signing
+        if: ${{ inputs.distribution == 'public-signed' && matrix.platform == 'darwin' }}
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.MACOS_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.MACOS_API_ISSUER_ID }}
+          MACOS_API_KEY_P8: ${{ secrets.MACOS_API_KEY_P8 }}
+        run: |
+          test -n "$CSC_LINK" || { echo "MACOS_CSC_LINK is required" >&2; exit 1; }
+          test -n "$CSC_KEY_PASSWORD" || { echo "MACOS_CSC_KEY_PASSWORD is required" >&2; exit 1; }
+          test -n "$MACOS_API_KEY_P8" || { echo "MACOS_API_KEY_P8 is required" >&2; exit 1; }
+          test -n "$APPLE_API_KEY_ID" || { echo "MACOS_API_KEY_ID is required" >&2; exit 1; }
+          test -n "$APPLE_API_ISSUER" || { echo "MACOS_API_ISSUER_ID is required" >&2; exit 1; }
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$MACOS_API_KEY_P8" > "$key_path"
+          chmod 600 "$key_path"
+          echo "key_path=$key_path" >> "$GITHUB_OUTPUT"
+
+      - name: Run unified release verification
+        timeout-minutes: 60
+        shell: bash
+        env:
+          AUTOCHART_MSYS2_BASH: ${{ matrix.platform == 'win32' && format('{0}\usr\bin\bash.exe', steps.msys2.outputs.msys2-location) || '' }}
+          AUTOCHART_ASSETS_BASE_URL: ${{ secrets.AUTOCHART_ASSETS_BASE_URL }}
+          CSC_LINK: ${{ (inputs.distribution == 'public-signed' && matrix.platform == 'win32' && secrets.WINDOWS_CSC_LINK) || (inputs.distribution == 'public-signed' && matrix.platform == 'darwin' && secrets.MACOS_CSC_LINK) || '' }}
+          CSC_KEY_PASSWORD: ${{ (inputs.distribution == 'public-signed' && matrix.platform == 'win32' && secrets.WINDOWS_CSC_KEY_PASSWORD) || (inputs.distribution == 'public-signed' && matrix.platform == 'darwin' && secrets.MACOS_CSC_KEY_PASSWORD) || '' }}
+          APPLE_API_KEY_ID: ${{ inputs.distribution == 'public-signed' && matrix.platform == 'darwin' && secrets.MACOS_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ inputs.distribution == 'public-signed' && matrix.platform == 'darwin' && secrets.MACOS_API_ISSUER_ID || '' }}
+          APPLE_API_KEY: ${{ steps.macos-signing.outputs.key_path || '' }}
+        run: |
+          args=(
+            --clean-install
+            --models-folder "$RUNNER_TEMP/autochart-release-models"
+            --user-data "$RUNNER_TEMP/autochart-release-user-data"
+            --cache-folder "$RUNNER_TEMP/autochart-release-cache"
+            --projects-folder "$RUNNER_TEMP/autochart-release-projects"
+          )
+          if [[ "${{ inputs.distribution }}" != "personal" ]]; then
+            args+=(
+              --public-release
+            )
+          fi
+          if [[ "${{ inputs.distribution }}" == "public-signed" ]]; then
+            args+=(--require-signing)
+          fi
+          npm run release:verify -- "${args[@]}"
+
+      - name: Remove macOS notarization private key
+        if: ${{ always() && inputs.distribution == 'public-signed' && matrix.platform == 'darwin' }}
+        shell: bash
+        env:
+          APPLE_API_KEY_FILE: ${{ steps.macos-signing.outputs.key_path }}
+          APPLE_API_KEY_ID: ${{ secrets.MACOS_API_KEY_ID }}
+        run: |
+          test -n "$APPLE_API_KEY_FILE" || exit 0
+          KEY_FILE="$APPLE_API_KEY_FILE" node -e "const fs=require('fs'); const path=require('path'); const target=path.resolve(process.env.KEY_FILE); const expected=path.resolve(process.env.RUNNER_TEMP, 'AuthKey_' + process.env.APPLE_API_KEY_ID + '.p8'); if(target!==expected) throw new Error('Refusing unexpected key path'); fs.rmSync(target,{force:true});"
+
+      - name: Launch final Linux AppImage
+        if: ${{ matrix.platform == 'linux' }}
+        shell: bash
+        run: |
+          appimage="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$appimage" && test -x "$appimage" || { echo "Verified AppImage is missing or not executable" >&2; exit 1; }
+          launch_root="$(mktemp -d "$RUNNER_TEMP/autochart-final-appimage.XXXXXX")"
+          mkdir "$launch_root/tmp"
+          export AUTOCHART_RELEASE_SMOKE_ROOT="$launch_root"
+          export AUTOCHART_USER_DATA="$launch_root/user-data"
+          export AUTOCHART_RELEASE_SMOKE=1
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export TMPDIR="$launch_root/tmp"
+          ready_file="$AUTOCHART_USER_DATA/release-smoke-ready.json"
+          log_file="$launch_root/app.log"
+          setsid xvfb-run -a "$appimage" --disable-gpu --no-sandbox > "$log_file" 2>&1 &
+          pid=$!
+          cleanup() {
+            if kill -0 -- "-$pid" 2>/dev/null; then
+              kill -TERM -- "-$pid" 2>/dev/null || true
+              for _attempt in $(seq 1 10); do
+                kill -0 -- "-$pid" 2>/dev/null || break
+                sleep 1
+              done
+              kill -KILL -- "-$pid" 2>/dev/null || true
+            fi
+            wait "$pid" 2>/dev/null || true
+            LAUNCH_ROOT="$launch_root" node -e "const fs=require('fs'); const path=require('path'); const root=path.resolve(process.env.RUNNER_TEMP); const target=path.resolve(process.env.LAUNCH_ROOT); const rel=path.relative(root,target); if(!rel||rel.startsWith('..')||path.isAbsolute(rel)) throw new Error('Refusing launch cleanup outside runner temp'); fs.rmSync(target,{recursive:true,force:true});"
+          }
+          trap cleanup EXIT
+          ready=0
+          for _attempt in $(seq 1 60); do
+            if [[ -s "$ready_file" ]]; then ready=1; break; fi
+            kill -0 "$pid" || { cat "$log_file"; exit 1; }
+            sleep 1
+          done
+          [[ "$ready" == 1 ]] || { cat "$log_file"; echo "AppImage renderer did not become ready" >&2; exit 1; }
+          READY_FILE="$ready_file" EXPECTED_VERSION="$(node -p "require('./package.json').version")" node -e "const m=require(process.env.READY_FILE); if(m.product!=='Autochart'||m.version!==process.env.EXPECTED_VERSION||m.platform!=='linux'||m.architecture!=='x64') throw new Error('Invalid AppImage readiness marker: '+JSON.stringify(m));"
+          sleep 5
+          kill -0 "$pid" || { cat "$log_file"; echo "AppImage exited during readiness soak" >&2; exit 1; }
+
+      - name: Install and launch final Windows installer
+        if: ${{ matrix.platform == 'win32' }}
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -LiteralPath "release" -File -Filter "*.exe")
+          if ($installers.Count -ne 1) { throw "Expected exactly one NSIS installer, found $($installers.Count)" }
+          $suffix = [guid]::NewGuid().ToString("N")
+          $launchRoot = Join-Path $env:RUNNER_TEMP "autochart-final-nsis-$suffix"
+          $installDir = Join-Path $launchRoot "app"
+          $userData = Join-Path $launchRoot "user-data"
+          New-Item -ItemType Directory -Path $launchRoot -ErrorAction Stop | Out-Null
+          $env:AUTOCHART_RELEASE_SMOKE_ROOT = $launchRoot
+          $env:AUTOCHART_USER_DATA = $userData
+          $env:AUTOCHART_RELEASE_SMOKE = "1"
+          $readyFile = Join-Path $env:AUTOCHART_USER_DATA "release-smoke-ready.json"
+          $stdout = Join-Path $launchRoot "app.stdout.log"
+          $stderr = Join-Path $launchRoot "app.stderr.log"
+          $process = $null
+          try {
+            $install = Start-Process -FilePath $installers[0].FullName -ArgumentList @("/S", "/D=$installDir") -Wait -PassThru
+            if ($install.ExitCode -ne 0) { throw "NSIS silent install failed with exit $($install.ExitCode)" }
+            $exe = Join-Path $installDir "Autochart.exe"
+            if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Installed app missing: $exe" }
+            $process = Start-Process -FilePath $exe -ArgumentList "--disable-gpu" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+            $ready = $false
+            foreach ($attempt in 1..60) {
+              if ((Test-Path -LiteralPath $readyFile -PathType Leaf) -and (Get-Item -LiteralPath $readyFile).Length -gt 0) { $ready = $true; break }
+              if ($process.HasExited) {
+                Get-Content -LiteralPath $stdout,$stderr -ErrorAction SilentlyContinue
+                throw "Installed Autochart exited before renderer readiness with $($process.ExitCode)"
+              }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $ready) {
+              Get-Content -LiteralPath $stdout,$stderr -ErrorAction SilentlyContinue
+              throw "Installed Autochart renderer did not become ready"
+            }
+            $marker = Get-Content -LiteralPath $readyFile -Raw | ConvertFrom-Json
+            $expectedVersion = node -p "require('./package.json').version"
+            if ($marker.product -ne "Autochart" -or $marker.version -ne $expectedVersion -or $marker.platform -ne "win32" -or $marker.architecture -ne "x64") {
+              throw "Invalid installed-app readiness marker: $($marker | ConvertTo-Json -Compress)"
+            }
+            Start-Sleep -Seconds 5
+            $process.Refresh()
+            if ($process.HasExited) {
+              Get-Content -LiteralPath $stdout,$stderr -ErrorAction SilentlyContinue
+              throw "Installed Autochart exited during readiness soak with $($process.ExitCode)"
+            }
+          } finally {
+            if ($null -ne $process -and -not $process.HasExited) {
+              & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+              $process.WaitForExit(10000) | Out-Null
+            }
+            $uninstaller = Get-ChildItem -LiteralPath $installDir -File -Filter "Uninstall*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -ne $uninstaller) {
+              $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -Wait -PassThru
+              if ($uninstall.ExitCode -ne 0) { Write-Warning "NSIS uninstaller exited with $($uninstall.ExitCode)" }
+            }
+            $runnerRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+            $resolvedLaunchRoot = [IO.Path]::GetFullPath($launchRoot)
+            if (-not $resolvedLaunchRoot.StartsWith($runnerRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing launch cleanup outside runner temp" }
+            Remove-Item -LiteralPath $resolvedLaunchRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Mount and launch final macOS DMG
+        if: ${{ matrix.platform == 'darwin' }}
+        shell: bash
+        run: |
+          dmg="$(find release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          test -n "$dmg" || { echo "Verified DMG is missing" >&2; exit 1; }
+          launch_root="$(mktemp -d "$RUNNER_TEMP/autochart-final-dmg.XXXXXX")"
+          mount_dir="$launch_root/mount"
+          mkdir "$mount_dir"
+          pid=""
+          attached=0
+          cleanup() {
+            cleanup_ok=1
+            if [[ -n "$pid" ]]; then
+              kill "$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
+            fi
+            if [[ "$attached" == 1 ]]; then
+              if hdiutil detach "$mount_dir" >/dev/null 2>&1 || hdiutil detach -force "$mount_dir" >/dev/null 2>&1; then
+                attached=0
+              else
+                echo "Could not detach verified DMG; retaining launch root: $launch_root" >&2
+                cleanup_ok=0
+              fi
+            fi
+            if [[ "$cleanup_ok" == 1 ]]; then
+              LAUNCH_ROOT="$launch_root" node -e "const fs=require('fs'); const path=require('path'); const root=path.resolve(process.env.RUNNER_TEMP); const target=path.resolve(process.env.LAUNCH_ROOT); const rel=path.relative(root,target); if(!rel||rel.startsWith('..')||path.isAbsolute(rel)) throw new Error('Refusing launch cleanup outside runner temp'); fs.rmSync(target,{recursive:true,force:true});"
+            else
+              return 1
+            fi
+          }
+          trap cleanup EXIT
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir"
+          attached=1
+          app="$(find "$mount_dir" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          executable="$app/Contents/MacOS/Autochart"
+          test -x "$executable" || { echo "DMG app missing: $executable" >&2; exit 1; }
+          export AUTOCHART_RELEASE_SMOKE_ROOT="$launch_root"
+          export AUTOCHART_USER_DATA="$launch_root/user-data"
+          export AUTOCHART_RELEASE_SMOKE=1
+          ready_file="$AUTOCHART_USER_DATA/release-smoke-ready.json"
+          log_file="$launch_root/app.log"
+          "$executable" --disable-gpu > "$log_file" 2>&1 &
+          pid=$!
+          ready=0
+          for _attempt in $(seq 1 60); do
+            if [[ -s "$ready_file" ]]; then ready=1; break; fi
+            kill -0 "$pid" || { cat "$log_file"; exit 1; }
+            sleep 1
+          done
+          [[ "$ready" == 1 ]] || { cat "$log_file"; echo "DMG renderer did not become ready" >&2; exit 1; }
+          READY_FILE="$ready_file" EXPECTED_VERSION="$(node -p "require('./package.json').version")" node -e "const m=require(process.env.READY_FILE); if(m.product!=='Autochart'||m.version!==process.env.EXPECTED_VERSION||m.platform!=='darwin'||m.architecture!=='arm64') throw new Error('Invalid DMG readiness marker: '+JSON.stringify(m));"
+          sleep 5
+          kill -0 "$pid" || { cat "$log_file"; echo "DMG app exited during readiness soak" >&2; exit 1; }
+
+      - name: Diagnose failed FFmpeg configuration
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const file = `node_modules/.cache/autochart-ffmpeg/${process.platform}-${process.arch}/corresponding-source.tar.gz`;
+          if (!fs.existsSync(file)) process.exit(0);
+          require('tar').t({ file, onentry(entry) {
+            if (entry.path !== 'config.log') { entry.resume(); return; }
+            const chunks = [];
+            entry.on('data', chunk => chunks.push(chunk));
+            entry.on('end', () => {
+              const lines = Buffer.concat(chunks).toString().split('\n');
+              const selected = new Set();
+              for (let i = 0; i < lines.length; i++) {
+                if (!/check_(?:pkg_config|lib).*libvpx|vpx_codec_vp8_cx|ERROR:|error:|Undefined symbols/.test(lines[i])) continue;
+                for (let j = Math.max(0, i - 3); j < Math.min(lines.length, i + 20); j++) selected.add(j);
+              }
+              for (const index of [...selected].sort((a, b) => a - b)) console.log(`${index + 1}: ${lines[index]}`);
+            });
+          }}).catch(error => { console.error(error.message); process.exitCode = 1; });
+          NODE
+
+      - name: Upload verified release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: autochart-${{ matrix.platform }}-${{ matrix.arch }}-${{ inputs.distribution }}
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*.AppImage
+            release/*.exe
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
+            release/*-source.tar.gz
+            release/*-source.tar.gz.sha256
+            release/*-ffmpeg-corresponding-source.tar.gz
+            release/*-ffmpeg-corresponding-source.tar.gz.sha256
+            release/UNSIGNED-RELEASE.txt
+            release/SHA256SUMS.txt

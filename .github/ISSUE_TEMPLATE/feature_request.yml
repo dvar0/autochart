@@ -1,0 +1,16 @@
+name: Feature request
+description: Explain a use case or improvement.
+title: "[Idea]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the use case and any current workaround.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: A sketch, screenshot, or example can help. Implementation details are optional.

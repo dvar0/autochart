@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "platform": "linux",
+      "arch": "x64",
+      "key": "linux-x64",
+      "label": "Linux x64",
+      "builderArgs": ["--linux", "--x64"],
+      "appOutCandidates": ["linux-unpacked"]
+    },
+    {
+      "platform": "win32",
+      "arch": "x64",
+      "key": "win32-x64",
+      "label": "Windows x64",
+      "builderArgs": ["--win", "--x64"],
+      "appOutCandidates": ["win-unpacked"]
+    },
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "key": "darwin-arm64",
+      "label": "macOS Apple Silicon",
+      "builderArgs": ["--mac", "--arm64"],
+      "appOutCandidates": ["mac-arm64", "mac"]
+    }
+  ]
+}

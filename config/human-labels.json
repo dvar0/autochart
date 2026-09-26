@@ -1,0 +1,28 @@
+{
+  "generators": {
+    "autochart.fretformer.v1-onnx": "Fretformer"
+  },
+  "components": {
+    "demucs": "Demucs audio separation",
+    "beat-this": "Beat This timing detection",
+    "fretformer": "Fretformer chart generation",
+    "ffmpeg": "FFmpeg media support",
+    "local-runtime": "Local model runtime",
+    "licenses": "Licenses and attribution"
+  },
+  "statuses": {
+    "checking": "Checking",
+    "ready": "Ready",
+    "missing": "Not installed",
+    "partial": "Needs repair",
+    "corrupt": "Damaged",
+    "unsupported": "Unsupported",
+    "unverified": "Not yet verified",
+    "cuda": "CUDA",
+    "webgpu": "WebGPU",
+    "coreml": "Core ML",
+    "cpu": "CPU",
+    "skipped": "Not required",
+    "failed": "Failed"
+  }
+}

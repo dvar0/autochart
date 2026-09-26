@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "profileId": "fretformer-v1",
+  "label": "Fretformer v1 (ONNX)",
+  "runtime": "onnxruntime-node",
+  "runtimeVersion": "1.27.0",
+  "executionProvider": "cpu",
+  "note": "Full ONNX generator: Demucs separation + Beat This timing + transcriber (mel features, encoder, CFG autoregressive decoder) + token->notes.chart writer.",
+  "sampleRate": 44100,
+  "graphs": {
+    "demucs_analysis_stft": {
+      "file": "demucs_analysis_stft.onnx",
+      "role": "demucs-analysis-stft",
+      "description": "Demucs HTDemucs analysis STFT (Conv1d complex STFT). Reflect-padded stereo mix flattened to (2, padded_L) -> real/imag spectrograms.",
+      "inputs": [
+        { "name": "x", "dtype": "float32", "shape": ["stream", "samples"] }
+      ],
+      "outputs": [
+        { "name": "real", "dtype": "float32", "shape": ["stream", 2049, "time"] },
+        { "name": "imag", "dtype": "float32", "shape": ["stream", 2049, "time"] }
+      ]
+    },
+    "demucs_core_network": {
+      "file": "demucs_core_network.onnx",
+      "role": "demucs-core-network",
+      "description": "Demucs HTDemucs core network (manual-attention encoder/decoder + cross transformer). Only numerically correct at the trace time axis.",
+      "inputs": [
+        { "name": "real", "dtype": "float32", "shape": [2, 2048, "time"] },
+        { "name": "imag", "dtype": "float32", "shape": [2, 2048, "time"] },
+        { "name": "mix", "dtype": "float32", "shape": [1, 2, "samples"] }
+      ],
+      "outputs": [
+        { "name": "zout_real", "dtype": "float32", "shape": [1, 4, 2, 2048, "time"] },
+        { "name": "zout_imag", "dtype": "float32", "shape": [1, 4, 2, 2048, "time"] },
+        { "name": "xt", "dtype": "float32", "shape": [1, 4, 2, "samples"] }
+      ]
+    },
+    "demucs_synthesis_istft": {
+      "file": "demucs_synthesis_istft.onnx",
+      "role": "demucs-synthesis-istft",
+      "description": "Demucs HTDemucs synthesis ISTFT (ConvTranspose1d weighted overlap-add). Nyquist bin restored + 2-frame time pad before this graph.",
+      "inputs": [
+        { "name": "real", "dtype": "float32", "shape": ["stream", 2049, "time"] },
+        { "name": "imag", "dtype": "float32", "shape": ["stream", 2049, "time"] },
+        { "name": "length", "dtype": "int64", "shape": [] }
+      ],
+      "outputs": [
+        { "name": "y", "dtype": "float32", "shape": ["stream", "samples"] }
+      ]
+    },
+    "beat_this_mel": {
+      "file": "beat_this_mel_fp32.onnx",
+      "role": "beat-mel",
+      "description": "Beat This log-mel spectrogram frontend (torchaudio MelSpectrogram n_fft=1024 hop=441 f_min=30 f_max=11000 n_mels=128 slaney power=1 normalized=frame_length + log1p(1000*m)). mono 22050 Hz wav -> [n_frames, 128] (time x bins).",
+      "inputs": [
+        { "name": "wav", "dtype": "float32", "shape": ["samples"] }
+      ],
+      "outputs": [
+        { "name": "logmel", "dtype": "float32", "shape": ["n_frames", 128] }
+      ]
+    },
+    "beat_this_core": {
+      "file": "beat_this_core_fp32.onnx",
+      "role": "beat-core",
+      "description": "Fine-tuned Beat This core (val beat F=0.9082) beat+downbeat logit head, traced at chunk_size=1500 frames (50 fps). Only numerically valid at exactly 1500 frames.",
+      "inputs": [
+        { "name": "mel", "dtype": "float32", "shape": [1, 1500, 128] }
+      ],
+      "outputs": [
+        { "name": "beat_logits", "dtype": "float32", "shape": [1, 1500] },
+        { "name": "downbeat_logits", "dtype": "float32", "shape": [1, 1500] }
+      ]
+    },
+    "transcriber_mel": {
+      "file": "transcriber_mel_fp32.onnx",
+      "role": "transcriber-mel",
+      "description": "Transcriber mel frontend (librosa-style log-mel dB, n_fft=2048 hop=512 n_mels=80 fmin=0 fmax=11025 slaney power=2 center=True pad_mode=constant absolute dB ref=1.0). mono 22050 Hz wav -> mel_db[80, n_frames] (bins x time). The graph outputs ABSOLUTE dB; the app-side shared-dB-reference + normalize steps (see stages.transcriber.sharedDbReference and normalizeMelDb) must be applied BEFORE beatMelWindows.",
+      "inputs": [
+        { "name": "wav", "dtype": "float32", "shape": ["samples"] }
+      ],
+      "outputs": [
+        { "name": "mel_db", "dtype": "float32", "shape": [80, "n_frames"] }
+      ]
+    },
+    "transcriber_encoder": {
+      "file": "encoder_fp32.onnx",
+      "role": "transcriber-encoder",
+      "description": "Fretformer v1 encoder. Beat-mel [1,n_beats,5,80,32] + mask [1,n_beats] -> cross-attention KV cache (cross_k/cross_v (10,8,n_beats,64)), aligned_memory (n_beats,512), mem_invalid (1,1,n_beats).",
+      "inputs": [
+        { "name": "beat_mel", "dtype": "float32", "shape": [1, "n_beats", 5, 80, 32] },
+        { "name": "beat_mask", "dtype": "bool", "shape": [1, "n_beats"] }
+      ],
+      "outputs": [
+        { "name": "aligned_memory", "dtype": "float32", "shape": ["n_beats", 512] },
+        { "name": "cross_k", "dtype": "float32", "shape": [10, 8, "n_beats", 64] },
+        { "name": "cross_v", "dtype": "float32", "shape": [10, 8, "n_beats", 64] },
+        { "name": "mem_invalid", "dtype": "bool", "shape": [1, 1, "n_beats"] }
+      ]
+    },
+    "transcriber_decoder_step": {
+      "file": "decoder_step_fp32.onnx",
+      "role": "transcriber-decoder-step",
+      "description": "Fretformer v1 single-step decoder (10 layers, 8 heads, head_dim=64, d_model=512, vocab=150). One autoregressive step: token_id+step_id+beat_idx -> logits + appended self-attention K/V cache row. Two-call CFG is the (parity-validated) naive orchestration; batched-CFG is a follow-up speed optimization.",
+      "inputs": [
+        { "name": "token_id", "dtype": "int64", "shape": ["batch"] },
+        { "name": "step_id", "dtype": "int64", "shape": ["batch"] },
+        { "name": "beat_idx", "dtype": "int64", "shape": ["batch"] },
+        { "name": "aligned_memory", "dtype": "float32", "shape": ["n_beats", 512] },
+        { "name": "prefix_bias", "dtype": "float32", "shape": ["batch", 512] },
+        { "name": "cross_k", "dtype": "float32", "shape": [10, 8, "n_beats", 64] },
+        { "name": "cross_v", "dtype": "float32", "shape": [10, 8, "n_beats", 64] },
+        { "name": "mem_invalid", "dtype": "bool", "shape": [1, 1, "n_beats"] },
+        { "name": "past_self_k", "dtype": "float32", "shape": [10, "batch", 8, "past_len", 64] },
+        { "name": "past_self_v", "dtype": "float32", "shape": [10, "batch", 8, "past_len", 64] }
+      ],
+      "outputs": [
+        { "name": "logits", "dtype": "float32", "shape": ["batch", 150] },
+        { "name": "present_self_k", "dtype": "float32", "shape": [10, "batch", 8, "past_len_plus_1", 64] },
+        { "name": "present_self_v", "dtype": "float32", "shape": [10, "batch", 8, "past_len_plus_1", 64] }
+      ]
+    }
+  },
+  "stages": {
+    "demucs": {
+      "tagName": "htdemucs",
+      "sources": ["drums", "bass", "other", "vocals"],
+      "sampleRate": 44100,
+      "audioChannels": 2,
+      "nfft": 4096,
+      "hopLength": 1024,
+      "segmentLength": 343980,
+      "overlap": 0.25,
+      "transitionPower": 1.0,
+      "coreTraceShapeStrict": true,
+      "safety": "The core network is only numerically correct at exactly 343980 samples / 336 frames. Assert the padded segment length equals 343980 before every core call; off-shape inference silently corrupts output.",
+      "accuracy": "Validated at 77.6 dB mean SDR against the reference PyTorch Demucs implementation."
+    },
+    "beat": {
+      "checkpoint": "fine-tuned Beat This (val beat F=0.9082)",
+      "sampleRate": 22050,
+      "fps": 50,
+      "chunkSize": 1500,
+      "borderSize": 6,
+      "overlapMode": "keep_first",
+      "avoidShortEnd": true,
+      "melFrontend": {
+        "nMels": 128,
+        "nFft": 1024,
+        "hopLength": 441,
+        "winLength": 1024,
+        "fMin": 30,
+        "fMax": 11000,
+        "melScale": "slaney",
+        "normalized": "frame_length",
+        "power": 1,
+        "logMultiplier": 1000,
+        "logOp": "log1p(log_multiplier * mel_magnitude)"
+      },
+      "postprocessor": "minimal",
+      "smoother": {
+        "callOrder": ["remove_spurious_beats", "fill_missed_beats", "damped_smooth", "prepend_lead_in"],
+        "removeSpuriousMinRatio": 0.6,
+        "fillMissedMaxRatio": 1.7,
+        "dampedSmoothGain": 0.15,
+        "dampedSmoothWindow": 9
+      },
+      "coreTraceShapeStrict": true,
+      "safety": "The beat core ONNX is only numerically valid at exactly 1500 mel frames. Assert the chunk mel length equals 1500 before every core call; off-shape inference silently corrupts output. The full split -> aggregate -> minimal postproc -> smoother chain mirrors upstream beat_this.inference.split_predict_aggregate + Postprocessor(type=\"minimal\", fps=50) followed by the timing smoother.",
+      "accuracy": "Validated against the upstream Python library + reference smoother (same mel+core fp32 graphs, same mono 22050 Hz decoded wav; PASS bar: same beat/downbeat counts and max|Δ| ≤ 1e-3 s on raw + smoothed beats and downbeats)."
+    },
+    "transcriber": {
+      "sampleRate": 22050,
+      "framesPerBeat": 32,
+      "hopLength": 512,
+      "nfft": 2048,
+      "nMels": 80,
+      "frameDurationSeconds": 0.023219954648526078,
+      "fps": 43.06640625,
+      "channelOrder": ["full", "drums", "bass", "vocals", "other"],
+      "stereoDownmixRule": "mono[n] = 0.5 * (left[n] + right[n])  (librosa.load mono=True)",
+      "sharedDbReference": "ref_db = max over all 6 channels { max_{t,mel} mel_db_abs_c[t,mel] }; mel_db_shared_c = mel_db_abs_c - ref_db",
+      "normalizeMelDb": {
+        "floorDb": -80.0,
+        "offsetDb": 40.0,
+        "scaleDb": 40.0,
+        "formula": "clipped = clamp(mel_db_shared, -80, 0); normalized = (clipped + 40) / 40  -> range [-1,1]"
+      },
+      "nonDrumsMix": "bass + vocals + other (elementwise mono 22050); mel only used to compute the shared dB ref; NOT fed to the encoder.",
+      "beatMelWindows": "For each beat i in [0,n_beats): sample 32 points at t_i + (j+0.5)/32 * (t_{i+1}-t_i) for j in [0,32). Convert to fractional frame index = time / (512/22050); idx0=floor clipped to [0,n_frames-1]; idx1=idx0+1 clamped to [0,n_frames-1]; linearly interpolate out[m,j] = mel[m,idx0]*(1-frac) + mel[m,idx1]*frac. Result per channel: (80,32). Stack 5 channels -> (n_beats,5,80,32) -> (1,n_beats,5,80,32).",
+      "nBeatsDetermination": "From beatThis smoothed grid + nLeadIn prepended; n_beats = len(beatTimes)-1, capped so beatTimes[n_beats] <= audioDuration and to model_config.max_beats (1280).",
+      "prefixConditioning": {
+        "file": "prefix_tables.npz",
+        "loader": "engine/lib/onnx/prefixTables.cjs (tiny pure-JS npz/npy reader; no Python at runtime)",
+        "pervasiveDifficulty": false,
+        "pervasiveDescriptors": true,
+        "arrayKeys": ["descriptor_embedding_0", "descriptor_embedding_1", "descriptor_embedding_2", "descriptor_embedding_3", "descriptor_embedding_4"],
+        "lookupRule": "For each knob k in [0,5): scan first 8 prefix tokens for one in [DESC_BASE + k*8, DESC_BASE + k*8 + 8); if found, bin_id = tok - base, else bin_id = 7 (auto). prefix_bias += desc_tables[k][bin_id]. difficulty embedding is NOT applied (pervasive_difficulty=false).",
+        "condPrefixTokens": "[BOS, difficulty_token(diff), descriptor_token(0, b0), ..., descriptor_token(4, b4)]  (len 7)",
+        "uncondPrefixTokens": "[BOS, difficulty_token(diff), descriptor_token(0, 7), ..., descriptor_token(4, 7)]  (all-auto; len 7).",
+        "descPrefixScan": 8,
+        "autoBin": 7
+      },
+      "modelConfig": {
+        "vocabSize": 150,
+        "dModel": 512,
+        "nhead": 8,
+        "headDim": 64,
+        "nLayers": 10,
+        "encoderLayers": 6,
+        "decoderLayers": 10,
+        "dimFeedforward": 2048,
+        "nMels": 80,
+        "framesPerBeat": 32,
+        "inChannels": 5,
+        "maxBeats": 1280,
+        "maxTokens": 8192,
+        "audioFeatureMode": "demucs_stems"
+      },
+      "vocab": {
+        "PAD_TOKEN": 0, "BOS_TOKEN": 1, "EOS_TOKEN": 2, "BEAT_TOKEN": 3,
+        "DIFF_BASE": 4, "DIFFICULTY_NAMES": ["expert", "hard", "medium", "easy"],
+        "POS_BASE": 8, "TICKS_PER_BEAT": 48, "NOTE_BASE": 56, "OPEN_TOKEN": 87,
+        "MOD_HOPO_TOKEN": 88, "MOD_TAP_TOKEN": 89, "SUS_BASE": 90,
+        "SUSTAIN_BUCKET_TICKS": [12, 24, 36, 48, 72, 96, 144, 192, 288, 384, 576, 768],
+        "INTENSITY_BASE": 102,
+        "INTENSITY_NAMES": ["low", "2", "3", "4", "5", "6", "ultra", "unknown"],
+        "N_DESCRIPTORS": 5, "DESCRIPTOR_BIN_COUNT": 8, "DESC_BASE": 110,
+        "DESCRIPTOR_NAMES": ["speed", "chords", "technique", "movement", "repetition"],
+        "DESC_PREFIX_SCAN": 8, "VOCAB_SIZE": 150
+      },
+      "safety": "Encoder must receive beat_mel as NORMALIZED [-1,1] values (after shared-dB-reference subtraction + normalize_mel_db), NOT raw dB. The mel graph outputs ABSOLUTE dB; failing the shared reference or the normalize produces a constant affine offset per song that the encoder is NOT trained to tolerate. CFG MUST be the naive 2-call shape (cond + uncond, guided = uncond + w*(cond-uncond), then sample/argmax on guided) -- batched-CFG is NOT validated for parity.",
+      "accuracy": "Decode loop (CFG + greedy) validated token-identical to the reference implementation at temperature 0 with the same beat_mel/prefix_tokens/prefix_bias; ongoing gate engine/test/transcribe-cfg-batch-parity.cjs."
+    }
+  },
+  "transcriber_reference_manifest": {
+    "note": "Exporter manifest kept alongside the graphs as transcriber_manifest.json; any model_config / vocab / prefix_conditioning change here must stay in sync.",
+    "file": "transcriber_manifest.json"
+  }
+}

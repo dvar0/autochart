@@ -1,0 +1,60 @@
+AUTOCHART MODEL PACK ATTRIBUTION
+Version 1.0.0
+
+This notice applies to the files pinned by engine/catalog.json for component
+fretformer-v1-onnx. Keep this file and the referenced license texts with every
+copy of the model pack.
+
+FRETFORMER
+Title: Fretformer v1 model weights and ONNX export
+Creator: Autochart contributors
+Copyright: 2026 Autochart contributors
+Source: Autochart engine catalog component fretformer-v1-onnx, version 1.0.0
+License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+International (CC BY-NC-SA 4.0)
+License URI: https://creativecommons.org/licenses/by-nc-sa/4.0/
+License text: licenses/cc-by-nc-sa-4.0.txt
+Covered files: fretformer-v1/encoder_fp32.onnx,
+fretformer-v1/decoder_step_fp32.onnx,
+fretformer-v1/transcriber_mel_fp32.onnx,
+fretformer-v1/prefix_tables.npz, fretformer-v1/transcriber_manifest.json, and
+the Fretformer portions identified by fretformer-v1/manifest.json.
+Modification notice: the trained model was exported and adapted to the local
+ONNX Runtime graph/session format used by Autochart.
+Restriction: sharing and adaptation are permitted only for NonCommercial
+purposes and are subject to Attribution and ShareAlike. The application itself
+is AGPL-3.0-or-later; that application license does not remove this model's
+NonCommercial restriction.
+
+DEMUCS / HYBRID TRANSFORMER DEMUCS
+Upstream: https://github.com/facebookresearch/demucs
+Copyright: Meta Platforms, Inc. and affiliates
+License: MIT (licenses/demucs-mit.txt)
+Covered files: fretformer-v1/demucs_analysis_stft.onnx,
+fretformer-v1/demucs_core_network.onnx,
+fretformer-v1/demucs_synthesis_istft.onnx, and the Demucs portions identified
+by fretformer-v1/manifest.json.
+Modification notice: released htdemucs weights were converted to ONNX graphs
+for Autochart's independent JavaScript inference pipeline.
+Citation requested by upstream:
+Simon Rouard, Francisco Massa, and Alexandre Defossez, "Hybrid Transformers
+for Music Source Separation," ICASSP 2023.
+
+BEAT THIS!
+Upstream: https://github.com/CPJKU/beat_this
+Copyright: 2024 Institute of Computational Perception, JKU Linz, Austria
+License: MIT (licenses/beat-this-mit.txt)
+Covered files: fretformer-v1/beat_this_core_fp32.onnx,
+fretformer-v1/beat_this_mel_fp32.onnx, and the Beat This portions identified
+by fretformer-v1/manifest.json.
+Modification notice: the published checkpoint and subsequent Autochart
+fine-tuning were exported to ONNX for Autochart's independent JavaScript
+inference pipeline.
+Citation requested by upstream:
+Francesco Foscarin, Jan Schluter, and Gerhard Widmer, "Beat This! Accurate Beat
+Tracking Without DBN Postprocessing," ISMIR 2024.
+
+NO ENDORSEMENT; NO WARRANTY
+No upstream author or institution endorses Autochart. The materials are
+provided without warranty to the extent permitted by their respective
+licenses.

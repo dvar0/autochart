@@ -1,0 +1,6 @@
+engine/licenses/** text eol=lf
+engine/licenses/cc-by-nc-sa-4.0.txt whitespace=-blank-at-eof
+docs/fs-minipass-isc.txt text eol=lf
+docs/minizlib-mit.txt text eol=lf
+*.sh text eol=lf
+scripts/ffmpeg-sources.json text eol=lf

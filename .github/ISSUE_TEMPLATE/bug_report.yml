@@ -1,0 +1,39 @@
+name: Bug report
+description: Report an installation, generation, preview, or export problem.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Review logs for personal paths before attaching them. Do not upload private songs, model files, credentials, or tokenized URLs. For vulnerabilities, follow SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Autochart version
+      placeholder: App version, or commit if running from source
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and hardware
+      description: Include OS version, architecture, RAM, and GPU if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: What happened, and how can we reproduce it?
+      description: Include expected behavior and steps. Screenshots are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: generation
+    attributes:
+      label: Generation details, if relevant
+      description: Hardware mode, difficulty, song duration/format, timing detector, lead-in, and whether another take behaves the same way.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Error message or reviewed logs
+      description: Paste relevant excerpts after removing personal information.

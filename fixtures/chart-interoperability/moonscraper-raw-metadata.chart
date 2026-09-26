@@ -1,0 +1,25 @@
+[Song]
+{
+  Name = "Folder \ Charts \"quoted\""
+  Artist = "Artist \\ A"
+  Charter = "Charter \\ Name"
+  Resolution = 192
+  Offset = 0
+  MusicStream = "song.ogg"
+}
+[SyncTrack]
+{
+  0 = B 100000
+}
+[Events]
+{
+  0 = E "section Verse"
+}
+[HardSingle]
+{
+  0 = N 0 0
+  192 = N 1 96
+  384 = N 2 0
+  576 = N 3 0
+  768 = N 4 0
+}

@@ -1,0 +1,29 @@
+[Song]
+{
+  Name = "Fixture Song"
+  Artist = "Fixture Artist"
+  Charter = "Fixture Charter"
+  Resolution = 192
+  Offset = -0.25
+  MusicStream = "song.ogg"
+}
+[SyncTrack]
+{
+  0 = TS 4 2
+  0 = B 120000
+  384 = B 128000
+}
+[Events]
+{
+  0 = E "section Intro"
+  384 = E "lyric hello"
+}
+[ExpertSingle]
+{
+  0 = N 0 96
+  0 = N 2 96
+  192 = N 5 0
+  384 = N 7 48
+  576 = N 6 0
+  768 = N 1 192
+}
