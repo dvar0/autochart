@@ -9,17 +9,22 @@ import { normalizeRegions, snapSpanToBars } from "./editRegions.js";
 // gestures into committed reducer actions (one per gesture). Live drag state is
 // kept in a ref and drawn directly, so pointermove never spams the reducer.
 //
-// The two-row ruler is where redo regions are picked: click a section name in
-// the top row, or drag across bar numbers in the bottom row (snapped outward
-// to whole bars). Shift adds another region.
+// The ruler is where redo regions are picked: click a section name in the top
+// row, or drag across bar numbers (snapped outward to whole bars). Shift adds
+// another region. Below it, the redo row carries each redo's take switcher.
+//
+// There are no tool modes. In the lanes: click empty space to add a note (a
+// ghost shows where), drag empty space to select, drag a note to move it, drag
+// its right end to stretch a sustain, right-click or right-drag to delete.
 
 const SECTION_ROW_H = 24;
 const BAR_ROW_H = 22;
-const RULER_H = SECTION_ROW_H + BAR_ROW_H;
-const SP_H = 22;
-const SOLO_H = 22;
+const REDO_ROW_H = 30;
+const SP_H = 20;
+const SOLO_H = 20;
 const SCROLLBAR_H = 15;
 const EDGE_GRAB = 5;
+const SUSTAIN_GRAB = 7;
 const BOX_SELECT_MIN_DRAG = 3;
 const REGION_MIN_DRAG = 4;
 
@@ -29,25 +34,30 @@ const SP_COLOR = "#36c5f0";
 const SOLO_COLOR = "#9a6bff";
 const FORCE_OUTLINE = "rgba(255,255,255,0.96)";
 
-// Lanes grow with the available height so the roll fills the edit screen.
-// Gems scale with the lane so tall screens get chunkier, easier targets.
-function layoutFor(height) {
-  const laneH = Math.max(30, Math.floor((height - RULER_H - SP_H - SOLO_H - SCROLLBAR_H) / 5));
+// Lanes stay compact: height adds no information, width does, so the roll
+// spends the screen on bars instead of taller rows.
+// The redo row only takes space once there is a redo to show.
+function layoutFor(laneH, withRedoRow = false) {
+  const rulerH = SECTION_ROW_H + BAR_ROW_H + (withRedoRow ? REDO_ROW_H : 0);
   const noteAreaH = laneH * 5;
-  const spY = RULER_H + noteAreaH;
+  const spY = rulerH + noteAreaH;
   const soloY = spY + SP_H;
   return {
     laneH,
+    rulerH,
+    withRedoRow,
     noteAreaH,
     spY,
     soloY,
     editorH: soloY + SOLO_H,
     totalH: soloY + SOLO_H + SCROLLBAR_H,
-    headH: Math.round(Math.max(18, Math.min(40, laneH * 0.42))),
-    noteW: Math.round(Math.max(16, Math.min(30, laneH * 0.3))),
-    tailH: Math.round(Math.max(8, Math.min(14, laneH * 0.12))),
+    headH: Math.round(laneH * 0.62),
+    noteW: Math.round(laneH * 0.36),
+    tailH: Math.round(laneH * 0.22),
   };
 }
+
+const laneHeightFor = (viewportH) => (viewportH >= 1000 ? 40 : viewportH >= 820 ? 36 : 32);
 
 function hexToRgb(color) {
   const hex = String(color || "").trim();
@@ -78,14 +88,15 @@ function drawRoundRect(ctx, x, y, w, h, r) {
 
 function regionAtY(L, y) {
   if (y < SECTION_ROW_H) return { type: "sections" };
-  if (y < RULER_H) return { type: "bars" };
-  if (y < L.spY) return { type: "note", lane: Math.max(0, Math.min(4, Math.floor((y - RULER_H) / L.laneH))) };
+  if (y < SECTION_ROW_H + BAR_ROW_H) return { type: "bars" };
+  if (y < L.rulerH) return { type: "redos" };
+  if (y < L.spY) return { type: "note", lane: Math.max(0, Math.min(4, Math.floor((y - L.rulerH) / L.laneH))) };
   if (y < L.soloY) return { type: "sp" };
   return { type: "solo" };
 }
 
 function laneCenterY(L, lane) {
-  return RULER_H + lane * L.laneH + L.laneH / 2;
+  return L.rulerH + lane * L.laneH + L.laneH / 2;
 }
 
 export default function PianoRollEditor({
@@ -102,14 +113,16 @@ export default function PianoRollEditor({
 }) {
   const { editor, applyEditorChange, requestEditorSeek } = project;
   const doc = editor.doc;
-  const [pxPerBeat, setPxPerBeat] = useState(64);
-  const [layout, setLayout] = useState(() => layoutFor(300));
+  const [pxPerBeat, setPxPerBeat] = useState(56);
+  const hasRedos = Boolean(doc?.redos?.length);
+  const [layout, setLayout] = useState(() => layoutFor(laneHeightFor(window.innerHeight), hasRedos));
 
   const rootRef = useRef(null);
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const scrollLeftRef = useRef(0);
   const dragRef = useRef(null);
+  const hoverRef = useRef(null);
   const rafRef = useRef(0);
 
   // Fresh-prop refs so the once-bound pointer handlers never read stale state.
@@ -123,6 +136,10 @@ export default function PianoRollEditor({
   pxPerBeatRef.current = pxPerBeat;
   layoutRef.current = layout;
   viewRef.current = { bars, sections, regions, pending, loop };
+
+  useEffect(() => {
+    setLayout((prev) => (prev.withRedoRow === hasRedos ? prev : layoutFor(prev.laneH, hasRedos)));
+  }, [hasRedos]);
 
   const resolution = doc?.resolution || 192;
   const pxPerTick = pxPerBeat / resolution;
@@ -201,16 +218,11 @@ export default function PianoRollEditor({
 
     // Lane backgrounds.
     for (let lane = 0; lane < 5; lane += 1) {
-      const y = RULER_H + lane * L.laneH;
+      const y = L.rulerH + lane * L.laneH;
       ctx.fillStyle = lane % 2 === 0
         ? (dark ? "rgba(255,255,255,0.018)" : "rgba(255,255,255,0.22)")
         : (dark ? "rgba(255,255,255,0.045)" : "rgba(74,69,133,0.035)");
       ctx.fillRect(0, y, viewW, L.laneH);
-      const wash = ctx.createLinearGradient(0, 0, 74, 0);
-      wash.addColorStop(0, alpha(LANE_COLORS[lane], dark ? 0.23 : 0.18));
-      wash.addColorStop(1, alpha(LANE_COLORS[lane], 0));
-      ctx.fillStyle = wash;
-      ctx.fillRect(0, y, 96, L.laneH);
       ctx.strokeStyle = alpha(borderSoft, dark ? 0.6 : 0.75);
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -234,7 +246,7 @@ export default function PianoRollEditor({
       ctx.beginPath();
       for (let tick = first; tick <= endTick; tick += step) {
         const x = Math.round(tickToX(tick)) + 0.5;
-        ctx.moveTo(x, RULER_H);
+        ctx.moveTo(x, L.rulerH);
         ctx.lineTo(x, editorH);
       }
       ctx.stroke();
@@ -249,7 +261,7 @@ export default function PianoRollEditor({
     for (const barTick of view.bars) {
       if (barTick < startTick - 1 || barTick > endTick + 1) continue;
       const x = Math.round(tickToX(barTick)) + 0.5;
-      ctx.moveTo(x, RULER_H);
+      ctx.moveTo(x, L.rulerH);
       ctx.lineTo(x, editorH);
     }
     ctx.stroke();
@@ -260,13 +272,13 @@ export default function PianoRollEditor({
       const w = (region.endTick - region.startTick) * ppt;
       if (x > viewW || x + w < 0) return;
       ctx.fillStyle = fill;
-      ctx.fillRect(x, RULER_H, w, L.noteAreaH);
+      ctx.fillRect(x, L.rulerH, w, L.noteAreaH);
       ctx.fillStyle = edge;
-      ctx.fillRect(x, RULER_H, 2, L.noteAreaH);
-      ctx.fillRect(x + w - 2, RULER_H, 2, L.noteAreaH);
+      ctx.fillRect(x, L.rulerH, 2, L.noteAreaH);
+      ctx.fillRect(x + w - 2, L.rulerH, 2, L.noteAreaH);
     };
     for (const region of view.regions) {
-      drawRegionBand(region, alpha(purpleBri, dark ? 0.16 : 0.1), alpha(purpleBri, 0.85));
+      drawRegionBand(region, alpha(purpleBri, dark ? 0.24 : 0.14), alpha(purpleBri, 0.9));
     }
     if (pendingJob) {
       const now = performance.now();
@@ -280,7 +292,7 @@ export default function PianoRollEditor({
         grad.addColorStop(0.5, alpha(orange, dark ? 0.22 : 0.16));
         grad.addColorStop(1, alpha(orange, 0));
         ctx.fillStyle = grad;
-        ctx.fillRect(Math.max(x, sweep - 60), RULER_H, Math.min(120, x + w - Math.max(x, sweep - 60)), L.noteAreaH);
+        ctx.fillRect(Math.max(x, sweep - 60), L.rulerH, Math.min(120, x + w - Math.max(x, sweep - 60)), L.noteAreaH);
       }
     }
     if (drag?.kind === "barSelect" && drag.moved) {
@@ -295,7 +307,7 @@ export default function PianoRollEditor({
       const selected = rangeSel.has(range.id);
       const visibleW = Math.max(1, w);
       ctx.fillStyle = alpha(color, dark ? 0.12 : 0.09);
-      ctx.fillRect(x, RULER_H, w, L.noteAreaH);
+      ctx.fillRect(x, L.rulerH, w, L.noteAreaH);
       const grad = ctx.createLinearGradient(0, laneY, 0, laneY + laneH);
       grad.addColorStop(0, alpha(color, selected ? 0.48 : 0.34));
       grad.addColorStop(1, alpha(color, selected ? 0.30 : 0.20));
@@ -355,15 +367,17 @@ export default function PianoRollEditor({
       const selected = sel.has(note.id);
       ctx.globalAlpha = faded ? 0.22 : 1;
       if (note.open) {
+        // A slim bar across all five lanes, like the open-note bar in game.
         const sustain = sustainFor(note, "open");
+        const barW = Math.max(6, Math.round(L.noteW * 0.5));
         if (sustain > 0) {
-          ctx.fillStyle = alpha(OPEN_COLOR, 0.32);
-          drawRoundRect(ctx, headX, RULER_H + 8, sustain * ppt, L.noteAreaH - 16, 5);
+          ctx.fillStyle = alpha(OPEN_COLOR, 0.22);
+          drawRoundRect(ctx, headX, L.rulerH + 4, sustain * ppt, L.noteAreaH - 8, 4);
         }
-        ctx.fillStyle = OPEN_COLOR;
-        ctx.strokeStyle = selected ? "#fff" : "rgba(0,0,0,0.35)";
+        ctx.fillStyle = alpha(OPEN_COLOR, 0.9);
+        ctx.strokeStyle = selected ? "#fff" : "rgba(0,0,0,0.3)";
         ctx.lineWidth = selected ? 2.5 : 1;
-        drawRoundRect(ctx, headX - L.noteW / 2, RULER_H + 8, L.noteW, L.noteAreaH - 16, 6);
+        drawRoundRect(ctx, headX - barW / 2, L.rulerH + 4, barW, L.noteAreaH - 8, barW / 2);
         ctx.stroke();
         ctx.globalAlpha = 1;
         return;
@@ -387,23 +401,20 @@ export default function PianoRollEditor({
     // Streamed notes from an in-flight redo draw over the faded originals.
     for (const note of pendingJob?.notes || []) drawNote(note);
 
-    // Pending draw-note preview.
-    if (drag?.kind === "drawNote") {
-      const x = tickToX(drag.tick);
-      if (drag.lane === "open") {
-        ctx.fillStyle = alpha(OPEN_COLOR, 0.55);
-        drawRoundRect(ctx, x - L.noteW / 2, RULER_H + 8, L.noteW, L.noteAreaH - 16, 5);
-        if (drag.sustain > 0) drawRoundRect(ctx, x, RULER_H + 8, drag.sustain * ppt, L.noteAreaH - 16, 5);
-      } else {
-        const cy = laneCenterY(L, drag.lane);
-        if (drag.sustain > 0) {
-          ctx.fillStyle = LANE_COLORS[drag.lane];
-          ctx.globalAlpha = 0.45;
-          drawRoundRect(ctx, x, cy - L.tailH / 2, drag.sustain * ppt, L.tailH, L.tailH / 2);
-          ctx.globalAlpha = 1;
-        }
-        drawNoteHead(x, cy, LANE_COLORS[drag.lane], true, false, false);
-      }
+    // Ghost note under the pointer: where a click would add one.
+    const hover = hoverRef.current;
+    if (!drag && hover?.ghost) {
+      const x = tickToX(hover.ghost.tick);
+      const cy = laneCenterY(L, hover.ghost.lane);
+      ctx.globalAlpha = 0.38;
+      drawNoteHead(x, cy, LANE_COLORS[hover.ghost.lane], false, false, false);
+      ctx.globalAlpha = 1;
+    }
+    // Stretch handle on the hovered note's right end.
+    if (!drag && hover?.handle) {
+      const { x, cy } = hover.handle;
+      ctx.fillStyle = dark ? "#ffffff" : "#2b2f4d";
+      drawRoundRect(ctx, x - 2, cy - L.headH / 2 + 3, 4, L.headH - 6, 2);
     }
 
     // Pending range preview.
@@ -411,13 +422,13 @@ export default function PianoRollEditor({
       const x = tickToX(Math.min(drag.startTick, drag.curTick));
       const w = Math.abs(drag.curTick - drag.startTick) * ppt;
       ctx.fillStyle = alpha(drag.kind2 === "solo" ? SOLO_COLOR : SP_COLOR, 0.24);
-      ctx.fillRect(x, RULER_H, w, L.noteAreaH);
+      ctx.fillRect(x, L.rulerH, w, L.noteAreaH);
     }
 
     // Pending box-select preview.
     if (drag?.kind === "boxSelect") {
       const x = Math.min(drag.startX, drag.curX);
-      const y = Math.max(RULER_H, Math.min(drag.startY, drag.curY));
+      const y = Math.max(L.rulerH, Math.min(drag.startY, drag.curY));
       const w = Math.abs(drag.curX - drag.startX);
       const h = Math.max(0, Math.min(L.spY, Math.max(drag.startY, drag.curY)) - y);
       if (w > 0 && h > 0) {
@@ -433,13 +444,27 @@ export default function PianoRollEditor({
 
     // Ruler: section row on top, bar numbers below.
     ctx.fillStyle = dark ? "rgba(35,42,59,0.97)" : "rgba(247,247,255,0.97)";
-    ctx.fillRect(0, 0, viewW, RULER_H);
+    ctx.fillRect(0, 0, viewW, L.rulerH);
     ctx.strokeStyle = alpha(border, 0.55);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, RULER_H - 0.5);
-    ctx.lineTo(viewW, RULER_H - 0.5);
+    ctx.moveTo(0, L.rulerH - 0.5);
+    ctx.lineTo(viewW, L.rulerH - 0.5);
+    ctx.moveTo(0, SECTION_ROW_H + BAR_ROW_H - 0.5);
+    ctx.lineTo(viewW, SECTION_ROW_H + BAR_ROW_H - 0.5);
     ctx.stroke();
+
+    // Redo row: an orange band under every redone span; the take switchers
+    // (DOM, see RedoChips) sit on top of it.
+    for (const redo of L.withRedoRow ? activeDoc.redos || [] : []) {
+      for (const region of redo.regions) {
+        const x = tickToX(region.startTick);
+        const w = (region.endTick - region.startTick) * ppt;
+        if (x > viewW || x + w < 0) continue;
+        ctx.fillStyle = alpha(orange, redo.active < 0 ? 0.12 : dark ? 0.3 : 0.24);
+        drawRoundRect(ctx, x + 1, SECTION_ROW_H + BAR_ROW_H + 3, Math.max(2, w - 2), REDO_ROW_H - 6, 8);
+      }
+    }
 
     ctx.font = "700 11px Inter, system-ui, sans-serif";
     for (const section of view.sections) {
@@ -486,7 +511,7 @@ export default function PianoRollEditor({
       const x1 = tickToX(view.loop.startTick);
       const x2 = tickToX(view.loop.endTick);
       ctx.fillStyle = orange;
-      ctx.fillRect(x1, RULER_H - 3, x2 - x1, 3);
+      ctx.fillRect(x1, SECTION_ROW_H + BAR_ROW_H - 3, x2 - x1, 3);
       ctx.fillRect(x1, SECTION_ROW_H + 4, 2, BAR_ROW_H - 4);
       ctx.fillRect(x2 - 2, SECTION_ROW_H + 4, 2, BAR_ROW_H - 4);
     }
@@ -551,14 +576,23 @@ export default function PianoRollEditor({
     const root = rootRef.current;
     if (!root || typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(() => {
-      const next = layoutFor(root.clientHeight);
-      setLayout((prev) => (prev.laneH === next.laneH ? prev : next));
+      const laneH = laneHeightFor(window.innerHeight);
+      setLayout((prev) => (prev.laneH === laneH ? prev : layoutFor(laneH, prev.withRedoRow)));
       scheduleDraw();
       reportView();
     });
     observer.observe(root);
     return () => observer.disconnect();
   }, [scheduleDraw, reportView]);
+
+  // Open at a zoom that fits about eight bars of 4/4 across the roll.
+  const fittedRef = useRef(false);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (fittedRef.current || !container?.clientWidth) return;
+    fittedRef.current = true;
+    setPxPerBeat(Math.max(32, Math.min(72, Math.round(container.clientWidth / 32))));
+  });
 
   // Follow the playhead while playing (paused during an active drag gesture).
   useEffect(() => {
@@ -649,12 +683,13 @@ export default function PianoRollEditor({
       for (const lane of lanes) {
         const cy = laneCenterY(L, lane);
         if (Math.abs(localY - cy) > L.laneH / 2 - 2) continue;
-        if (Math.abs(localX - headX) <= L.noteW / 2 + 2) return { note, part: "head", lane };
         const sustain = note.open ? note.sustainsByLane.open || 0 : note.sustainsByLane[lane] || 0;
-        if (sustain > 0) {
-          const tailEndX = (note.tick + sustain) * ppt - scrollLeftRef.current;
-          if (localX > headX + L.noteW / 2 && localX <= tailEndX + 4) return { note, part: "tail", lane };
-        }
+        const tailEndX = (note.tick + sustain) * ppt - scrollLeftRef.current;
+        const endX = Math.max(headX + L.noteW / 2, tailEndX);
+        // The note's right end is the stretch handle, sustain or not.
+        if (localX >= endX - 3 && localX <= endX + SUSTAIN_GRAB) return { note, part: "tail", lane, endX, cy };
+        if (Math.abs(localX - headX) <= L.noteW / 2 + 2) return { note, part: "head", lane };
+        if (sustain > 0 && localX > headX && localX <= tailEndX + 4) return { note, part: "tail", lane, endX, cy };
       }
     }
     return null;
@@ -667,7 +702,7 @@ export default function PianoRollEditor({
     const ppt = pxPerBeatRef.current / (activeDoc.resolution || 192);
     const left = Math.min(drag.startX, drag.curX);
     const right = Math.max(drag.startX, drag.curX);
-    const top = Math.max(RULER_H, Math.min(drag.startY, drag.curY));
+    const top = Math.max(L.rulerH, Math.min(drag.startY, drag.curY));
     const bottom = Math.min(L.spY, Math.max(drag.startY, drag.curY));
     if (right - left < BOX_SELECT_MIN_DRAG || bottom - top < BOX_SELECT_MIN_DRAG) return [];
 
@@ -677,7 +712,7 @@ export default function PianoRollEditor({
       const x = tickToX(note.tick);
       if (x + L.noteW / 2 < left || x - L.noteW / 2 > right) continue;
       if (note.open) {
-        if (bottom >= RULER_H && top <= L.spY) ids.push(note.id);
+        if (bottom >= L.rulerH && top <= L.spY) ids.push(note.id);
         continue;
       }
       const hitLane = note.lanes.some((lane) => {
@@ -762,13 +797,69 @@ export default function PianoRollEditor({
 
   const newEraseDrag = (x, y) => ({ kind: "erase", noteIds: new Set(), rangeIds: new Set(), sustainCuts: new Map(), rangeCuts: new Map(), lastX: x, lastY: y, changed: false });
 
+  // Hover feedback: a ghost note where a click would add one (only when
+  // nothing is selected, since that click deselects instead), a stretch
+  // handle on note ends, and a cursor that says what a drag would do.
+  const updateHover = (x, y) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const region = regionAtY(layoutRef.current, y);
+    let next = null;
+    let cursor = "default";
+    if (region.type === "note") {
+      const hit = hitTest(x, y);
+      if (hit?.part === "tail") {
+        next = { handle: { x: hit.endX, cy: hit.cy } };
+        cursor = "ew-resize";
+      } else if (hit?.note) {
+        cursor = "grab";
+      } else {
+        const ed = editorRef.current;
+        const view = viewRef.current;
+        if (!ed.selectedNoteIds.length && !ed.selectedRangeIds.length && !view.regions.length && !view.pending) {
+          next = { ghost: { tick: snapTick(xToTick(x)), lane: region.lane } };
+          cursor = "pointer";
+        }
+      }
+    } else if (region.type === "sections" || region.type === "bars") {
+      cursor = "pointer";
+    } else if (region.type === "sp" || region.type === "solo") {
+      const hit = hitTest(x, y);
+      cursor = hit?.range ? (hit.part === "body" ? "grab" : "ew-resize") : "copy";
+    }
+    canvas.style.cursor = cursor;
+    const prev = hoverRef.current;
+    const same = prev?.ghost && next?.ghost
+      ? prev.ghost.tick === next.ghost.tick && prev.ghost.lane === next.ghost.lane
+      : prev?.handle && next?.handle
+        ? prev.handle.x === next.handle.x && prev.handle.cy === next.handle.cy
+        : !prev && !next;
+    if (!same) {
+      hoverRef.current = next;
+      scheduleDraw();
+    }
+  };
+
+  const onPointerLeave = () => {
+    if (!hoverRef.current) return;
+    hoverRef.current = null;
+    scheduleDraw();
+  };
+
   const onPointerDown = (e) => {
-    if (!doc || e.button !== 0) return;
+    if (!doc || (e.button !== 0 && e.button !== 2)) return;
     canvasRef.current.setPointerCapture(e.pointerId);
+    hoverRef.current = null;
     const { x, y } = toLocal(e);
     const region = regionAtY(layoutRef.current, y);
     const tick = xToTick(x);
-    const tool = editor.tool;
+    const erasing = e.button === 2;
+
+    if (region.type === "redos" || (erasing && (region.type === "sections" || region.type === "bars"))) {
+      if (!erasing) requestEditorSeek(timeAtTick(tick));
+      dragRef.current = { kind: "noop" };
+      return;
+    }
 
     if (region.type === "sections") {
       const section = sections.find((s) => tick >= s.startTick && tick < s.endTick);
@@ -796,15 +887,17 @@ export default function PianoRollEditor({
 
     const hit = hitTest(x, y);
 
-    // Range strips: create / resize / move / select regardless of tool.
+    // Right button erases whatever the pointer sweeps over.
+    if (erasing) {
+      const drag = newEraseDrag(x, y);
+      markErasePath(drag, x, y);
+      dragRef.current = drag;
+      return;
+    }
+
+    // Range strips: create / resize / move / select.
     if (region.type === "sp" || region.type === "solo") {
       const kind = region.type === "sp" ? "starPower" : "solo";
-      if (tool === "erase") {
-        const drag = newEraseDrag(x, y);
-        markErasePath(drag, x, y);
-        dragRef.current = drag;
-        return;
-      }
       if (hit?.range) {
         applyEditorChange({ type: "select", rangeIds: [hit.range.id], additive: e.shiftKey });
         if (hit.part === "body") {
@@ -819,20 +912,6 @@ export default function PianoRollEditor({
     }
 
     // Note area.
-    if (tool === "draw") {
-      const lane = region.lane;
-      dragRef.current = { kind: "drawNote", tick: snapTick(tick), lane, sustain: 0, anchorTick: snapTick(tick) };
-      scheduleDraw();
-      return;
-    }
-    if (tool === "erase") {
-      const drag = newEraseDrag(x, y);
-      markErasePath(drag, x, y);
-      dragRef.current = drag;
-      return;
-    }
-
-    // Select tool.
     if (hit?.note) {
       const alreadySelected = editor.selectedNoteIds.includes(hit.note.id);
       if (!alreadySelected || e.shiftKey) {
@@ -846,15 +925,25 @@ export default function PianoRollEditor({
       }
       return;
     }
-    dragRef.current = { kind: "boxSelect", startX: x, startY: y, curX: x, curY: y, additive: e.shiftKey, moved: false };
+    // Empty space: becomes a box select once dragged, otherwise a click
+    // (add a note, or deselect if something is selected).
+    dragRef.current = { kind: "emptyPress", startX: x, startY: y, curX: x, curY: y, additive: e.shiftKey, tick: snapTick(tick), lane: region.lane };
     scheduleDraw();
   };
 
   const onPointerMove = (e) => {
     const drag = dragRef.current;
-    if (!drag) return;
     const { x, y } = toLocal(e);
+    if (!drag) {
+      updateHover(x, y);
+      return;
+    }
     const tick = xToTick(x);
+    if (drag.kind === "emptyPress") {
+      if (Math.hypot(x - drag.startX, y - drag.startY) < BOX_SELECT_MIN_DRAG) return;
+      drag.kind = "boxSelect";
+      drag.moved = true;
+    }
     if (drag.kind === "barSelect") {
       drag.curTick = tick;
       drag.moved = drag.moved || Math.abs(x - drag.startX) >= REGION_MIN_DRAG;
@@ -871,11 +960,6 @@ export default function PianoRollEditor({
     }
     if (drag.kind === "sustain") {
       drag.sustain = Math.max(0, snapTick(tick) - drag.headTick);
-      scheduleDraw();
-      return;
-    }
-    if (drag.kind === "drawNote") {
-      drag.sustain = Math.max(0, snapTick(tick) - drag.anchorTick);
       scheduleDraw();
       return;
     }
@@ -916,8 +1000,14 @@ export default function PianoRollEditor({
       applyEditorChange({ type: "moveNotes", ids: drag.ids, deltaTick: drag.deltaTick, deltaLane: drag.deltaLane });
     } else if (drag.kind === "sustain") {
       applyEditorChange({ type: "setSustain", id: drag.noteId, sustain: drag.sustain });
-    } else if (drag.kind === "drawNote") {
-      applyEditorChange({ type: "addNote", tick: drag.tick, lane: drag.lane, sustain: drag.sustain });
+    } else if (drag.kind === "emptyPress") {
+      const ed = editorRef.current;
+      if (ed.selectedNoteIds.length || ed.selectedRangeIds.length || regions.length) {
+        applyEditorChange({ type: "clearSelection" });
+        if (regions.length) onRegionsChange?.([]);
+      } else {
+        applyEditorChange({ type: "addNote", tick: drag.tick, lane: drag.lane, sustain: 0 });
+      }
     } else if (drag.kind === "erase") {
       if (drag.changed) {
         applyEditorChange({
@@ -933,12 +1023,7 @@ export default function PianoRollEditor({
       drag.curX = x;
       drag.curY = y;
       const moved = drag.moved || Math.hypot(drag.curX - drag.startX, drag.curY - drag.startY) >= BOX_SELECT_MIN_DRAG;
-      if (moved) {
-        applyEditorChange({ type: "select", noteIds: noteIdsInBox(drag), additive: drag.additive });
-      } else {
-        applyEditorChange({ type: "clearSelection" });
-        if (!drag.additive && regions.length) onRegionsChange?.([]);
-      }
+      if (moved) applyEditorChange({ type: "select", noteIds: noteIdsInBox(drag), additive: drag.additive });
     } else if (drag.kind === "range") {
       const { x } = toLocal(e);
       const endTick = snapTick(xToTick(x));
@@ -961,9 +1046,9 @@ export default function PianoRollEditor({
   const redos = doc.redos || [];
 
   return (
-    <div className="piano-roll" ref={rootRef} data-tool={editor.tool}>
+    <div className="piano-roll" ref={rootRef}>
       <div className="piano-roll-side" aria-hidden="true">
-        <div className="pr-ruler-spacer" style={{ height: RULER_H }} />
+        <div className="pr-ruler-spacer" style={{ height: layout.rulerH }} />
         {["G", "R", "Y", "B", "O"].map((label, lane) => (
           <div key={label} className="pr-lane-label" style={{ height: layout.laneH, "--lane": LANE_COLORS[lane] }}>
             <span />
@@ -981,6 +1066,8 @@ export default function PianoRollEditor({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onPointerLeave={onPointerLeave}
+            onContextMenu={(e) => e.preventDefault()}
           />
           {redos.map((redo) => (
             <RedoChips
@@ -988,7 +1075,7 @@ export default function PianoRollEditor({
               redo={redo}
               left={redo.regions[0].startTick * pxPerTick}
               width={(redo.regions[redo.regions.length - 1].endTick - redo.regions[0].startTick) * pxPerTick}
-              top={RULER_H + 6}
+              top={SECTION_ROW_H + BAR_ROW_H + 2}
               busy={Boolean(pending)}
               onPick={(index) => applyEditorChange({ type: "pickRedoTake", redoId: redo.id, index })}
               onMore={() => onRedoMore?.(redo)}

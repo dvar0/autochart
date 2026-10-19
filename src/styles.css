@@ -5767,21 +5767,22 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 /* Non-destructive note editor that lives inside the Generate deck. */
 
 /* ============== EDIT SCREEN ============== */
-/* Highway column on the left, song map + toolbar + piano roll in the middle,
-   inspector on the right. Regions separate with hairlines like the generate
-   screen; nothing inside gets a container border. */
+/* Preview stage + redo panel on top; the timeline (song map, toolbar,
+   piano roll) runs the full width underneath, since width is what shows more
+   of the chart. Regions separate with hairlines; no container borders. */
 .edit-screen {
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(240px, 20vw, 340px) minmax(0, 1fr) clamp(270px, 19vw, 320px);
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 22vw, 360px);
+  grid-template-rows: auto minmax(220px, 1fr) auto auto auto;
   grid-template-areas:
-    "head    head    head"
-    "highway map     insp"
-    "highway toolbar insp"
-    "highway roll    insp";
+    "head    head"
+    "stage   insp"
+    "map     map"
+    "toolbar toolbar"
+    "roll    roll";
   overflow: hidden;
   position: relative;
 }
@@ -5796,7 +5797,18 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   border-bottom: 1px solid var(--border-soft);
   min-width: 0;
 }
-.edit-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.edit-back {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 0 14px 0 10px;
+  border: none; border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text);
+  font-size: var(--fs-sm); font-weight: 700;
+  cursor: pointer; transition: .12s;
+}
+.edit-back svg { width: 16px; height: 16px; }
+.edit-back:hover { background: var(--purple-bg); color: var(--purple); }
+.edit-title { display: flex; align-items: center; gap: 10px; min-width: 0; margin-right: auto; }
 .edit-badge {
   flex: none;
   width: 26px; height: 26px;
@@ -5838,7 +5850,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-icon-btn svg { width: 16px; height: 16px; }
 .edit-icon-btn:hover:not(:disabled) { background: var(--purple-bg); color: var(--purple); }
 .edit-icon-btn:disabled { opacity: .4; cursor: default; }
-.edit-done { gap: 7px; margin-left: 6px; }
 .edit-menu-wrap { position: relative; }
 .edit-menu {
   position: absolute; right: 0; top: calc(100% + 6px);
@@ -5861,18 +5872,17 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-menu button svg { width: 15px; height: 15px; }
 .edit-menu button:hover { background: var(--red-bg); }
 
-.edit-highway {
-  grid-area: highway;
-  min-height: 0;
+.edit-stage {
+  grid-area: stage;
+  min-height: 0; min-width: 0;
   display: flex;
-  padding: var(--sp-4);
-  border-right: 1px solid var(--border-soft);
+  padding: var(--sp-4) var(--sp-4) 0;
 }
-.edit-highway .edit-preview { flex: 1; min-height: 0; }
-.edit-highway .preview-stage,
-.edit-highway .highway-wrap { min-height: 0; }
+.edit-stage .edit-preview { flex: 1; min-height: 0; border-radius: var(--r-card); overflow: hidden; }
+.edit-stage .preview-stage,
+.edit-stage .highway-wrap { min-height: 0; }
 
-.edit-map { grid-area: map; min-width: 0; padding: 14px var(--sp-4) 6px; }
+.edit-map { grid-area: map; min-width: 0; padding: 12px var(--sp-4) 4px; }
 .edit-overview { display: flex; flex-direction: column; gap: 6px; user-select: none; }
 .edit-overview-sections { position: relative; height: 26px; }
 .ov-section {
@@ -5899,7 +5909,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .ov-no-sections { font-size: var(--fs-xs); color: var(--text-faint); line-height: 26px; }
 .edit-overview-map {
   position: relative;
-  height: 44px;
+  height: 34px;
   border-radius: var(--r-box);
   background: var(--surface-2);
   overflow: hidden;
@@ -5917,36 +5927,43 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-toolbar {
   grid-area: toolbar;
   min-width: 0;
-  display: flex; align-items: center; flex-wrap: wrap;
-  gap: 10px 14px;
+  display: flex; align-items: center;
+  gap: 16px;
   padding: 8px var(--sp-4);
 }
-.edit-tools {
-  display: inline-flex; gap: 3px; padding: 3px;
-  border-radius: var(--r-pill);
-  background: var(--surface-2);
-}
-.edit-tools button {
+.edit-transport { flex: none; display: flex; align-items: center; gap: 10px; }
+.edit-context { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.edit-context-count { flex: none; font: 800 var(--fs-xs) var(--font-mono); letter-spacing: .04em; color: var(--text-faint); text-transform: uppercase; }
+.edit-note-actions { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.edit-note-actions button {
   display: inline-flex; align-items: center; gap: 6px;
-  min-height: 30px; padding: 0 12px;
+  min-height: 32px; padding: 0 11px;
   border: none; border-radius: var(--r-pill);
-  background: transparent; color: var(--text-dim);
-  font-size: var(--fs-sm); font-weight: 700;
+  background: var(--surface-2); color: var(--text);
+  font-size: var(--fs-sm); font-weight: 700; white-space: nowrap;
   cursor: pointer; transition: .12s;
 }
-.edit-tools button svg { width: 14px; height: 14px; }
-.edit-tools button:hover { color: var(--text); }
-.edit-tools button.active { background: var(--surface); color: var(--purple); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
-.edit-tools button[data-tool="draw"].active svg { color: var(--green-solid); }
-.edit-tools button[data-tool="erase"].active svg { color: var(--red-solid); }
-.edit-snap { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-xs); font-weight: 700; color: var(--text-faint); }
+.edit-note-actions button svg { width: 14px; height: 14px; flex: none; color: var(--text-dim); }
+.edit-note-actions button:hover:not(:disabled) { background: var(--purple-bg); color: var(--purple); }
+.edit-note-actions button:disabled { opacity: .4; cursor: default; }
+.edit-note-actions button[data-tone="tap"] svg { color: #0f92b3; }
+.edit-note-actions button[data-tone="force"] svg { color: var(--green-solid); }
+.edit-note-actions button[data-tone="sp"] svg { color: #36c5f0; }
+.edit-note-actions button[data-tone="solo"] svg { color: #9a6bff; }
+.edit-note-actions button[data-tone="danger"] { color: var(--red-fg); }
+.edit-note-actions button[data-tone="danger"] svg { color: var(--red-solid); }
+.edit-note-actions button[data-tone="danger"]:hover { background: var(--red-bg); color: var(--red-fg); }
+.edit-hint { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; font-size: var(--fs-sm); color: var(--text-faint); }
+.edit-hint b { color: var(--text-dim); font-weight: 700; }
+.edit-view-controls { flex: none; display: flex; align-items: center; gap: 10px; }
+.edit-snap { display: inline-flex; align-items: center; gap: 6px; color: var(--text-faint); }
+.edit-snap svg { width: 14px; height: 14px; }
 .edit-snap select {
   min-height: 32px; padding: 0 8px;
   border: var(--bw) solid var(--border-soft); border-radius: var(--r-box);
   background: var(--surface); color: var(--text);
   font: 600 var(--fs-sm) var(--font-mono);
 }
-.edit-transport { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .edit-play {
   width: 40px; height: 40px;
   display: grid; place-items: center;
@@ -5980,7 +5997,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-zoom button svg { width: 14px; height: 14px; }
 .edit-zoom button:hover { background: var(--surface); color: var(--purple); }
 
-.edit-roll { grid-area: roll; min-width: 0; min-height: 0; display: grid; padding: 0 var(--sp-4) var(--sp-4); }
+.edit-roll { grid-area: roll; min-width: 0; display: grid; padding: 0 var(--sp-4) var(--sp-4); }
 
 /* ---- piano roll ---- */
 .piano-roll {
@@ -6033,25 +6050,24 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .piano-roll-scroll::-webkit-scrollbar-thumb:hover { background: var(--purple-bd); }
 .piano-roll-content { position: relative; }
 .piano-roll-canvas { position: absolute; top: 0; left: 0; touch-action: none; cursor: default; }
-.piano-roll[data-tool="draw"] .piano-roll-canvas { cursor: cell; }
-.piano-roll[data-tool="erase"] .piano-roll-canvas { cursor: crosshair; }
 .piano-roll-empty { grid-area: 1 / 1; display: grid; place-items: center; color: var(--text-dim); font-size: var(--fs-md); }
 
-/* Per-redo take switcher, pinned to the region's first bar. */
+/* Per-redo take switcher in the roll's redo row; sticks to the left edge
+   while scrolling through a long redo. */
 .redo-chips-track { position: absolute; z-index: 3; pointer-events: none; }
 .redo-chips {
   position: sticky;
   left: 8px;
   pointer-events: auto;
-  display: inline-flex; gap: 3px;
-  padding: 3px;
+  display: inline-flex; gap: 2px;
+  padding: 2px;
   border-radius: var(--r-pill);
   background: var(--surface);
   box-shadow: var(--shadow-pop);
   margin-left: 4px;
 }
 .redo-chips button {
-  min-width: 26px; height: 26px;
+  min-width: 22px; height: 22px;
   padding: 0 6px;
   display: grid; place-items: center;
   border: none; border-radius: calc(var(--r-pill) - 2px);
@@ -6073,7 +6089,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   grid-area: insp;
   min-height: 0;
   overflow-y: auto;
-  border-left: 1px solid var(--border-soft);
   display: flex; flex-direction: column;
 }
 .insp-card { padding: 18px var(--sp-5); display: flex; flex-direction: column; gap: 10px; }
@@ -6133,27 +6148,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 }
 @keyframes insp-run { from { background-position: 0 0; } to { background-position: 300% 0; } }
 .insp-running .settings-secondary { align-self: flex-start; }
-.insp-actions { display: grid; grid-template-columns: 1fr; gap: 4px; }
-.insp-actions button {
-  display: flex; align-items: center; gap: 9px;
-  min-height: 36px; padding: 0 10px;
-  border: none; border-radius: var(--r-box);
-  background: var(--surface-2); color: var(--text);
-  font-size: var(--fs-sm); font-weight: 700;
-  cursor: pointer; text-align: left;
-  transition: .12s;
-}
-.insp-actions button svg { width: 15px; height: 15px; flex: none; color: var(--text-dim); }
-.insp-actions button .edit-kbd { margin-left: auto; }
-.insp-actions button:hover:not(:disabled) { background: var(--purple-bg); color: var(--purple); }
-.insp-actions button:disabled { opacity: .45; cursor: default; }
-.insp-actions button[data-tone="tap"] svg { color: #0f92b3; }
-.insp-actions button[data-tone="force"] svg { color: var(--green-solid); }
-.insp-actions button[data-tone="sp"] svg { color: #36c5f0; }
-.insp-actions button[data-tone="solo"] svg { color: #9a6bff; }
-.insp-actions button[data-tone="danger"] { color: var(--red-fg); }
-.insp-actions button[data-tone="danger"] svg { color: var(--red-solid); }
-.insp-actions button[data-tone="danger"]:hover { background: var(--red-bg); color: var(--red-fg); }
 .edit-kbd {
   display: inline-grid; place-items: center;
   min-width: 20px; height: 20px; padding: 0 5px;
@@ -6200,18 +6194,13 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   font-size: var(--fs-sm); color: var(--text);
 }
 
+@media (max-width: 1500px) {
+  .edit-note-actions button { padding: 0 10px; }
+  .edit-note-actions button span { display: none; }
+}
 @media (max-width: 1180px) {
-  .edit-screen {
-    grid-template-columns: minmax(0, 1fr) clamp(250px, 26vw, 300px);
-    grid-template-rows: auto auto auto minmax(0, 1fr) minmax(220px, 34vh);
-    grid-template-areas:
-      "head    head"
-      "map     insp"
-      "toolbar insp"
-      "roll    insp"
-      "highway insp";
-  }
-  .edit-highway { border-right: none; border-top: 1px solid var(--border-soft); }
+  .edit-toolbar { flex-wrap: wrap; }
+  .edit-context { order: 3; flex-basis: 100%; justify-content: flex-start; }
 }
 .editor-action svg {
   width: 15px;

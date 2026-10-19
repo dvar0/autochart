@@ -2,9 +2,9 @@ import { useState } from "react";
 import { I } from "../../../icons.jsx";
 import { barNumberLabel } from "./editRegions.js";
 
-// Right-hand panel of the edit screen. It follows the selection: picked bars
-// get the Redo controls, picked notes get note actions, nothing picked gets
-// the how-to. Past redos stay listed underneath so any of them can be put back.
+// Panel beside the preview. Picked bars get the Redo controls, otherwise it
+// explains how to pick some. Past redos stay listed underneath so any of them
+// can be put back. (Note actions live in the toolbar above the roll.)
 
 const KNOBS = [
   { key: "density", name: "Notes", options: ["less", "auto", "more"], labels: ["Fewer", "Auto", "More"] },
@@ -34,8 +34,6 @@ export default function EditInspector({
   onCancelRedo,
   onClearRegions,
   onRemoveRegion,
-  selectedNoteIds,
-  onNoteAction,
   onFocusRedo,
   onPickRedo,
 }) {
@@ -43,9 +41,6 @@ export default function EditInspector({
   const tempo = doc?.tempoMap;
   const spanTime = (region) => `${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`;
   const knobsSet = KNOBS.some((knob) => knobs[knob.key] !== "auto");
-  const selectedIds = new Set(selectedNoteIds);
-  const selectedNotes = doc?.notes.filter((note) => selectedIds.has(note.id)) || [];
-  const chordCount = selectedNotes.filter((note) => !note.open && note.lanes.length > 1).length;
   const redos = doc?.redos || [];
 
   return (
@@ -113,29 +108,12 @@ export default function EditInspector({
         </section>
       ) : null}
 
-      {selectedNotes.length > 0 && (
-        <section className="insp-card">
-          <div className="insp-eyebrow">{selectedNotes.length} NOTE{selectedNotes.length === 1 ? "" : "S"}</div>
-          <div className="insp-actions">
-            <button onClick={() => onNoteAction("tap")} data-tone="tap"><I.bolt /> Tap <Kbd>T</Kbd></button>
-            <button onClick={() => onNoteAction("force")} data-tone="force"><I.chevsRight /> HOPO <Kbd>H</Kbd></button>
-            <button onClick={() => onNoteAction("starPower")} data-tone="sp"><I.starOutline /> Star power <Kbd>S</Kbd></button>
-            <button onClick={() => onNoteAction("solo")} data-tone="solo"><I.spark /> Solo</button>
-            <button onClick={() => onNoteAction("quantize")}><I.grid /> Snap to grid <Kbd>Q</Kbd></button>
-            <button onClick={() => onNoteAction("split")} disabled={!chordCount}><I.cut /> Split chord</button>
-            <button onClick={() => onNoteAction("delete")} data-tone="danger"><I.trash /> Delete <Kbd>Del</Kbd></button>
-          </div>
-        </section>
-      )}
-
-      {!pending && !regions.length && !selectedNotes.length && (
+      {!pending && !regions.length && (
         <section className="insp-card insp-idle">
           <div className="insp-eyebrow">REDO A PART</div>
-          <p className="insp-lead">Drag across the bar numbers, or click a section name.</p>
-          <p className="insp-sub">Shift adds another spot.</p>
-          <div className="insp-eyebrow insp-gap">KEYS</div>
+          <p className="insp-lead">Click a section name, or drag across the bar numbers.</p>
+          <p className="insp-sub">Shift adds another spot. The new notes replace the old ones right away, and you can always go back.</p>
           <dl className="insp-keys">
-            <dt><Kbd>V</Kbd><Kbd>D</Kbd><Kbd>E</Kbd></dt><dd>Select, draw, erase</dd>
             <dt><Kbd>Space</Kbd></dt><dd>Play / pause</dd>
             <dt><Kbd>L</Kbd></dt><dd>Loop</dd>
             <dt><Kbd>R</Kbd></dt><dd>Redo picked bars</dd>
