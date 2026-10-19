@@ -135,11 +135,35 @@ async function resolveDemucsWorkspace(ownedEngineCacheRoot, audioSha256, separat
   return current;
 }
 
+// Beat maps are shared by every separation and generator of one analysis
+// audio, so they live beside the separation workspaces, keyed by audio alone.
+async function resolveTimingWorkspace(ownedEngineCacheRoot, audioSha256) {
+  const root = path.resolve(String(ownedEngineCacheRoot || ""));
+  await fs.mkdir(root, { recursive: true });
+  const rootStat = await fs.lstat(root);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error("Autochart engine cache root must be a real directory.");
+  }
+  const canonicalRoot = await fs.realpath(root);
+  let current = canonicalRoot;
+  for (const part of ["features", "fretformer_timing_v1", assertAudioSha256(audioSha256)]) {
+    const next = path.join(current, part);
+    await ensureRealDirectory(next);
+    const canonicalNext = await fs.realpath(next);
+    if (!isStrictlyInside(canonicalRoot, canonicalNext)) {
+      throw new Error("Timing workspace escapes the Autochart engine cache.");
+    }
+    current = canonicalNext;
+  }
+  return current;
+}
+
 module.exports = {
   assertAudioSha256,
   assertSafeLeaf,
   assertSeparationId,
   ensureContainedDirectory,
   resolveDemucsWorkspace,
+  resolveTimingWorkspace,
   separationIdFromPayload,
 };

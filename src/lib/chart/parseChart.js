@@ -151,6 +151,7 @@ function parseNoteTrack(body) {
   // tick -> { frets:Set, sustain:Map(fret->ticks), force, tap, open }
   const byTick = new Map();
   const starPower = [];
+  const soloMarkers = [];
 
   const ensure = (tick) => {
     let entry = byTick.get(tick);
@@ -195,8 +196,27 @@ function parseNoteTrack(body) {
         kind: Number(parts[1]),
         length: Number(parts[2]) || 0,
       });
+    } else if (type === "E") {
+      // Solo markers: `E solo` / `E "solo"` open, `E soloend` closes (as the
+      // chart editor reads them). Other track-local events are ignored.
+      const value = parts.slice(1).join(" ").replace(/^"(.*)"$/, "$1").trim().toLowerCase();
+      if (value === "solo") soloMarkers.push({ tick, kind: "start" });
+      else if (value === "soloend" || value === "solo_end") soloMarkers.push({ tick, kind: "end" });
     }
-    // Other line types (e.g. track-local `E` events) are ignored for now.
+  }
+
+  // Pair solo markers into ranges; a second start closes the open solo.
+  const solos = [];
+  soloMarkers.sort((a, b) => a.tick - b.tick || (a.kind === "start" ? -1 : 1));
+  let openStart = null;
+  for (const marker of soloMarkers) {
+    if (marker.kind === "start") {
+      if (openStart != null) solos.push({ startTick: openStart, endTick: marker.tick });
+      openStart = marker.tick;
+    } else if (openStart != null) {
+      solos.push({ startTick: openStart, endTick: marker.tick });
+      openStart = null;
+    }
   }
 
   const notes = [];
@@ -216,7 +236,7 @@ function parseNoteTrack(body) {
   }
   notes.sort((a, b) => a.tick - b.tick);
   starPower.sort((a, b) => a.tick - b.tick);
-  return { notes, starPower };
+  return { notes, starPower, solos };
 }
 
 // Parses a full `.chart` file into structured data. Note ticks are NOT yet

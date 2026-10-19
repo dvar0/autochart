@@ -27,6 +27,11 @@ function writeChartText(noteLines, {
   offset = 0,
   syncLines = [],
   difficulty = "expert",
+  // Optional structure markers: globalEvents [{tick, text}] go in [Events];
+  // trackEvents [{tick, order, text}] go in the difficulty track, with notes
+  // at order 1 (order 0 sorts before a tick's notes, 2 after).
+  globalEvents = [],
+  trackEvents = [],
 } = {}) {
   const section = TRACK_SECTION_BY_DIFFICULTY[String(difficulty || "expert").toLowerCase()]
     || TRACK_SECTION_BY_DIFFICULTY.expert;
@@ -53,11 +58,20 @@ function writeChartText(noteLines, {
     const clean = String(line).trim();
     if (clean) out.push(`  ${clean}`);
   }
-  out.push("}", "[Events]", "{", "}", `[${section}]`, "{");
+  out.push("}", "[Events]", "{");
+  for (const event of globalEvents || []) out.push(`  ${event.tick} = ${event.text}`);
+  out.push("}", `[${section}]`, "{");
+  const trackLines = [];
   for (const line of noteLines || []) {
     if (!Array.isArray(line) || line.length < 3) continue;
-    out.push(`  ${line[0]} = N ${line[1]} ${line[2]}`);
+    trackLines.push({ tick: Number(line[0]), order: 1, text: `N ${line[1]} ${line[2]}` });
   }
+  if (trackEvents && trackEvents.length) {
+    for (const event of trackEvents) trackLines.push(event);
+    // Stable sort: notes keep their given order within a tick.
+    trackLines.sort((a, b) => a.tick - b.tick || a.order - b.order);
+  }
+  for (const line of trackLines) out.push(`  ${line.tick} = ${line.text}`);
   out.push("}", "");
   return { text: out.join("\n"), noteLineCount: (noteLines || []).length };
 }

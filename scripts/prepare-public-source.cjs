@@ -9,6 +9,9 @@ const crypto = require("crypto");
 
 const ROOT = fs.realpathSync(path.resolve(__dirname, ".."));
 const MANIFEST = "config/public-source-files.json";
+// Dev-only npm scripts: their targets are not in the public manifest, so the
+// snapshot's package.json must not advertise them.
+const DEV_ONLY_SCRIPTS = ["import:ai-queue", "test:ai-queue-import"];
 const digest = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
 function sourceFile(relative) {
@@ -54,7 +57,12 @@ function main() {
   }
   const entries = manifest.files.map((relative) => {
     const file = sourceFile(relative);
-    const bytes = fs.readFileSync(file);
+    let bytes = fs.readFileSync(file);
+    if (relative === "package.json") {
+      const pkg = JSON.parse(bytes);
+      for (const name of DEV_ONLY_SCRIPTS) delete pkg.scripts?.[name];
+      bytes = Buffer.from(JSON.stringify(pkg, null, 2) + "\n");
+    }
     return { relative, bytes, mode: fs.statSync(file).mode & 0o777 };
   });
   // Exclusive creation: never merge into or erase an existing snapshot.

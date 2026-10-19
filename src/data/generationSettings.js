@@ -9,6 +9,8 @@
 //
 // Fretformer exposes five optional style controls — speed, chords, technique,
 // movement, and repetition — plus guidance for controls set away from auto.
+// Fretformer v1.2 was trained on a second knob set (speed, chords, HOPOs, taps,
+// movement); each generator lists its knobs in capabilities.descriptorKnobs.
 
 import { GENERATOR_LABELS } from "./humanLabels.js";
 
@@ -25,13 +27,33 @@ export const DESCRIPTOR_KNOBS = [
   { id: "repetition", key: "knobRepetition", name: "Repetition", hint: "riff reuse", compact: "Rp", ends: ["varied", "repeats"] },
 ];
 
+// Knobs only Fretformer v1.2 has: v1's Technique split into HOPOs and taps.
+const V2_ONLY_DESCRIPTOR_KNOBS = [
+  { id: "hopos", key: "knobHopos", name: "HOPOs", hint: "hammer-on share", compact: "Ho", ends: ["strums", "hopos"] },
+  { id: "taps", key: "knobTaps", name: "Taps", hint: "tap share", compact: "Ta", ends: ["none", "taps"] },
+];
+
+// Every knob any generator uses, for labelling saved takes of either model.
+export const ALL_DESCRIPTOR_KNOBS = [...DESCRIPTOR_KNOBS, ...V2_ONLY_DESCRIPTOR_KNOBS];
+
+// The knobs a generator was trained with, in its order. Generators that only
+// flag descriptorKnobs: true have v1's set.
+export function descriptorKnobsForGenerator(generator = null) {
+  const ids = generator?.capabilities?.descriptorKnobs;
+  if (!Array.isArray(ids)) return DESCRIPTOR_KNOBS;
+  return ids.map((id) => ALL_DESCRIPTOR_KNOBS.find((knob) => knob.id === id)).filter(Boolean);
+}
+
 export const DESCRIPTOR_KNOB_MAX = 6;
 export const DEFAULT_GUIDANCE_SCALE = 2;
 
+// Takes record the smoother that built their beat map. Ones without this method came
+// from the earlier damped smoother and can't share a final chart with newer takes.
+export const TIMING_SMOOTHER_METHOD = "line-fit";
+
 export const DEFAULT_TIMING_SMOOTHING = {
   enabled: true,
-  gain: 0.15,
-  window: 9,
+  method: TIMING_SMOOTHER_METHOD,
   bpmRound: 0.5,
 };
 
@@ -119,7 +141,11 @@ export const DEFAULT_GENERATION_CONTROLS = {
   knobTechnique: "auto",
   knobMovement: "auto",
   knobRepetition: "auto",
+  knobHopos: "auto",
+  knobTaps: "auto",
   guidanceScale: "2",
+  solos: true,
+  forceSolo: false,
 };
 
 export function getTimingDetectorOption(optionId = DEFAULT_TIMING_DETECTOR_ID) {
@@ -165,6 +191,11 @@ export function timingSmoothingEnabledFromGeneration(generation = {}) {
     resolved.timingSmoothing?.enabled ?? controls.timingSmoothing,
     timingOption.smoothing?.enabled ?? DEFAULT_TIMING_SMOOTHING.enabled
   );
+}
+
+export function usesOlderTimingSmoother(generation = {}) {
+  return timingSmoothingEnabledFromGeneration(generation) &&
+    generation?.resolved?.timingSmoothing?.method !== TIMING_SMOOTHER_METHOD;
 }
 
 export function getGenerationPreset(presetId) {
@@ -221,9 +252,9 @@ function resolveGuidanceScaleValue(value) {
   return Math.max(1, Math.min(8, num));
 }
 
-function resolveDescriptorKnobs(controls = {}) {
+function resolveDescriptorKnobs(controls = {}, generator = null) {
   const knobs = {};
-  for (const knob of DESCRIPTOR_KNOBS) {
+  for (const knob of descriptorKnobsForGenerator(generator)) {
     knobs[knob.id] = resolveDescriptorKnobValue(controls[knob.key]);
   }
   return knobs;
@@ -281,6 +312,10 @@ export function controlsFromSavedGeneration(
     knobTechnique: savedKnobControl(savedKnobs.technique, controls.knobTechnique),
     knobMovement: savedKnobControl(savedKnobs.movement, controls.knobMovement),
     knobRepetition: savedKnobControl(savedKnobs.repetition, controls.knobRepetition),
+    knobHopos: savedKnobControl(savedKnobs.hopos, controls.knobHopos),
+    knobTaps: savedKnobControl(savedKnobs.taps, controls.knobTaps),
+    solos: booleanSetting(controls.solos ?? resolved.solos, DEFAULT_GENERATION_CONTROLS.solos),
+    forceSolo: booleanSetting(controls.forceSolo ?? resolved.forceSolo, DEFAULT_GENERATION_CONTROLS.forceSolo),
     guidanceScale:
       controls.guidanceScale != null
         ? String(controls.guidanceScale)
@@ -310,10 +345,11 @@ export function resolveGenerationSettings(controls = DEFAULT_GENERATION_CONTROLS
     ? RAW_TIMING_SMOOTHING
     : {
         ...timingSmoothingDefaults,
+        method: TIMING_SMOOTHER_METHOD,
         enabled: booleanSetting(controls.timingSmoothing, timingSmoothingDefaults.enabled),
       };
-  const knobs = resolveDescriptorKnobs(controls);
-  const knobsActive = DESCRIPTOR_KNOBS.some((knob) => knobs[knob.id] != null);
+  const knobs = resolveDescriptorKnobs(controls, generator);
+  const knobsActive = Object.values(knobs).some((value) => value != null);
   const guidanceScale = resolveGuidanceScaleValue(controls.guidanceScale);
   // Sustains are a hard project rule for "never-strip" generators (e.g. the
   // ONNX Fretformer): the UI hides the toggle and the resolved value is forced
@@ -337,7 +373,22 @@ export function resolveGenerationSettings(controls = DEFAULT_GENERATION_CONTROLS
     knobs,
     knobsActive,
     guidanceScale,
+    // Only models that mark solos (capabilities.structureMarkers) get these.
+    ...resolveSoloSettings(controls, generator),
   };
+}
+
+function resolveSoloSettings(controls, generator) {
+  if (!generatorMarksSolos(generator)) return {};
+  const solos = booleanSetting(controls.solos, DEFAULT_GENERATION_CONTROLS.solos);
+  // "Force a solo" only applies while Solos is on.
+  const forceSolo = solos && booleanSetting(controls.forceSolo, DEFAULT_GENERATION_CONTROLS.forceSolo);
+  return { solos, forceSolo };
+}
+
+export function generatorMarksSolos(generator = null) {
+  const markers = generator?.capabilities?.structureMarkers;
+  return Array.isArray(markers) && markers.includes("solos");
 }
 
 export function isGenerationModified(
@@ -362,7 +413,9 @@ export function isGenerationModified(
     resolved.leadInSilenceMs !== 0 ||
     controls.seedMode !== DEFAULT_GENERATION_CONTROLS.seedMode ||
     seed !== defaultSeed ||
-    resolved.knobsActive
+    resolved.knobsActive ||
+    resolved.solos === false ||
+    resolved.forceSolo === true
   );
 }
 
@@ -393,6 +446,7 @@ export function buildGenerationSettings({
         stripSustains: resolved.stripSustains,
         knobs: resolved.knobs,
         guidanceScale: resolved.guidanceScale,
+        ...(resolved.solos != null ? { solos: resolved.solos, forceSolo: resolved.forceSolo } : {}),
       },
       resolved,
     },
@@ -445,12 +499,12 @@ function generationDisplayParts(generation, { compact = false } = {}) {
     parts.push(`${compact ? "P" : "Top-p "}${formatSettingNumber(topP)}`);
   }
   const knobValues = controls.knobs ?? resolved.knobs ?? {};
-  for (const knob of DESCRIPTOR_KNOBS) {
+  for (const knob of ALL_DESCRIPTOR_KNOBS) {
     const value = knobValues[knob.id];
     if (value == null) continue;
     parts.push(compact ? `${knob.compact}${value}` : `${knob.name} ${value}`);
   }
-  const knobsActiveHere = DESCRIPTOR_KNOBS.some((knob) => knobValues[knob.id] != null);
+  const knobsActiveHere = ALL_DESCRIPTOR_KNOBS.some((knob) => knobValues[knob.id] != null);
   const knobGuidance =
     resolved.guidanceScale != null ? Number(resolved.guidanceScale) : Number(controls.guidanceScale);
   if (knobsActiveHere && Number.isFinite(knobGuidance) && knobGuidance > 1) {

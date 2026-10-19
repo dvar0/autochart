@@ -74,6 +74,7 @@ function prepareRenderState(chart, canvas, index) {
   renderer.setNotes(notes);
   renderer.setBeatTimes(beatTimes);
   renderer.setStarPhrases(starPhrases);
+  renderer.setSoloPhrases(chart.track.solos || []);
   renderer.resize();
   return {
     ...chart,
@@ -158,6 +159,10 @@ function createJoinedRendererAdapter(getStates, getEngine) {
     setStarPhrases(phrases) {
       const base = getStates()[0];
       if (base) base.renderer.setStarPhrases(phrases);
+    },
+    setSoloPhrases(phrases) {
+      const base = getStates()[0];
+      if (base) base.renderer.setSoloPhrases(phrases);
     },
     setReduceMotion(on) {
       for (const state of getStates()) state.renderer.setReduceMotion(on);

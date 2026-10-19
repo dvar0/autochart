@@ -17,8 +17,5 @@ engine/models-onnx/**/*.npz
 engine/models-onnx/**/*_summary.json
 engine/models-onnx/**/transcriber_manifest.json
 
-# Machine-local prototype tool paths
-.yarg-prototype.local.json
-
 # Local launch-video production notes, recordings, and edits
 /production/launch-video/

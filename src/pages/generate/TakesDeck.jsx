@@ -8,8 +8,9 @@ import {
   GAME_LIBRARY_SAVING_LABEL,
 } from "../../data/gameLibrary.js";
 import {
+  ALL_DESCRIPTOR_KNOBS,
+  DEFAULT_GENERATOR_ID,
   DEFAULT_TIMING_DETECTOR_ID,
-  DESCRIPTOR_KNOBS,
   GENERATION_DIFFICULTIES,
   generationSummary,
   getGenerationPreset,
@@ -17,6 +18,7 @@ import {
   timingDetectorLabel,
   timingDetectorOptionFromResolved,
   timingSmoothingEnabledFromGeneration,
+  usesOlderTimingSmoother,
 } from "../../data/generationSettings.js";
 import { I } from "../../icons.jsx";
 import { FINAL_SLOT_ORDER, getVersionDifficulty } from "../../services/finalChart.js";
@@ -24,7 +26,10 @@ import { LiveGenerationTakeCard } from "./LiveGeneration.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
 import PianoRollEditor from "./edit/PianoRollEditor.jsx";
 import {
+  demucsAuditionKey,
+  generatorStemSetId,
   MIN_COMPARE_CHARTS,
+  separationStemSet,
 } from "./useGenerateProject.js";
 
 const STEM_OPTIONS = [
@@ -32,6 +37,18 @@ const STEM_OPTIONS = [
   { id: "drums", label: "Drums" },
   { id: "bass", label: "Bass" },
   { id: "vocals", label: "Vocals" },
+];
+
+// Fretformer v1.2's htdemucs_6s stems (piano is folded into other).
+const SIX_STEM_OPTIONS = [
+  { id: "guitar", label: "Guitar" },
+  ...STEM_OPTIONS,
+];
+
+// The stem sets a separation card can list, one per separation model.
+const STEM_SETS = [
+  { id: "htdemucs", stems: STEM_OPTIONS },
+  { id: "htdemucs_6s", stems: SIX_STEM_OPTIONS },
 ];
 
 const SLOT_LETTERS = { easy: "E", medium: "M", hard: "H", expert: "X" };
@@ -101,14 +118,14 @@ function modelTag(version) {
     return { text: label, title: label };
   }
   const generatorId = version.meta?.generatorId || version.settings?.generation?.generatorId || "";
-  if (generatorId === "autochart.fretformer.v1-onnx") return { text: "Fretformer", title: generatorId };
+  if (generatorId === DEFAULT_GENERATOR_ID) return { text: "Fretformer", title: generatorId };
   const tail = generatorId.split(".").pop();
   return tail ? { text: tail.toUpperCase(), title: generatorId } : null;
 }
 
 // At-a-glance run recipe: difficulty it was generated with, model, preset,
 // sampling overrides (only when they differ from the preset), sustains, seed.
-function takeTags(version, fallbackDifficulty) {
+function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
   const difficulty = getVersionDifficulty(version, fallbackDifficulty);
   const tags = [
     {
@@ -120,7 +137,9 @@ function takeTags(version, fallbackDifficulty) {
   if (version.source !== "generated" || !generation) return tags;
 
   const model = modelTag(version);
-  if (model) tags.push({ ...model, primary: true });
+  const takeGeneratorId = version.meta?.generatorId || generation.generatorId || "";
+  // Takes from a badged model (the v1.2 test model) wear its NEW amber.
+  if (model) tags.push({ ...model, primary: true, ...(badgedGeneratorIds.has(takeGeneratorId) ? { tone: "amber" } : {}) });
 
   const controls = generation.controls || {};
   const resolved = generation.resolved || {};
@@ -135,9 +154,12 @@ function takeTags(version, fallbackDifficulty) {
   }
   if (timingDetector !== SOURCE_CHART_TIMING_DETECTOR_ID) {
     const smoothing = timingSmoothingEnabledFromGeneration(generation);
+    const older = usesOlderTimingSmoother(generation);
     tags.push({
-      text: smoothing ? "smooth" : "raw grid",
-      title: smoothing ? "Timing smoothing enabled" : "Timing smoothing disabled",
+      text: smoothing ? (older ? "old smooth" : "smooth") : "raw grid",
+      title: smoothing
+        ? (older ? "Beat map from the previous smoother" : "Timing smoothing enabled")
+        : "Timing smoothing disabled",
       secondary: smoothing,
       mod: !smoothing,
     });
@@ -155,7 +177,7 @@ function takeTags(version, fallbackDifficulty) {
   }
   const knobValues = controls.knobs ?? resolved.knobs ?? {};
   let knobsActiveHere = false;
-  for (const knob of DESCRIPTOR_KNOBS) {
+  for (const knob of ALL_DESCRIPTOR_KNOBS) {
     const value = knobValues[knob.id];
     if (value == null) continue;
     knobsActiveHere = true;
@@ -179,12 +201,12 @@ function versionDemucsId(version) {
   return version?.meta?.demucsId || version?.provenance?.sourceSeparation?.id || version?.settings?.demucsSeparation?.id || "";
 }
 
-function stemReady(artifact, stem) {
-  return Boolean(artifact?.stems?.[stem]?.path);
+function hasStemSet(artifact, stemSetId) {
+  return Object.values(separationStemSet(artifact, stemSetId)).some((stem) => stem?.path);
 }
 
 function artifactReady(artifact) {
-  return STEM_OPTIONS.some((stem) => stemReady(artifact, stem.id));
+  return STEM_SETS.some((stemSet) => hasStemSet(artifact, stemSet.id));
 }
 
 function fmtArtifactDate(value) {
@@ -212,15 +234,36 @@ function DemucsPanel({ project }) {
     sourceAudioFile,
     currentSourceVariantKey,
     currentSourceVariantLabel,
+    selectedGenerator,
+    generatorForStemSet,
   } = project;
   const [error, setError] = useState("");
+  const selectedStemSetId = generatorStemSetId(selectedGenerator);
+  const stemSetLabel = (stemSetId) =>
+    generatorForStemSet?.(stemSetId)?.label || (stemSetId === "htdemucs" ? "Fretformer" : stemSetId);
 
-  const playStem = async (artifact, stem) => {
+  const playStem = async (artifact, stem, stemSetId) => {
     setError("");
     try {
-      await auditionDemucsStem(artifact, stem);
+      await auditionDemucsStem(artifact, stem, stemSetId);
     } catch (err) {
       setError(err.message || "Could not play that stem.");
+    }
+  };
+
+  // Separate an existing separation (same lead-in) with another model's Demucs.
+  const separateFor = async (artifact, stemSetId) => {
+    setError("");
+    try {
+      await prepareDemucsSeparation({
+        id: artifact.id,
+        name: artifact.name,
+        makeActive: artifact.id === activeDemucsId,
+        sourceTransform: artifact.sourceTransform || null,
+        generator: generatorForStemSet?.(stemSetId) || selectedGenerator,
+      });
+    } catch (err) {
+      setError(err.message || "Separation failed.");
     }
   };
 
@@ -261,6 +304,12 @@ function DemucsPanel({ project }) {
           const active = compatible && artifact.id === activeDemucsId;
           const usedByPreview = selectedDemucsId && selectedDemucsId === artifact.id;
           const ready = artifactReady(artifact);
+          // v1's set is always listed (it separates on first play, as before);
+          // another model's set is listed once it exists or while that model is selected.
+          const stemSets = STEM_SETS.filter((stemSet) =>
+            stemSet.id === "htdemucs" || stemSet.id === selectedStemSetId || hasStemSet(artifact, stemSet.id)
+          );
+          const labelStemSets = stemSets.length > 1;
           const badgeIndex = demucsArtifacts.length - 1 - index;
           const displayName = separationCardName(artifact);
           const kindTag = separationKindTag(artifact.name);
@@ -269,6 +318,7 @@ function DemucsPanel({ project }) {
               key={artifact.id}
               className={
                 "take-card demucs-card" +
+                (labelStemSets ? " multi" : "") +
                 (active ? " selected" : "") +
                 (usedByPreview && !active ? " is-highlight" : "")
               }
@@ -286,25 +336,62 @@ function DemucsPanel({ project }) {
                 {usedByPreview && <span className="take-tag">in current chart</span>}
                 {!compatible && <span className="take-tag secondary">not current</span>}
               </div>
-              <div className="demucs-stem-grid">
-                {STEM_OPTIONS.map((stem) => {
-                  const key = `${artifact.id}:${stem.id}`;
-                  const loading = demucsAuditionLoadingKey === key;
-                  const auditioning = demucsAudition?.id === artifact.id && demucsAudition?.stem === stem.id;
+              {stemSets.map((stemSet) => {
+                const label = stemSetLabel(stemSet.id);
+                const heading = labelStemSets && (
+                  <div className="demucs-set-label">{label} · {stemSet.stems.length} stems</div>
+                );
+                if (stemSet.id !== "htdemucs" && !hasStemSet(artifact, stemSet.id)) {
                   return (
-                    <button
-                      key={stem.id}
-                      className={auditioning ? "active" : ""}
-                      onClick={() => playStem(artifact, stem.id)}
-                      disabled={busy || loading || !sourceAudioFile}
-                      title={sourceAudioFile ? `Audition ${stem.label.toLowerCase()} in the preview stage` : "Choose media first"}
-                    >
-                      {loading ? <span className="cta-spinner" aria-hidden="true" /> : <I.play />}
-                      {stem.label}
-                    </button>
+                    <div className="demucs-set" key={stemSet.id}>
+                      {heading}
+                      <div
+                        className="demucs-set-missing"
+                        title={`${label} separates this audio itself. Its first chart on this separation makes these stems, or separate now.`}
+                      >
+                        <span>Not separated yet</span>
+                        <button
+                          type="button"
+                          className="take-pip wide"
+                          onClick={() => separateFor(artifact, stemSet.id)}
+                          disabled={busy || !sourceAudioFile}
+                          title={sourceAudioFile ? `Run the ${label} separation now` : "Choose media first"}
+                        >
+                          SEPARATE NOW
+                        </button>
+                      </div>
+                    </div>
                   );
-                })}
-              </div>
+                }
+                return (
+                  <div className="demucs-set" key={stemSet.id}>
+                    {heading}
+                    <div
+                      className={"demucs-stem-grid" + (labelStemSets ? " compact" : "")}
+                      style={labelStemSets ? { "--stem-cols": stemSet.stems.length } : undefined}
+                    >
+                      {stemSet.stems.map((stem) => {
+                        const key = demucsAuditionKey(artifact.id, stemSet.id, stem.id);
+                        const loading = demucsAuditionLoadingKey === key;
+                        const auditioning = demucsAudition?.id === artifact.id && demucsAudition?.stem === stem.id &&
+                          (demucsAudition?.stemSet || "htdemucs") === stemSet.id;
+                        return (
+                          <button
+                            key={stem.id}
+                            className={auditioning ? "active" : ""}
+                            onClick={() => playStem(artifact, stem.id, stemSet.id)}
+                            disabled={busy || loading || !sourceAudioFile}
+                            title={sourceAudioFile ? `Audition ${stem.label.toLowerCase()} in the preview stage` : "Choose media first"}
+                          >
+                            {loading ? <span className="cta-spinner" aria-hidden="true" /> : !labelStemSets && <I.play />}
+                            {stem.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
               <div className="demucs-card-actions">
                 <button
                   className="take-pip wide on tone-red"
@@ -335,7 +422,10 @@ function DemucsPanel({ project }) {
             <span className="version-badge">+</span>
             <span className="take-name">New separation</span>
           </div>
-          <div className="take-meta">Run Demucs again for {currentSourceVariantLabel}</div>
+          <div className="take-meta">
+            Run Demucs again for {currentSourceVariantLabel}
+            {selectedStemSetId !== "htdemucs" ? ` (${stemSetLabel(selectedStemSetId)} stems)` : ""}
+          </div>
         </button>
       </div>
       {error && <div className="demucs-error">{error}</div>}
@@ -380,6 +470,7 @@ export default function TakesDeck({ project }) {
     startEditingVersion,
     justGeneratedId,
   } = project;
+  const badgedGeneratorIds = new Set((project.generators || []).filter((generator) => generator.badge).map((generator) => generator.id));
   const showingEditor = deckTab === "edit";
 
   // Hovering a FINAL chip highlights the take card that fills that slot, so
@@ -584,7 +675,7 @@ export default function TakesDeck({ project }) {
               const isSelected = !showingLiveStage && previewMode === "single" && selectedSingleVersion?.id === v.id;
               const sparkNotes = v.track?.notes || [];
               const sparkDuration = v.meta?.durationSec || fallbackDuration;
-              const tags = takeTags(v, project.diff);
+              const tags = takeTags(v, project.diff, badgedGeneratorIds);
               const finalTone = assignedSlotTone(cleanedFinalSlots, v.id);
               return (
                 <div
@@ -662,7 +753,7 @@ export default function TakesDeck({ project }) {
                   </div>
                   {sparkNotes.length > 0 && sparkDuration > 0 && (
                     <div className="take-spark" aria-hidden="true">
-                      <DensityStrip lanes={[{ notes: sparkNotes }]} duration={sparkDuration} />
+                      <DensityStrip lanes={[{ notes: sparkNotes, solos: v.track?.solos }]} duration={sparkDuration} />
                     </div>
                   )}
                   <div className="take-meta">{v.noteCount || "--"} notes</div>

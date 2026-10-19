@@ -10,7 +10,9 @@ import { StemSeparationStage } from "./StageAnimations.jsx";
 import {
   COMPARE_LANE_COLORS,
   COMPARE_SLOT_LABELS,
+  demucsAuditionKey,
   fmtTime,
+  generatorStemSetId,
 } from "./useGenerateProject.js";
 import { useOwnedFullscreen } from "../../hooks/useOwnedFullscreen.js";
 
@@ -21,6 +23,20 @@ const DEMUCS_STEMS = [
   { id: "bass", label: "Bass" },
   { id: "vocals", label: "Vocals" },
 ];
+
+// Fretformer v1.2 separates with htdemucs_6s: guitar gets its own stem and
+// other holds the rest (piano included).
+const SIX_STEM_DEMUCS_STEMS = [
+  { id: "guitar", label: "Guitar" },
+  { id: "other", label: "Other" },
+  { id: "drums", label: "Drums" },
+  { id: "bass", label: "Bass" },
+  { id: "vocals", label: "Vocals" },
+];
+
+function demucsStemsFor(generator) {
+  return generatorStemSetId(generator) === "htdemucs_6s" ? SIX_STEM_DEMUCS_STEMS : DEMUCS_STEMS;
+}
 
 function loadHighwayVolume() {
   try {
@@ -161,6 +177,8 @@ function decodeWaveformData(data) {
 function DemucsCompareLane({
   slot,
   lane,
+  stems = DEMUCS_STEMS,
+  stemSetId = "htdemucs",
   artifacts,
   loadingKey,
   audioRef: setAudioRef,
@@ -180,9 +198,9 @@ function DemucsCompareLane({
   const laneAudioRef = useRef(null);
   const artifact = artifacts.find((item) => item.id === lane.artifactId) || artifacts[0];
   const loaded = lane.audition;
-  const loading = Boolean(lane.stem && loadingKey === `${artifact?.id}:${lane.stem}`);
+  const loading = Boolean(lane.stem && loadingKey === demucsAuditionKey(artifact?.id, stemSetId, lane.stem));
   const effectivelyMuted = globalMuted || lane.muted || (anySolo && !lane.solo) || volume <= 0;
-  const selectedStem = DEMUCS_STEMS.find((stem) => stem.id === lane.stem);
+  const selectedStem = stems.find((stem) => stem.id === lane.stem);
 
   useEffect(() => {
     drawWaveform(canvasRef.current, lane.peaks, progress, Boolean(loaded));
@@ -230,7 +248,7 @@ function DemucsCompareLane({
             disabled={!artifact || loading}
           >
             <option value="">Choose stem…</option>
-            {DEMUCS_STEMS.map((stem) => (
+            {stems.map((stem) => (
               <option key={stem.id} value={stem.id}>{stem.label}</option>
             ))}
           </select>
@@ -272,7 +290,10 @@ function DemucsAuditionStage({ project }) {
     auditionDemucsStem,
     loadDemucsStem,
     demucsAuditionMode,
+    selectedGenerator,
   } = project;
+  const stemChoices = demucsStemsFor(selectedGenerator);
+  const stemSetId = generatorStemSetId(selectedGenerator);
   const audioRef = useRef(null);
   const compareAudioRefs = useRef({});
   const compareLanesRef = useRef([]);
@@ -509,6 +530,8 @@ function DemucsAuditionStage({ project }) {
                 key={lane.id}
                 slot={lane.id}
                 lane={{ ...lane, artifactId: artifact?.id || lane.artifactId }}
+                stems={stemChoices}
+                stemSetId={stemSetId}
                 artifacts={demucsArtifacts}
                 loadingKey={demucsAuditionLoadingKey}
                 audioRef={(node) => {
@@ -603,9 +626,10 @@ function DemucsAuditionStage({ project }) {
       </div>
 
       {auditionMode === "single" && <div className="demucs-stage-stems" aria-label="Audition stems from selected separation">
-        {DEMUCS_STEMS.map((stem) => {
-          const loading = demucsAuditionLoadingKey === `${activeArtifact?.id}:${stem.id}`;
-          const active = demucsAudition?.id === activeArtifact?.id && demucsAudition?.stem === stem.id;
+        {stemChoices.map((stem) => {
+          const loading = demucsAuditionLoadingKey === demucsAuditionKey(activeArtifact?.id, stemSetId, stem.id);
+          const active = demucsAudition?.id === activeArtifact?.id && demucsAudition?.stem === stem.id &&
+            (demucsAudition?.stemSet || "htdemucs") === stemSetId;
           return (
             <button
               key={stem.id}
@@ -1069,6 +1093,7 @@ export default function PreviewStage({ project }) {
                 lanes={(compareLayout === "joined" ? joinedCompareVersions : selectedCompareVersions).map(
                   (version, index) => ({
                     notes: (version.track || baseTrack)?.notes || [],
+                    solos: (version.track || baseTrack)?.solos,
                     offset: compareOffsetForVersion(version),
                     color: COMPARE_LANE_COLORS[index % COMPARE_LANE_COLORS.length],
                   })

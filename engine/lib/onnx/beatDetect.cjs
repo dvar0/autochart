@@ -7,7 +7,7 @@
 //   beat_this.inference.aggregate_prediction      (inference.py:138 (upstream))
 //   beat_this.model.postprocessor.Postprocessor  (beat_this/model/postprocessor.py (upstream))
 //       type="minimal", fps=50
-//   production smoother                          (main() call order)
+//   grid smoother: spurious/missed-beat cleanup, glitch repair, local line fit
 //
 // The two ONNX graphs (fp32, opset 17, CPU):
 //   beat_this_mel_fp32.onnx:  wav[samples] f32 mono 22050 Hz -> logmel[n_frames, 128] (time x bins)
@@ -30,8 +30,10 @@ const DEFAULTS = {
   smoother: {
     removeSpuriousMinRatio: 0.6,
     fillMissedMaxRatio: 1.7,
-    dampedSmoothGain: 0.15,
-    dampedSmoothWindow: 9,
+    repairSpan: 8,
+    repairTolerance: 0.15,
+    repairMaxRun: 6,
+    lineFitHalfWindow: 4,
   },
 };
 
@@ -47,8 +49,10 @@ function beatOrchestration(manifest) {
     avoidShortEnd: stage.avoidShortEnd ?? DEFAULTS.avoidShortEnd,
     removeSpuriousMinRatio: Number(smoother.removeSpuriousMinRatio),
     fillMissedMaxRatio: Number(smoother.fillMissedMaxRatio),
-    dampedSmoothGain: Number(smoother.dampedSmoothGain),
-    dampedSmoothWindow: Number(smoother.dampedSmoothWindow),
+    repairSpan: Number(smoother.repairSpan),
+    repairTolerance: Number(smoother.repairTolerance),
+    repairMaxRun: Number(smoother.repairMaxRun),
+    lineFitHalfWindow: Number(smoother.lineFitHalfWindow),
   };
 }
 
@@ -289,28 +293,232 @@ function fillMissedBeats(beatTimes, maxRatio = 1.7) {
   return Float64Array.from(times);
 }
 
-function dampedSmooth(beatTimes, gain = 0.15, window = 9) {
-  if (beatTimes.length < 2) return Float64Array.from(beatTimes);
-  const durations = new Float64Array(beatTimes.length - 1);
-  for (let i = 0; i < durations.length; i += 1) durations[i] = beatTimes[i + 1] - beatTimes[i];
-  const smoothed = [beatTimes[0]];
-  for (let idx = 0; idx < durations.length; idx += 1) {
-    const targetDuration = localMedian(durations, idx, window);
-    const drift = beatTimes[idx + 1] - (smoothed[smoothed.length - 1] + targetDuration);
-    const step = targetDuration + gain * drift;
-    smoothed.push(smoothed[smoothed.length - 1] + Math.max(step, 0.05));
-  }
-  return Float64Array.from(smoothed);
+// Least-squares line through (k, times[k]) for k in idx -> { a, b, rms }; b is the beat period.
+function fitLine(times, idx) {
+  const m = idx.length;
+  let mx = 0;
+  let my = 0;
+  for (const k of idx) { mx += k; my += times[k]; }
+  mx /= m;
+  my /= m;
+  let sxy = 0;
+  let sxx = 0;
+  for (const k of idx) { sxy += (k - mx) * (times[k] - my); sxx += (k - mx) * (k - mx); }
+  const b = sxx > 0 ? sxy / sxx : 0;
+  const a = my - b * mx;
+  let ss = 0;
+  for (const k of idx) { const r = times[k] - (a + b * k); ss += r * r; }
+  return { a, b, rms: Math.sqrt(ss / m) };
 }
 
+function indexRange(lo, hi, n) {
+  const out = [];
+  for (let k = Math.max(0, lo); k <= Math.min(n - 1, hi); k += 1) out.push(k);
+  return out;
+}
+
+// Line fit that drops the worst points once, so one bad beat doesn't bend the window.
+function robustFit(times, idx, tol) {
+  let fit = fitLine(times, idx);
+  if (idx.length < 5) return fit;
+  const keep = idx.filter((k) => Math.abs(times[k] - (fit.a + fit.b * k)) <= tol * Math.abs(fit.b));
+  if (keep.length >= Math.max(3, idx.length - 3) && keep.length < idx.length) fit = fitLine(times, keep);
+  return fit;
+}
+
+// Puts short double-time bursts back on the surrounding grid. Beat This follows drum fills
+// at 16ths for a few seconds, which writes 400-600 BPM stretches into a steady song. A
+// burst counts when its local tempo is over minBpm, at least `ratio` times the steady
+// tempo around it, and shorter than maxSec. Inside it, the beats that continue the outer
+// grid are kept and the rest dropped; a missing one is filled at the outer spacing.
+function fixTempoBursts(beatTimes, {
+  minBpm = 300, ratio = 1.6, maxSec = 8, context = 10, contextAgree = 0.25, snap = 0.3,
+} = {}) {
+  const times = beatTimes;
+  const n = times.length;
+  if (n < 8) return Float64Array.from(times);
+  const intervals = new Float64Array(n - 1);
+  for (let i = 0; i + 1 < n; i += 1) intervals[i] = times[i + 1] - times[i];
+  const intervalMedian = (lo, hi) => {
+    const a = Math.max(0, lo), b = Math.min(n - 1, hi);
+    return b - a >= 3 ? median(intervals.subarray(a, b)) : null;
+  };
+  const fast = new Uint8Array(n - 1);
+  for (let i = 0; i + 1 < n; i += 1) fast[i] = 60.0 / intervalMedian(i - 2, i + 3) > minBpm ? 1 : 0;
+
+  const out = [times[0]];
+  let i = 0;
+  while (i + 1 < n) {
+    if (!fast[i]) { out.push(times[i + 1]); i += 1; continue; }
+    let e = i;
+    while (e + 1 < n - 1 && fast[e + 1]) e += 1;
+    // Burst spans beats i..e+1; context skips the two intervals next to it.
+    const before = intervalMedian(i - 2 - context, i - 2);
+    const after = intervalMedian(e + 3, e + 3 + context);
+    let period = null;
+    if (before && after) period = Math.abs(before - after) <= contextAgree * Math.max(before, after) ? (before + after) / 2 : null;
+    else period = before || after;
+    const burst = median(intervals.subarray(i, e + 1));
+    const a = i, b = e + 1;
+    if (!period || burst * ratio > period || times[b] - times[a] > maxSec) {
+      for (let j = a + 1; j <= b; j += 1) out.push(times[j]);
+      i = b;
+      continue;
+    }
+    let last = times[a];
+    let j = a + 1;
+    while (times[b] - last > 1.5 * period) {
+      const target = last + period;
+      let best = -1;
+      for (; j < b && times[j] < target + snap * period; j += 1) {
+        if (Math.abs(times[j] - target) <= snap * period && (best < 0 || Math.abs(times[j] - target) < Math.abs(times[best] - target))) best = j;
+      }
+      last = best >= 0 ? times[best] : target;
+      out.push(last);
+    }
+    out.push(times[b]);
+    i = b;
+  }
+  return Float64Array.from(out);
+}
+
+// Repairs short fumbles where the detector loses and re-finds the beat: a run of at most
+// maxRun beats that fit the steady pattern on neither side is re-spaced evenly, but only
+// when both sides agree on the tempo and the gap holds a whole number of beats.
+// Anything less clear-cut is left alone.
+function repairGlitches(beatTimes, { span = 8, tol = 0.15, maxRun = 6, tempoAgree = 0.08, wholeBeats = 0.2 } = {}) {
+  const times = beatTimes;
+  const n = times.length;
+  if (n < 2 * span + 2) return Float64Array.from(times);
+  const fitSide = (lo, hi) => {
+    const idx = indexRange(lo, hi, n);
+    return idx.length >= span - 2 ? robustFit(times, idx, tol) : null;
+  };
+  const steady = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) {
+    for (const fit of [fitSide(i - span, i - 1), fitSide(i + 1, i + span)]) {
+      if (fit && fit.b > 0 && Math.abs(times[i] - (fit.a + fit.b * i)) <= tol * fit.b) steady[i] = 1;
+    }
+  }
+  const out = [];
+  let i = 0;
+  while (i < n) {
+    if (steady[i] || i === 0) {
+      out.push(times[i]);
+      i += 1;
+      continue;
+    }
+    let e = i;
+    while (e + 1 < n && !steady[e + 1]) e += 1;
+    const a = i - 1;
+    const b = e + 1;
+    const left = b < n ? fitSide(a - span + 1, a) : null;
+    const right = b < n ? fitSide(b, b + span - 1) : null;
+    let replaced = false;
+    if (e - i + 1 <= maxRun && left && right && left.b > 0 && right.b > 0) {
+      const period = (left.b + right.b) / 2;
+      const gap = times[b] - times[a];
+      const beats = Math.round(gap / period);
+      if (
+        beats >= 1
+        && Math.abs(left.b - right.b) / period <= tempoAgree
+        && Math.abs(gap / period - beats) <= wholeBeats
+      ) {
+        for (let j = 1; j < beats; j += 1) out.push(times[a] + (gap * j) / beats);
+        replaced = true;
+      }
+    }
+    if (!replaced) for (let j = i; j <= e; j += 1) out.push(times[j]);
+    i = e + 1;
+  }
+  return Float64Array.from(out);
+}
+
+// Edge-preserving local line fit. Each beat takes the best-fitting of a centered, left-only
+// or right-only window, so tempo changes stay sharp instead of lagging. Fitting positions
+// rather than frame-rounded durations keeps the grid centered on the detected beats; the
+// previous damped smoother settled 15-50 ms early or late depending on the tempo.
+function lineSmooth(beatTimes, { half = 4, shortHalf = 2, sidePenalty = 1.5, periods = null } = {}) {
+  const times = beatTimes;
+  const n = times.length;
+  if (n < 3) return Float64Array.from(times);
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const windows = [];
+    // Short windows let a stretch of a few beats between tempo changes get its own line.
+    for (const h of shortHalf ? [half, shortHalf] : [half]) {
+      windows.push(
+        { idx: indexRange(i - h, i + h, n), weight: 1 },
+        { idx: indexRange(i - 2 * h, i, n), weight: sidePenalty },
+        { idx: indexRange(i, i + 2 * h, n), weight: sidePenalty },
+      );
+    }
+    let best = null;
+    for (const win of windows) {
+      const m = win.idx.length;
+      if (m < 4) continue;
+      const fit = fitLine(times, win.idx);
+      // Unbiased residual spread, so short windows win only where long ones don't fit.
+      const score = fit.rms * Math.sqrt(m / (m - 2)) * win.weight;
+      if (!best || score < best.score) best = { score, fit };
+    }
+    if (!best) best = { fit: fitLine(times, indexRange(i - 1, i + 1, n)) };
+    out[i] = best.fit.a + best.fit.b * i;
+    if (periods) periods[i] = best.fit.b;
+  }
+  for (let i = 1; i < n; i += 1) if (out[i] < out[i - 1] + 0.05) out[i] = out[i - 1] + 0.05;
+  return out;
+}
+
+// Merges beats closer together than minRatio of the local beat length into one. These
+// come from short stretches where the detector briefly doubles up; left in, they write
+// tempo markers of 600+ BPM.
+function mergeSqueezedBeats(beatTimes, periods, minRatio = 0.5) {
+  const out = [];
+  const outPeriods = [];
+  for (let i = 0; i < beatTimes.length; i += 1) {
+    const last = out.length - 1;
+    const period = Math.max(periods[i], last >= 0 ? outPeriods[last] : 0);
+    if (last >= 0 && beatTimes[i] - out[last] < minRatio * period) {
+      out[last] = (out[last] + beatTimes[i]) / 2;
+      continue;
+    }
+    out.push(beatTimes[i]);
+    outPeriods.push(periods[i]);
+  }
+  return Float64Array.from(out);
+}
+
+// Re-smoothing after a merge can squeeze a neighbour, so repeat a few rounds and finish
+// with a plain merge.
+function smoothRepaired(repaired, options = {}) {
+  let times = repaired;
+  for (let round = 0; round < 4; round += 1) {
+    const periods = new Float64Array(times.length);
+    const smoothed = lineSmooth(times, { ...options, periods });
+    const merged = mergeSqueezedBeats(smoothed, periods);
+    if (merged.length === smoothed.length || round === 3) return merged;
+    times = merged;
+  }
+  return times;
+}
+
+// Chart tick 0 is t=0, so the grid has to start there. Lead-in beats fill the time before
+// the first beat; a first beat less than half a beat from 0 moves onto 0 instead of
+// leaving a sliver beat (which wrote tempo markers like 1500 BPM).
 function prependLeadIn(beatTimes) {
   if (beatTimes.length < 2) return { extended: Float64Array.from(beatTimes), nLead: 0 };
   const lead = beatTimes[0];
   const d0 = beatTimes[1] - beatTimes[0];
-  if (lead <= 0.1 * d0 || d0 <= 0) {
+  if (lead <= 0 || d0 <= 0) {
     return { extended: Float64Array.from(beatTimes), nLead: 0 };
   }
-  const nLead = Math.max(1, Math.round(lead / d0));
+  const nLead = Math.round(lead / d0);
+  if (nLead < 1) {
+    const extended = Float64Array.from(beatTimes);
+    extended[0] = 0;
+    return { extended, nLead: 0 };
+  }
   const leadTimes = new Float64Array(nLead);
   for (let j = 0; j < nLead; j += 1) leadTimes[j] = (lead * j) / nLead;
   const extended = new Float64Array(nLead + beatTimes.length);
@@ -319,14 +527,19 @@ function prependLeadIn(beatTimes) {
   return { extended, nLead };
 }
 
-// Production smoother main() call order (mirrors the reference pipeline).
-// remove_spurious_beats -> fill_missed_beats -> damped_smooth -> prepend_lead_in
+// remove_spurious_beats -> fill_missed_beats -> fix tempo bursts -> repair glitches -> line smooth -> lead-in
 function smoothGrid(beatTimes, orch) {
   const cleaned = removeSpuriousBeats(beatTimes, orch.removeSpuriousMinRatio);
   const filled = fillMissedBeats(cleaned, orch.fillMissedMaxRatio);
-  const smoothed = dampedSmooth(filled, orch.dampedSmoothGain, orch.dampedSmoothWindow);
+  const leveled = fixTempoBursts(filled);
+  const repaired = repairGlitches(leveled, {
+    span: orch.repairSpan,
+    tol: orch.repairTolerance,
+    maxRun: orch.repairMaxRun,
+  });
+  const smoothed = smoothRepaired(repaired, { half: orch.lineFitHalfWindow });
   const { extended, nLead } = prependLeadIn(smoothed);
-  return { extended, nLead, intermediate: { cleaned, filled, smoothed } };
+  return { extended, nLead, intermediate: { cleaned, filled, leveled, repaired, smoothed } };
 }
 
 function medianBpm(times) {
@@ -445,6 +658,8 @@ async function detectBeats(signalMono22050, manifest, sessions, orch, {
     _intermediate: {
       afterSpuriousRemoval: smoothed.intermediate.cleaned.length,
       afterGapFill: smoothed.intermediate.filled.length,
+      afterTempoBursts: smoothed.intermediate.leveled.length,
+      afterGlitchRepair: smoothed.intermediate.repaired.length,
       smoothedPreLeadIn: smoothed.intermediate.smoothed,
     },
   };
@@ -466,7 +681,11 @@ module.exports = {
   medianBpm,
   removeSpuriousBeats,
   fillMissedBeats,
-  dampedSmooth,
+  fixTempoBursts,
+  repairGlitches,
+  lineSmooth,
+  mergeSqueezedBeats,
+  smoothRepaired,
   prependLeadIn,
   smoothGrid,
 };

@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 
 // Note-activity histogram drawn behind a seekbar. Each lane is a chart
-// version: bars show notes-per-bin over the song so dense passages (solos,
-// spam sections) read at a glance, mirroring what the highway shows up close.
+// version: bars show notes-per-bin over the song so dense passages read at a
+// glance, mirroring what the highway shows up close. Charted solo sections
+// (lane.solos, seconds) draw their bars violet, matching the highway's solo runway.
 //
 // Bins follow the rendered width (one bar per ~4px) instead of a fixed
 // musical unit, so the strip stays readable at any timeline size.
@@ -21,12 +22,26 @@ function laneBins(notes, duration, binCount, offset = 0) {
   return bins;
 }
 
-function drawLaneBars(ctx, bins, binCount, barWidth, y0, bandHeight, max, color, alpha) {
-  ctx.fillStyle = color;
+// Solo ranges ([{ start, end }] seconds) -> per-bin flags.
+function soloBins(solos, duration, binCount, offset = 0) {
+  const flags = new Uint8Array(binCount);
+  if (!solos?.length || !duration) return flags;
+  const scale = binCount / duration;
+  const laneOffset = Math.max(0, Number(offset) || 0);
+  for (const solo of solos) {
+    const from = Math.max(0, Math.floor((solo.start + laneOffset) * scale));
+    const to = Math.min(binCount - 1, Math.ceil((solo.end + laneOffset) * scale) - 1);
+    for (let i = from; i <= to; i++) flags[i] = 1;
+  }
+  return flags;
+}
+
+function drawLaneBars(ctx, bins, binCount, barWidth, y0, bandHeight, max, color, alpha, solo, soloColor) {
   ctx.globalAlpha = alpha;
   const drawableHeight = Math.max(1, bandHeight - 1);
   for (let i = 0; i < binCount; i++) {
     if (!bins[i]) continue;
+    ctx.fillStyle = solo[i] ? soloColor : color;
     const h = Math.max(1, (bins[i] / max) * drawableHeight);
     ctx.fillRect(i * barWidth + 0.5, y0 + bandHeight - h, Math.max(1, barWidth - 1), h);
   }
@@ -61,7 +76,9 @@ export default function DensityStrip({ lanes = [], duration = 0, layout = "auto"
       if (!max) return;
 
       const barWidth = rect.width / binCount;
-      const themePurple = getComputedStyle(canvas).getPropertyValue("--purple").trim() || "#4a4585";
+      const styles = getComputedStyle(canvas);
+      const themePurple = styles.getPropertyValue("--purple").trim() || "#4a4585";
+      const soloColor = styles.getPropertyValue("--solo").trim() || "#9a6bff";
       const stacked =
         layout === "stacked" || (layout === "auto" && drawable.length > 1);
       const laneGap = stacked ? 1 : 0;
@@ -69,10 +86,12 @@ export default function DensityStrip({ lanes = [], duration = 0, layout = "auto"
       const bandHeight = (rect.height - laneGap * (laneCount - 1)) / laneCount;
 
       laneData.forEach((bins, laneIndex) => {
-        const color = drawable[laneIndex].color || themePurple;
+        const lane = drawable[laneIndex];
+        const color = lane.color || themePurple;
         const y0 = stacked ? laneIndex * (bandHeight + laneGap) : 0;
         const alpha = stacked ? 0.82 : 0.7;
-        drawLaneBars(ctx, bins, binCount, barWidth, y0, bandHeight, max, color, alpha);
+        const solo = soloBins(lane.solos, duration, binCount, lane.offset);
+        drawLaneBars(ctx, bins, binCount, barWidth, y0, bandHeight, max, color, alpha, solo, soloColor);
       });
       ctx.globalAlpha = 1;
     };

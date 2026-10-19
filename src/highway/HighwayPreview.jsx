@@ -126,6 +126,10 @@ function HighwayPreview(
   const followRafRef = useRef(0);
   const loadedAudioLeadRef = useRef(0);
   const videoOffsetRef = useRef(0);
+  // Finished decodes per source buffer, so switching back to audio already
+  // heard skips a full decode. Entries belong to the engine that decoded them
+  // (the engine is recreated on remount and its AudioContext closed).
+  const decodedAudioRef = useRef(new WeakMap());
 
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -275,7 +279,12 @@ function HighwayPreview(
       try {
         // Decode in the background. The current audio keeps playing, and an
         // obsolete decode must never overwrite a newer buffer.
-        const decoded = await engine.decodeAudio(audioBuffer);
+        const cached = decodedAudioRef.current.get(audioBuffer);
+        let decoded = cached?.engine === engine ? cached.decoded : null;
+        if (!decoded) {
+          decoded = await engine.decodeAudio(audioBuffer);
+          decodedAudioRef.current.set(audioBuffer, { engine, decoded });
+        }
         if (cancelled) return;
         const replacingAudio = audioReadyRef.current;
         const shouldPlay = replacingAudio ? engine.running : playOnReadyRef.current;
@@ -298,7 +307,10 @@ function HighwayPreview(
           syncVideo(engine.songTime, true);
         } else setPlayingState(false);
       } catch (err) {
-        if (!cancelled) setError(err.message || String(err));
+        if (cancelled) return;
+        setError(err.message || String(err));
+        // A held-back take (see below) still has to show.
+        if (latestTrackRef.current) applyTrack(latestTrackRef.current, { preserveTime: true });
       }
     })();
     return () => { cancelled = true; };
@@ -308,9 +320,13 @@ function HighwayPreview(
     latestTrackRef.current = track;
     if (!track) { setLyricPhrases([]); return; }
     if (!engineRef.current || (!audioReadyRef.current && !visualOnly)) return;
+    // A take with another lead-in plays against other audio. Drawn against the
+    // audio still playing, it would sit off by the lead-in difference until
+    // the swap, so the audio effect applies it together with its audio.
+    if (audioReadyRef.current && !visualOnly && (Number(audioLeadInSeconds) || 0) !== loadedAudioLeadRef.current) return;
     applyTrack(track, { preserveTime: visualOnly || audioReadyRef.current });
     setReady(true);
-  }, [track, applyTrack, visualOnly]);
+  }, [track, applyTrack, visualOnly, audioLeadInSeconds]);
 
   useEffect(() => {
     if (!visualOnly || followTime == null || !ready) return undefined;
@@ -451,7 +467,7 @@ function HighwayPreview(
         <button className="transport-btn" onClick={playing ? pausePreview : playPreview} disabled={!ready}>{playing ? <><I.pause aria-hidden="true" /> Pause</> : <><I.play aria-hidden="true" /> Play</>}</button>
         <button className="transport-btn ghost" onClick={restartPreview} disabled={!ready} title="Restart from the beginning" aria-label="Restart from the beginning">⟲</button>
         <span className="transport-time">{fmtTime(progress.time)}</span>
-        <div className="timeline"><DensityStrip lanes={track ? [{ notes: track.notes }] : []} duration={progress.duration || 0} /><input className="seekbar" type="range" min={0} max={progress.duration || 0} step={0.05} value={Math.min(progress.time, progress.duration || 0)} onChange={(event) => seekPreview(Number(event.target.value))} disabled={!ready} aria-label="Preview position" /></div>
+        <div className="timeline"><DensityStrip lanes={track ? [{ notes: track.notes, solos: track.solos }] : []} duration={progress.duration || 0} /><input className="seekbar" type="range" min={0} max={progress.duration || 0} step={0.05} value={Math.min(progress.time, progress.duration || 0)} onChange={(event) => seekPreview(Number(event.target.value))} disabled={!ready} aria-label="Preview position" /></div>
         <span className="transport-time">{fmtTime(progress.duration)}</span>
         {volumeProp === undefined && <div className={"volume-control" + (mutedState ? " is-muted" : "")}><button className="volume-mute-btn" type="button" onClick={handleMuteToggle} title={mutedState ? "Unmute chart audio" : "Mute chart audio"} aria-label={mutedState ? "Unmute chart audio" : "Mute chart audio"} aria-pressed={mutedState}>{mutedState ? <I.volumeMute aria-hidden="true" /> : <I.volume aria-hidden="true" />}</button><input className="volume-slider" type="range" min={0} max={1} step={0.01} value={volume} onChange={handleVolumeChange} aria-label="Volume" /></div>}
         {!hideControls && <div className="highway-menu">

@@ -87,5 +87,10 @@ export function buildPlayableTrack(chart, difficulty = "expert") {
     notes: resolveNoteTimes(track.notes, tempoMap),
     starPower: track.starPower,
     events: chart.events,
+    solos: (track.solos || []).map((solo) => ({
+      ...solo,
+      start: tempoMap.tickToSeconds(solo.startTick),
+      end: tempoMap.tickToSeconds(solo.endTick),
+    })),
   };
 }

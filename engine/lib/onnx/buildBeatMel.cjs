@@ -1,9 +1,11 @@
 "use strict";
 
 // Beat-aligned mel pipeline (mirrors the training-time feature recipe).
-// Mel on six monos (full + four stems + non_drums = bass+vocals+other); non_drums
+// v1: mel on six monos (full + four stems + non_drums = bass+vocals+other); non_drums
 // only supplies shared ref_db and is dropped before the stack. Output stacks
-// CHANNEL_ORDER -> [n_beats, 5, 80, 32]. Beat windows: 32 points at
+// CHANNEL_ORDER -> [n_beats, 5, 80, 32]. Other models pass their own
+// channelOrder/refOnlyMixes from the models manifest (v1.2: six input channels,
+// no reference-only mix -> [n_beats, 6, 80, 32]). Beat windows: 32 points at
 // t_i + (j+0.5)/32*(t_{i+1}-t_i), fractional frame + linear interp (Python parity).
 
 const { createSession, tensor, runSession } = require("./sessionLoader.cjs");
@@ -77,6 +79,11 @@ function beatMelWindowsForChannel(mel, nMels, nFrames, beatTimes) {
   return out;
 }
 
+// v1 adds a bass+vocals+other mix that only feeds the shared dB reference.
+// Models whose manifest sets stages.transcriber.refOnlyMixes ({} for v1.2)
+// take the reference from their input channels alone.
+const DEFAULT_REF_ONLY_MIXES = Object.freeze({ non_drums: ["bass", "vocals", "other"] });
+
 async function buildBeatMel({
   melSession,
   fullMono22050,
@@ -85,26 +92,17 @@ async function buildBeatMel({
   maxBeats = 1280,
   audioDuration = null,
   log = null,
+  channelOrder = CHANNEL_ORDER,
+  refOnlyMixes = DEFAULT_REF_ONLY_MIXES,
 }) {
-  const channels = {
-    full: fullMono22050,
-    drums: stemMonos22050.drums,
-    bass: stemMonos22050.bass,
-    vocals: stemMonos22050.vocals,
-    other: stemMonos22050.other,
-  };
-  const commonLen = Math.max(
-    channels.full.length,
-    channels.drums.length,
-    channels.bass.length,
-    channels.vocals.length,
-    channels.other.length
-  );
-  const nonDrums = new Float32Array(commonLen);
-  for (const name of ["bass", "vocals", "other"]) {
-    const ch = channels[name];
-    for (let i = 0; i < ch.length; i += 1) nonDrums[i] += ch[i];
+  const channels = {};
+  for (const name of channelOrder) {
+    const mono = name === "full" ? fullMono22050 : stemMonos22050[name];
+    if (!mono) throw new Error(`buildBeatMel: missing ${name} channel audio`);
+    channels[name] = mono;
   }
+  let commonLen = 0;
+  for (const name of channelOrder) commonLen = Math.max(commonLen, channels[name].length);
 
   function padded(ch) {
     if (ch.length === commonLen) return ch;
@@ -112,14 +110,16 @@ async function buildBeatMel({
     out.set(ch, 0);
     return out;
   }
-  const channelList = [
-    ["full", padded(channels.full)],
-    ["drums", padded(channels.drums)],
-    ["bass", padded(channels.bass)],
-    ["vocals", padded(channels.vocals)],
-    ["other", padded(channels.other)],
-    ["non_drums", nonDrums],
-  ];
+  const channelList = channelOrder.map((name) => [name, padded(channels[name])]);
+  for (const [mixName, parts] of Object.entries(refOnlyMixes || {})) {
+    const mix = new Float32Array(commonLen);
+    for (const name of parts) {
+      const ch = channels[name] || stemMonos22050[name];
+      if (!ch) throw new Error(`buildBeatMel: reference mix ${mixName} needs missing channel ${name}`);
+      for (let i = 0; i < ch.length; i += 1) mix[i] += ch[i];
+    }
+    channelList.push([mixName, mix]);
+  }
 
   const mels = {};
   let maxMel = -Infinity;
@@ -136,12 +136,12 @@ async function buildBeatMel({
   if (log) log(`  mel: shared ref_db=${refDb.toFixed(4)} dB`);
 
   let nFramesFinal = Infinity;
-  for (const name of CHANNEL_ORDER) {
+  for (const name of channelOrder) {
     if (mels[name].nFrames < nFramesFinal) nFramesFinal = mels[name].nFrames;
   }
 
   const normed = {};
-  for (const name of CHANNEL_ORDER) {
+  for (const name of channelOrder) {
     const { mel, nFrames } = mels[name];
     const shared = new Float32Array(80 * nFramesFinal);
     for (let m = 0; m < 80; m += 1) {
@@ -171,11 +171,12 @@ async function buildBeatMel({
     ? beatTimes
     : beatTimes.subarray ? beatTimes.subarray(0, nBeats + 1) : beatTimes.slice(0, nBeats + 1);
 
-  const out = new Float32Array(nBeats * 5 * 80 * FRAMES_PER_BEAT);
-  const strideBeat = 5 * 80 * FRAMES_PER_BEAT;
+  const nChannels = channelOrder.length;
+  const out = new Float32Array(nBeats * nChannels * 80 * FRAMES_PER_BEAT);
+  const strideBeat = nChannels * 80 * FRAMES_PER_BEAT;
   const strideChannel = 80 * FRAMES_PER_BEAT;
-  for (let c = 0; c < 5; c += 1) {
-    const name = CHANNEL_ORDER[c];
+  for (let c = 0; c < nChannels; c += 1) {
+    const name = channelOrder[c];
     const channelMel = normed[name];
     const win = beatMelWindowsForChannel(channelMel, 80, nFramesFinal, clippedBeats);
     for (let beat = 0; beat < nBeats; beat += 1) {
@@ -185,7 +186,7 @@ async function buildBeatMel({
   }
 
   const beatMask = new Uint8Array(nBeats).fill(1);
-  return { beatMel: out, beatMask, nBeats, nFramesFinal, refDb };
+  return { beatMel: out, beatMask, nBeats, nChannels, nFramesFinal, refDb };
 }
 
 module.exports = {
@@ -195,6 +196,7 @@ module.exports = {
   normalizeMelDb,
   beatMelWindowsForChannel,
   CHANNEL_ORDER,
+  DEFAULT_REF_ONLY_MIXES,
   FRAME_DURATION,
   FRAMES_PER_BEAT,
 };

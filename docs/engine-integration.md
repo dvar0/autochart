@@ -34,7 +34,8 @@ and concurrent favorite updates against the real Electron preload and library
 store with deterministic engine responses.
 
 `engine/models-onnx/fretformer-v1/` is a development fallback and may contain
-symlinks. Installed apps load the same layout from:
+symlinks (each generator names its folder in `generator.models.onnxFolder`).
+Installed apps load the same layout from:
 
 ```text
 <settings.modelsFolder>/fretformer-v1/
@@ -48,6 +49,59 @@ the four invariant legal files are copied from the packaged
 installed bytes at that location, and the engine receives it as
 `job.engine.modelsFolder`; both use the same folder before falling back to
 development symlinks.
+
+## Fretformer v1.2 (test generator)
+
+`autochart.fretformer.v1-2-onnx` ("Fretformer v1.2") is a candidate model for
+local testing. Its manifest entry has `"availability": "installed"`: the
+Generate screen lists it only once `<settings.modelsFolder>/fretformer-v1-2/`
+is complete, so installs without it see v1 exactly as before. There is no
+catalog component or download for it yet. When it is installed, the model
+plate becomes a picker with a NEW badge, its takes are named and tagged
+"Fretformer v1.2", and a project reopens on the model it last generated with.
+
+It uses the same pipeline code as v1, with every difference read from its
+model folder's `manifest.json`:
+
+- Separation: `htdemucs_6s` (STFT/ISTFT graphs identical to v1's) with piano
+  summed into other (`stages.demucs.stems` / `stemFold`). Its stems live in
+  `<separation workspace>/stems_htdemucs_6s/` (`generator.separation`), next
+  to v1's `stems/`, and results report every stem set under
+  `sourceSeparation.stemSets`. Separation cards list one row per stem set:
+  v1's always, v1.2's once it exists or while v1.2 is selected (with
+  "Not separated yet" and a Separate now button where it is missing).
+- Features: six mel channels (full, drums, bass, vocals, guitar, other), dB
+  reference over those six (`stages.transcriber.channelOrder`, `refOnlyMixes`).
+- Knobs: speed, chords, HOPOs, taps, movement (`capabilities.descriptorKnobs`;
+  the model vocab must agree). CFG runs only when a knob is set
+  (`prefixConditioning.cfgOnlyWithSetKnobs`).
+- Decoding matches `ChartTranscriber.generate`: knob tokens are looked up at
+  `DESC_BASE + 8k` (`prefixConditioning.descriptorTokenBase`), and sampling
+  starts only after the whole prefix (`decode.sampleOnlyAfterPrefix`). v1's
+  manifest has neither, so v1 keeps its original lookup and sampling and its
+  seeds reproduce.
+
+Gates: `engine/test/generator-switch-e2e.cjs` (v1 + v1.2 on one song through
+`engineManager.generateChart`: shared beat map, stem sets, CFG gating, legacy
+beat-map adoption; `--only v1 --app-root <checkout>` is the v1 regression
+check), `engine/test/fretformer-v1-2-parity.cjs` (app features + greedy ONNX
+decode, compared with the training recipe and PyTorch checkpoint by the
+training repo's `scripts/check_fretformer_v1_2_app_parity.py`), and
+`scripts/test-generator-picker-electron.cjs` (picker, knob swap, payload).
+
+## Beat maps
+
+Beat maps belong to the analysis audio, not to a separation. Every generator
+and separation of the same audio (same file, same lead-in) shares one map per
+timing setting at
+`<cache>/features/fretformer_timing_v1/<audio sha256>/<timing key>/beats.json`
+(`job.timingWorkspace`), so takes from v1, v1.2, or a regenerated separation
+carry the same `[SyncTrack]` and can share a final chart. Maps written by older
+versions under `<separation workspace>/timing/` are adopted on first use: the
+active separation's first, then the default separation's, then any other.
+Re-running Beat This on the same audio and settings gives the same map, so
+the levers that change a beat map are the timing detector, smoothing, and
+lead-in silence (which changes the analysis audio).
 
 ## Job and result contract
 
@@ -77,8 +131,12 @@ the `[SyncTrack]` the generated chart ships with. Two detectors exist, chosen by
 `generation.resolved.timingDetector`:
 
 - `beat_this_custom_timing` runs Beat This over the audio, optionally through the
-  damped smoother, and derives tempo anchors from the detected grid. It is the
-  default for projects created from bare audio.
+  grid smoother (spurious/missed-beat cleanup, folding short double-time bursts
+  over 300 BPM back onto the surrounding tempo, short-glitch repair, then an
+  edge-preserving local line fit), and derives tempo anchors from the detected
+  grid. Tempo anchors are rounded to `bpmRound` with error feedback, so rounding
+  never accumulates; where rounding alone would move a beat more than 5 ms (very
+  slow tempos across long gaps), the exact tempo is written instead. It is the default for projects created from bare audio.
 - `source_chart_sync` reuses the tempo map of an imported `notes.chart` instead
   of detecting one. Electron writes the picked version's chart to
   `<jobDir>/source_chart/notes.chart` and passes `job.sourceChart` with its

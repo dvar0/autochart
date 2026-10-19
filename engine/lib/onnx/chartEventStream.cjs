@@ -99,8 +99,9 @@ function decodeTokens(tokens) {
     if (token === PAD_TOKEN || token === BOS_TOKEN || (DIFF_BASE <= token && token < POS_BASE)) {
       continue;
     }
-    if (INTENSITY_BASE <= token && token < VOCAB_SIZE) {
-      // INT and DESC ranges serve only as conditioning; skip on decode.
+    if (token >= INTENSITY_BASE) {
+      // INT and DESC ranges serve only as conditioning; structure markers
+      // (solo/section, tokens >= VOCAB_SIZE) are read by decodeStructure.
       continue;
     }
     if (token === EOS_TOKEN) {
@@ -157,6 +158,72 @@ function decodeTokens(tokens) {
   return { events, issues };
 }
 
+// structurePrefixTokens: the flags a structure-marker model (manifest
+// stages.transcriber.structure) takes after the knob tokens, in both CFG
+// streams. The section flag is always on: the model was trained almost only
+// with it, and turning it off makes the notes worse.
+function structurePrefixTokens(structure, { solos = true } = {}) {
+  if (!structure) return [];
+  const tokens = [Number(solos ? structure.SOLO_FLAG_ON : structure.SOLO_FLAG_OFF)];
+  if (structure.mode === "solo_sections") tokens.push(Number(structure.SECTION_FLAG_ON));
+  return tokens;
+}
+
+// decodeStructure: solo spans [startBeat, endBeat|null] and sections
+// [beat, type] from a structure-marker model's stream (port of the training
+// repo's decode_structure). `structure` is the transcriber manifest's
+// structure block. An unmatched solo end is ignored; a solo that never ends
+// comes back with endBeat null.
+function decodeStructure(tokens, structure) {
+  const solos = [];
+  const sections = [];
+  if (!structure) return { solos, sections };
+  const soloStart = Number(structure.SOLO_START_TOKEN);
+  const soloEnd = Number(structure.SOLO_END_TOKEN);
+  const sectionTypes = Array.isArray(structure.SECTION_TYPES) ? structure.SECTION_TYPES : [];
+  const sectionBase = sectionTypes.length ? Number(structure.SECTION_BASE) : Infinity;
+  let beat = -1;
+  let openStart = null;
+  for (const raw of tokens) {
+    const token = Number(raw) | 0;
+    if (token === EOS_TOKEN) break;
+    if (token === BEAT_TOKEN) {
+      beat += 1;
+    } else if (token === soloStart && openStart === null) {
+      openStart = Math.max(beat, 0);
+    } else if (token === soloEnd && openStart !== null) {
+      solos.push([openStart, Math.max(beat, openStart + 1)]);
+      openStart = null;
+    } else if (sectionBase <= token && token < sectionBase + sectionTypes.length) {
+      sections.push([Math.max(beat, 0), sectionTypes[token - sectionBase]]);
+    }
+  }
+  if (openStart !== null) solos.push([openStart, null]);
+  return { solos, sections };
+}
+
+// structureChartLines: .chart lines for decodeStructure's output, as in the
+// training repo's write_chart. Solo markers go in the difficulty track
+// (`E solo` before the notes at its tick, `E soloend` after them); a solo
+// with no end runs to endBeat. Sections go in [Events] as
+// `E "section Chorus 2"` ("other" is written as "Section").
+function structureChartLines({ solos = [], sections = [] } = {}, resolution = 192, endBeat = null) {
+  const trackEvents = [];
+  for (const [start, end] of solos) {
+    const stop = end != null ? end : (endBeat != null ? endBeat : start + 1);
+    trackEvents.push({ tick: start * resolution, order: 0, text: "E solo" });
+    trackEvents.push({ tick: stop * resolution, order: 2, text: "E soloend" });
+  }
+  const globalEvents = [];
+  const typeCounts = {};
+  for (const [beat, type] of sections) {
+    typeCounts[type] = (typeCounts[type] || 0) + 1;
+    const label = type === "other" ? "Section" : type.charAt(0).toUpperCase() + type.slice(1);
+    globalEvents.push({ tick: beat * resolution, text: `E "section ${label} ${typeCounts[type]}"` });
+  }
+  return { trackEvents, globalEvents };
+}
+
 // eventsToChartNotes: maps grid events to chart rows. resolution default 192.
 // Returns rows: array of [tick, note_type, sustain_ticks, modifier_types[]].
 // Modifier types per .chart: 5 = forced hopo, 6 = tap.
@@ -211,17 +278,23 @@ function writeChartText(rows, options = {}) {
 
 // Tempo / SyncTrack helpers: build the chart SYNC block from the beat grid.
 // Used to build the chart SyncTrack from the detected beat grid.
+// Each tempo aims at the next beat from where the chart actually is (tick 0 = t 0), so
+// bpmRound rounding never accumulates into drift.
 function beatsToSyncLines(beatTimes, resolution, bpmRound = 0.5) {
   const lines = ["0 = TS 4"];
   let previousBpm = null;
+  let chartTime = 0;
   for (let i = 0; i + 1 < beatTimes.length; i += 1) {
-    const duration = beatTimes[i + 1] - beatTimes[i];
+    let duration = beatTimes[i + 1] - chartTime;
+    if (!(duration > 0)) duration = beatTimes[i + 1] - beatTimes[i];
     let bpm = Math.round(60.0 / duration / bpmRound) * bpmRound;
-    if (bpm < bpmRound) bpm = bpmRound;
+    // At very slow tempos (long gaps) one rounding step moves the beat audibly.
+    if (bpm < bpmRound || Math.abs(60.0 / bpm - duration) > 0.005) bpm = Math.round(60000.0 / duration) / 1000;
     if (bpm !== previousBpm) {
       lines.push(`${i * resolution} = B ${Math.round(bpm * 1000)}`);
       previousBpm = bpm;
     }
+    chartTime += 60.0 / bpm;
   }
   return lines;
 }
@@ -273,4 +346,7 @@ module.exports = {
   stripSustainsFromTokens,
   gridTick,
   newIssues,
+  structurePrefixTokens,
+  decodeStructure,
+  structureChartLines,
 };

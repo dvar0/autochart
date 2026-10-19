@@ -65,6 +65,7 @@
   --purple-bri:  #6860b5;   /* accent / bright icons */
   --purple-bg:   #d9dbf6;   /* active/selected fill */
   --purple-bd:   #9f9adb;
+  --solo:        #9a6bff;   /* charted solo sections on the activity strip */
 
   /* primary CTA: Catppuccin-style pastel pink with dark plum ink */
   --orange:      #ea76cb;
@@ -108,6 +109,7 @@
   --purple-bri:  #c6cffe;
   --purple-bg:   #414a6d;   /* selected fill */
   --purple-bd:   #8792d6;
+  --solo:        #c77dff;   /* hotter than lavender so solos don't read as identity */
 
   /* primary CTA: Catppuccin Mocha pink */
   --orange:      #f5c2e7;
@@ -3641,6 +3643,69 @@ video.bg-layer {
   font-weight: 700;
   color: var(--text);
 }
+/* When several models are installed the plate name is the model picker. */
+.model-plate-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  cursor: pointer;
+}
+.model-plate-picker select.model-plate-name {
+  appearance: none;
+  -webkit-appearance: none;
+  field-sizing: content;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 22px 0 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.model-plate-picker select.model-plate-name:focus-visible {
+  outline: 2px solid var(--purple-bd);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.model-plate-picker select.model-plate-name:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+.model-plate-picker option {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+}
+.model-plate-picker svg {
+  position: absolute;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  color: var(--text-faint);
+}
+.model-plate-badge {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: var(--bw) solid var(--amber-bd);
+  color: var(--amber-fg);
+  background: var(--amber-bg);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.model-plate-note {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
 .model-plate-select {
   width: 100%;
   min-height: 34px;
@@ -4042,7 +4107,8 @@ video.bg-layer {
   gap: 6px;
 }
 .engine-group:has(.span-2),
-.timing-group {
+.timing-group,
+.structure-group {
   grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -4058,6 +4124,14 @@ video.bg-layer {
   gap: 5px;
 }
 .engine-setting.span-2 { grid-column: 1 / -1; }
+.engine-info {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 4px;
+  color: var(--text-faint);
+  cursor: help;
+}
+.engine-info svg { width: 12px; height: 12px; }
 .engine-setting > span {
   min-width: 0;
   color: var(--text-dim);
@@ -5406,6 +5480,51 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   color: var(--purple);
 }
 .demucs-stem-grid button:disabled { opacity: .5; cursor: not-allowed; }
+/* A separation can hold one stem set per model; each gets its own row. */
+.demucs-set {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.demucs-set-label {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+/* Cards listing two stem sets are wider and keep each set on one row. */
+.demucs-row .take-card.demucs-card.multi { flex-basis: 336px; }
+.demucs-card.multi { gap: 7px; }
+.demucs-stem-grid.compact {
+  grid-template-columns: repeat(var(--stem-cols, 4), minmax(0, 1fr));
+  gap: 4px;
+}
+.demucs-stem-grid.compact button {
+  min-height: 26px;
+  padding: 0 4px;
+}
+.demucs-set-missing {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.demucs-set-missing .take-pip {
+  background: var(--surface);
+  color: var(--text-dim);
+}
+.demucs-set-missing .take-pip:hover:not(:disabled) {
+  background: var(--purple-bg);
+  color: var(--purple);
+}
 .demucs-card-actions {
   display: flex;
   gap: 6px;
@@ -5480,7 +5599,8 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 1180px) {
   .advanced-engine-body,
   .engine-group:has(.span-2),
-  .timing-group {
+  .timing-group,
+  .structure-group {
     grid-template-columns: 1fr;
   }
   .engine-setting.span-2 {
@@ -5524,6 +5644,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   .compare-grid,
   .advanced-engine-body,
   .timing-group,
+  .structure-group,
   .difficulty-segments,
   .seed-row {
     grid-template-columns: 1fr;

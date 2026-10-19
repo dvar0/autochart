@@ -41,6 +41,8 @@ does not establish an external review requirement or provide legal approval.
 The source-publication and attribution requirements above still apply.
 
 For the next release, record actual results in [testing-status.md](testing-status.md).
+Changes since the last release that need their own checks are listed in
+[next-update-checklist.md](next-update-checklist.md).
 User installation instructions are in [install.md](install.md); FFmpeg build and source packaging instructions are in [ffmpeg-source-status.md](ffmpeg-source-status.md).
 
 ## Supported target and fallback matrix

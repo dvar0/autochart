@@ -266,8 +266,7 @@ const DEFAULT_GENERATION = {
     seed: 20260609,
     timingSmoothing: {
       enabled: true,
-      gain: 0.15,
-      window: 9,
+      method: "line-fit",
       bpmRound: 0.5,
     },
   },
@@ -494,8 +493,8 @@ function normalizeGenerationPayload(payload, generatorId, generator = null) {
       seed,
       timingSmoothing: {
         enabled: usesSourceChartTiming ? false : booleanValue(smoothingEnabledIn, smoothingDefaults.enabled),
-        gain: numberValue(smoothingIn.gain, smoothingDefaults.gain, { min: 0, max: 1 }),
-        window: integerValue(smoothingIn.window, smoothingDefaults.window, { min: 1 }),
+        // The engine has one smoother; this records it on the take.
+        method: DEFAULT_GENERATION.resolved.timingSmoothing.method,
         bpmRound: numberValue(smoothingIn.bpmRound, smoothingDefaults.bpmRound, { min: 0.001 }),
       },
     },
@@ -1379,8 +1378,38 @@ function isInsidePath(parent, child) {
   return relative === "" || (relative && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-async function findDemucsStemDir(workspace) {
-  const queue = [path.resolve(workspace)];
+// The stem sets a separation workspace can hold. v1's htdemucs stems are found
+// by searching the whole workspace (which also covers older layouts); a
+// generator with its own separation model keeps its stems under
+// generator.separation.cacheSubdir, which the v1 search skips.
+const DEFAULT_STEM_SET = Object.freeze({ id: "htdemucs", cacheSubdir: "", stems: DEMUCS_STEMS });
+
+function stemSetForGenerator(generator) {
+  const separation = plainObject(generator?.separation);
+  const cacheSubdir = String(separation.cacheSubdir || "").trim();
+  if (!cacheSubdir) return DEFAULT_STEM_SET;
+  if (!/^stems_[a-z0-9_]{1,48}$/.test(cacheSubdir)) {
+    throw new Error(`Generator ${generator?.id || "unknown"} has an invalid stem cache directory: ${cacheSubdir}`);
+  }
+  const stems = Array.isArray(separation.stems) && separation.stems.length
+    ? separation.stems.map(String)
+    : DEMUCS_STEMS;
+  return { id: String(separation.stemSet || cacheSubdir), cacheSubdir, stems };
+}
+
+function manifestStemSets(manifest) {
+  const sets = new Map([[DEFAULT_STEM_SET.id, DEFAULT_STEM_SET]]);
+  for (const generator of Array.isArray(manifest?.generators) ? manifest.generators : []) {
+    const stemSet = stemSetForGenerator(generator);
+    if (!sets.has(stemSet.id)) sets.set(stemSet.id, stemSet);
+  }
+  return [...sets.values()];
+}
+
+async function findDemucsStemDir(workspace, stemSet = DEFAULT_STEM_SET, skipDirNames = []) {
+  const root = stemSet.cacheSubdir ? path.join(path.resolve(workspace), stemSet.cacheSubdir) : path.resolve(workspace);
+  const skip = new Set(skipDirNames);
+  const queue = [root];
   while (queue.length) {
     const dir = queue.shift();
     let entries = [];
@@ -1390,21 +1419,36 @@ async function findDemucsStemDir(workspace) {
       continue;
     }
     const names = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name.toLowerCase()));
-    const hasAllStems = ["drums", "bass", "vocals", "other"].every((stem) =>
+    const hasAllStems = stemSet.stems.every((stem) =>
       ["flac", "wav"].some((ext) => names.has(`${stem}.${ext}`))
     );
     if (hasAllStems) return dir;
     for (const entry of entries) {
-      if (entry.isDirectory()) queue.push(path.join(dir, entry.name));
+      if (entry.isDirectory() && !skip.has(entry.name)) queue.push(path.join(dir, entry.name));
     }
   }
   return null;
 }
 
-async function demucsStemMap(stemDir) {
+// Every stem set present in a separation workspace. `stems`/`stemDir` stay
+// v1's htdemucs set so existing projects and callers read what they always did.
+async function separationStemSets(workspace, manifest) {
+  const sets = manifestStemSets(manifest);
+  const otherSubdirs = sets.map((set) => set.cacheSubdir).filter(Boolean);
+  const stemSets = {};
+  for (const stemSet of sets) {
+    const stemDir = await findDemucsStemDir(workspace, stemSet, stemSet.cacheSubdir ? [] : otherSubdirs);
+    const stems = await demucsStemMap(stemDir, stemSet.stems);
+    if (Object.keys(stems).length) stemSets[stemSet.id] = { stemDir, stems };
+  }
+  const v1 = stemSets[DEFAULT_STEM_SET.id] || null;
+  return { stemDir: v1?.stemDir || null, stems: v1?.stems || {}, stemSets };
+}
+
+async function demucsStemMap(stemDir, stemNames = DEMUCS_STEMS) {
   if (!stemDir) return {};
   const stems = {};
-  for (const stem of DEMUCS_STEMS) {
+  for (const stem of stemNames) {
     for (const ext of ["flac", "wav"]) {
       const stemPath = path.join(stemDir, `${stem}.${ext}`);
       try {
@@ -1551,6 +1595,7 @@ async function generateChart(userDataPath, sender, payload, options = {}) {
       hardwareMode: settings.hardwareMode || "auto",
       ...(demucsSeparationPayload ? { demucsSeparation: demucsSeparationPayload } : {}),
       demucsWorkspace: selectedDemucsWorkspace,
+      timingWorkspace: await demucsWorkspace.resolveTimingWorkspace(cacheRoot(userDataPath, settings), cachedAudio.sha256),
       engine: {
         platform: CURRENT_PLATFORM,
         runtime: generator.runtime?.current || null,
@@ -1626,8 +1671,9 @@ async function generateChart(userDataPath, sender, payload, options = {}) {
       separationId,
       settings
     );
-    const demucsStemDir = await findDemucsStemDir(demucsWorkspacePath);
-    const demucsStems = await demucsStemMap(demucsStemDir);
+    const separationStems = await separationStemSets(demucsWorkspacePath, manifest);
+    const demucsStemDir = separationStems.stemDir;
+    const demucsStems = separationStems.stems;
     const sourceSeparationBase = result.sourceSeparation || result.provenance?.sourceSeparation || job.demucsSeparation || null;
     const sourceSeparation = sourceSeparationBase
       ? {
@@ -1639,6 +1685,7 @@ async function generateChart(userDataPath, sender, payload, options = {}) {
             ...(demucsStemDir ? { stemDir: demucsStemDir } : {}),
           },
           ...(Object.keys(demucsStems).length ? { stems: demucsStems } : {}),
+          ...(Object.keys(separationStems.stemSets).length ? { stemSets: separationStems.stemSets } : {}),
         }
       : null;
     sendJobEvent(sender, jobId, { type: "stage", stage: "saved", status: "completed" });
@@ -1784,8 +1831,7 @@ async function prepareDemucs(userDataPath, sender, payload, options = {}) {
     workspace,
     { create: false }
   );
-  const stemDir = await findDemucsStemDir(workspace);
-  const stems = await demucsStemMap(stemDir);
+  const { stemDir, stems, stemSets } = await separationStemSets(workspace, manifest);
   if (isJobCanceled(jobId)) throw canceledError();
   sendJobEvent(sender, jobId, { type: "stage", stage: "saved", status: "completed" });
   return {
@@ -1801,6 +1847,7 @@ async function prepareDemucs(userDataPath, sender, payload, options = {}) {
     sourceTransform: cachedAudio.sourceTransform,
     profile: "Standard Demucs",
     stems,
+    stemSets,
     cache: {
       workspace,
       stemDir,

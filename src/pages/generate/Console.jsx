@@ -1,11 +1,18 @@
 import {
-  DESCRIPTOR_KNOBS,
+  descriptorKnobsForGenerator,
+  generatorMarksSolos,
   DESCRIPTOR_KNOB_MAX,
   GENERATION_DIFFICULTIES,
   GENERATION_PRESETS,
   TIMING_DETECTOR_OPTIONS,
 } from "../../data/generationSettings.js";
 import { I } from "../../icons.jsx";
+
+const FORCE_SOLO_INFO =
+  "Only acts when the model places no solo on its own. It then starts one where it came closest to " +
+  "starting one and charts the rest of the song again from there, so generation takes longer for those " +
+  "songs. The model was unsure about that spot, so a forced solo can be less convincing than one it " +
+  "found itself.";
 import GenerationProgress from "./GenerationProgress.jsx";
 import EditorConsole from "./edit/EditorConsole.jsx";
 
@@ -44,6 +51,8 @@ export default function Console({ project }) {
     selectedGenerator,
     selectedGeneratorSetup,
     selectedGeneratorLabel,
+    selectableGenerators,
+    selectGenerator,
     supportedDifficultyIds,
     selectedPreset,
     currentGeneration,
@@ -88,6 +97,9 @@ export default function Console({ project }) {
     supportedDifficultyIds?.includes(option.id)
   );
   const timingOptions = TIMING_DETECTOR_OPTIONS.filter((option) => !option.sourceChart || hasSourceChartSync);
+  const styleKnobs = descriptorKnobsForGenerator(selectedGenerator);
+  const allKnobsAuto = styleKnobs.every((knob) => (generationControls[knob.key] ?? "auto") === "auto");
+  const generatorChoices = selectableGenerators || [];
   const smoothingEnabled = Boolean(resolvedSettings.timingSmoothing?.enabled);
   const generateDisabledReason = runActive
     ? stopping
@@ -134,8 +146,35 @@ export default function Console({ project }) {
           <>
             <div className="model-plate">
               <div className="model-plate-top">
-                <div className="model-plate-name">{selectedGeneratorLabel}</div>
+                {generatorChoices.length > 1 ? (
+                  <label className="model-plate-picker">
+                    <select
+                      className="model-plate-name"
+                      value={selectedGenerator?.id || ""}
+                      onChange={(e) => selectGenerator(e.target.value)}
+                      disabled={busy}
+                      aria-label="Chart model"
+                    >
+                      {generatorChoices.map((generator) => (
+                        <option key={generator.id} value={generator.id}>
+                          {generator.label}
+                        </option>
+                      ))}
+                    </select>
+                    <I.chev />
+                  </label>
+                ) : (
+                  <div className="model-plate-name">{selectedGeneratorLabel}</div>
+                )}
+                {selectedGenerator?.badge && (
+                  <span className="model-plate-badge" title={selectedGenerator.description || selectedGenerator.badge}>
+                    {selectedGenerator.badge}
+                  </span>
+                )}
               </div>
+              {selectedGenerator?.status === "experimental" && (
+                <div className="model-plate-note">Test model. Its takes are tagged {selectedGeneratorLabel}.</div>
+              )}
               {selectedGeneratorSetup && !selectedGeneratorSetup.ready && (
                 <div className="model-plate-warning">{selectedGeneratorSetup.message}</div>
               )}
@@ -305,7 +344,7 @@ export default function Console({ project }) {
                   <div className="engine-group knob-group">
                     <div className="engine-group-title">Style</div>
                     <p className="knob-group-note">Auto lets the model decide. Drag a knob off auto to steer it.</p>
-                    {DESCRIPTOR_KNOBS.map((knob) => {
+                    {styleKnobs.map((knob) => {
                       const raw = generationControls[knob.key] ?? "auto";
                       const isAuto = raw === "auto";
                       // Auto parks in a fenced-off bay one stop left of bin 0. It is a
@@ -375,7 +414,7 @@ export default function Console({ project }) {
                         </div>
                       );
                     })}
-                    <div className={"knob-guidance" + (DESCRIPTOR_KNOBS.every((knob) => generationControls[knob.key] === "auto") ? " dim" : "")}>
+                    <div className={"knob-guidance" + (allKnobsAuto ? " dim" : "")}>
                       <span>GUIDANCE</span>
                       <input
                         inputMode="decimal"
@@ -385,11 +424,56 @@ export default function Console({ project }) {
                         aria-label="Guidance scale"
                       />
                       <small>
-                        {DESCRIPTOR_KNOBS.every((knob) => generationControls[knob.key] === "auto")
+                        {allKnobsAuto
                           ? "set a knob to enable"
                           : "pushes set knobs harder"}
                       </small>
                     </div>
+                  </div>
+                )}
+
+                {generatorMarksSolos(selectedGenerator) && (
+                  <div className="engine-group structure-group">
+                    <div className="engine-group-title">Structure</div>
+                    <label className="engine-setting">
+                      <span>SOLOS</span>
+                      <button
+                        type="button"
+                        className={"engine-flag" + (generationControls.solos !== false ? " on" : "")}
+                        onClick={() => updateGenerationControl("solos", generationControls.solos === false)}
+                        disabled={busy}
+                      >
+                        {generationControls.solos !== false ? "On" : "Off"}
+                      </button>
+                      <small>
+                        {generationControls.solos !== false
+                          ? "the model marks a solo where it hears one"
+                          : "no solo sections in the chart"}
+                      </small>
+                    </label>
+                    {generationControls.solos !== false && (
+                      <label className="engine-setting">
+                        <span>
+                          FORCE A SOLO
+                          <i className="engine-info" title={FORCE_SOLO_INFO} aria-label={FORCE_SOLO_INFO} role="img">
+                            <I.info />
+                          </i>
+                        </span>
+                        <button
+                          type="button"
+                          className={"engine-flag" + (generationControls.forceSolo ? " on" : "")}
+                          onClick={() => updateGenerationControl("forceSolo", !generationControls.forceSolo)}
+                          disabled={busy}
+                        >
+                          {generationControls.forceSolo ? "On" : "Off"}
+                        </button>
+                        <small>
+                          {generationControls.forceSolo
+                            ? "adds one if the model found none"
+                            : "only solos the model hears"}
+                        </small>
+                      </label>
+                    )}
                   </div>
                 )}
 

@@ -12,4 +12,5 @@ module.exports = {
   ...require("./prefixTables.cjs"),
   ...require("./buildBeatMel.cjs"),
   ...require("./transcribe.cjs"),
+  ...require("./forceSolo.cjs"),
 };

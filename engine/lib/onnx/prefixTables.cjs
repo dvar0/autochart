@@ -188,8 +188,21 @@ function loadNpy(filePath) {
 // The shipped export sets pervasive_difficulty=false, so the difficulty
 // embedding branch is skipped. pervasive_descriptors=true so each of the 5
 // descriptor knobs gets looked up from the prefix scan window.
+//
+// The model (ChartTranscriber._descriptor_ids) finds knob k's token in
+// [DESC_BASE + 8k, DESC_BASE + 8k + 8). The original port scanned [8k, 8k + 8),
+// which matches BOS as Speed bin 1 and never sees a real knob token. v1 still
+// runs that original lookup so its charts stay unchanged until it is switched
+// on purpose; models whose manifest sets descriptorTokenBase use the model's.
 function computePrefixBias(prefixTokens, opts) {
-  const { descPrefixScan = 8, pervasiveDifficulty = false, pervasiveDescriptors = true, dModel = 512, tables } = opts;
+  const {
+    descPrefixScan = 8,
+    pervasiveDifficulty = false,
+    pervasiveDescriptors = true,
+    dModel = 512,
+    tables,
+    descriptorTokenBase = 0,
+  } = opts;
   const bias = new Float32Array(dModel);
   if (pervasiveDifficulty) {
     let diffId = 0;
@@ -204,7 +217,7 @@ function computePrefixBias(prefixTokens, opts) {
     const scan = prefixTokens.slice(0, descPrefixScan);
     const autoBin = DESCRIPTOR_BIN_COUNT - 1;
     for (let knob = 0; knob < N_DESCRIPTORS; knob += 1) {
-      const base = DESCRIPTOR_BIN_COUNT * knob;
+      const base = descriptorTokenBase + DESCRIPTOR_BIN_COUNT * knob;
       let binId = autoBin;
       for (const tok of scan) {
         if (base <= tok && tok < base + DESCRIPTOR_BIN_COUNT) {

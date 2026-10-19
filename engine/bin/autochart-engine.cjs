@@ -44,17 +44,23 @@ const DEFAULT_TRANSCRIBER_SETTINGS = {
   seed: 20260609,
   smoothing: {
     enabled: true,
-    gain: 0.15,
-    window: 9,
+    method: "line-fit",
     bpmRound: 0.5,
   },
 };
 const DEFAULT_DEMUCS_ID = "demucs_default";
 const DEMUCS_STEMS = ["other", "drums", "bass", "vocals"];
+// v1 keeps its stems in <separation workspace>/stems. A generator with its own
+// separation model (v1.2: htdemucs_6s) names a sibling directory in
+// generator.separation.cacheSubdir, so both stem sets live side by side.
+const DEFAULT_STEM_CACHE_SUBDIR = "stems";
+const STEM_CACHE_SUBDIR_RE = /^stems_[a-z0-9_]{1,48}$/;
 const SOURCE_CHART_DETECTOR = "source_chart";
 const SOURCE_CHART_TIMING_DETECTOR = "source_chart_sync";
 // Detected timing uses 192 ticks per beat; imported charts retain their resolution.
 const CHART_OUTPUT_RESOLUTION = 192;
+// v1's knobs. Generators with another knob set list it in
+// capabilities.descriptorKnobs; the model manifest's vocab must agree.
 const DESCRIPTOR_KNOB_NAMES = ["speed", "chords", "technique", "movement", "repetition"];
 const DESCRIPTOR_KNOB_MAX = 6;
 const DEFAULT_GUIDANCE_SCALE = 2;
@@ -141,13 +147,27 @@ function resolveDescriptorKnob(value) {
   return Math.max(0, Math.min(DESCRIPTOR_KNOB_MAX, Math.trunc(num)));
 }
 
-function resolveDescriptorKnobsFrom(generation) {
+function descriptorKnobNames(generator) {
+  const knobs = generator?.capabilities?.descriptorKnobs;
+  return Array.isArray(knobs) && knobs.length ? knobs.map(String) : DESCRIPTOR_KNOB_NAMES;
+}
+
+function stemCacheSubdir(generator) {
+  const subdir = String(generator?.separation?.cacheSubdir || "").trim();
+  if (!subdir) return DEFAULT_STEM_CACHE_SUBDIR;
+  if (!STEM_CACHE_SUBDIR_RE.test(subdir)) {
+    throw new Error(`Generator ${generator?.id || "unknown"} has an invalid stem cache directory: ${subdir}`);
+  }
+  return subdir;
+}
+
+function resolveDescriptorKnobsFrom(generation, knobNames = DESCRIPTOR_KNOB_NAMES) {
   const resolved = plainObject(generation.resolved);
   const controls = plainObject(generation.controls);
   const resolvedKnobs = plainObject(resolved.knobs);
   const controlKnobs = plainObject(controls.knobs);
   const knobs = {};
-  for (const name of DESCRIPTOR_KNOB_NAMES) {
+  for (const name of knobNames) {
     knobs[name] = resolveDescriptorKnob(resolvedKnobs[name] ?? controlKnobs[name]);
   }
   return knobs;
@@ -187,9 +207,7 @@ function transcriberTimingCacheKey(settings, sourceChartKey = "") {
   if (!settings.smoothing?.enabled) return `${scoped}_rawgrid`;
   return [
     scoped,
-    "smoothgrid",
-    `g${safeKeyPart(settings.smoothing.gain)}`,
-    `w${safeKeyPart(settings.smoothing.window)}`,
+    "smoothgrid3",
     `r${safeKeyPart(settings.smoothing.bpmRound)}`,
   ].join("_");
 }
@@ -249,8 +267,9 @@ function normalizeTranscriberSettings(job, generator) {
     { min: 0, max: 2 ** 31 - 2 }
   );
 
-  const knobs = resolveDescriptorKnobsFrom(generation);
-  const knobsActive = DESCRIPTOR_KNOB_NAMES.some((name) => knobs[name] != null);
+  const knobNames = descriptorKnobNames(generator);
+  const knobs = resolveDescriptorKnobsFrom(generation, knobNames);
+  const knobsActive = knobNames.some((name) => knobs[name] != null);
   const guidanceScale = numberValue(
     resolved.guidanceScale ?? controls.guidanceScale ?? job.guidanceScale,
     DEFAULT_GUIDANCE_SCALE,
@@ -288,13 +307,16 @@ function normalizeTranscriberSettings(job, generator) {
     seed,
     smoothing: {
       enabled: usesSourceChartTiming ? false : booleanValue(smoothingEnabled, smoothingDefaults.enabled),
-      gain: numberValue(smoothing.gain, smoothingDefaults.gain, { min: 0, max: 1 }),
-      window: integerValue(smoothing.window, smoothingDefaults.window, { min: 1 }),
+      method: DEFAULT_TRANSCRIBER_SETTINGS.smoothing.method,
       bpmRound: numberValue(smoothing.bpmRound, smoothingDefaults.bpmRound, { min: 0.001 }),
     },
     knobs,
     knobsActive,
     guidanceScale,
+    // Structure-marker models only: false asks for no solo markers; forceSolo
+    // re-charts from the likeliest solo start when none was sampled.
+    solos: booleanValue(resolved.solos ?? controls.solos ?? job.solos, true),
+    forceSolo: booleanValue(resolved.forceSolo ?? controls.forceSolo ?? job.forceSolo, false),
   };
 }
 
@@ -369,7 +391,7 @@ async function assertFileExists(filePath, label) {
   }
 }
 
-async function demucsStemMap(cacheDir, stemDir) {
+async function demucsStemMap(cacheDir, stemDir, stemNames = DEMUCS_STEMS) {
   if (!stemDir) return {};
   const canonicalStemDir = await demucsWorkspaceSafety.ensureContainedDirectory(
     cacheDir,
@@ -377,7 +399,7 @@ async function demucsStemMap(cacheDir, stemDir) {
     { create: false }
   );
   const stems = {};
-  for (const stem of DEMUCS_STEMS) {
+  for (const stem of stemNames) {
     for (const ext of ["flac", "wav"]) {
       const stemPath = path.join(canonicalStemDir, `${stem}.${ext}`);
       try {
@@ -516,8 +538,9 @@ async function main() {
   return result;
 }
 
-async function onnxSeparate(job, jobPath, { command }) {
+async function onnxSeparate(job, jobPath, { command, generator = null }) {
   const onnxLib = require("../lib/onnx");
+  const separationGenerator = generator || await resolveGeneratorConfig(job.generatorId, job);
   const manifest = await onnxLib.loadModelsManifest(ENGINE_ROOT, job);
   const orch = onnxLib.demucsOrchestration(manifest);
   const requestedDevice = await onnxLib.resolveDevice(
@@ -534,7 +557,7 @@ async function onnxSeparate(job, jobPath, { command }) {
   const cacheSlug = demucsCacheSlug(job);
   const stemDir = await demucsWorkspaceSafety.ensureContainedDirectory(
     cacheDir,
-    path.join(workspace, "stems", cacheSlug)
+    path.join(workspace, stemCacheSubdir(separationGenerator), cacheSlug)
   );
   const prepareResultPath = path.join(outputDir, "demucs_prepare.json");
   const logPath = path.join(outputDir, "engine.log");
@@ -547,14 +570,14 @@ async function onnxSeparate(job, jobPath, { command }) {
   const sourceSeparation = {
     id: job.demucsSeparation?.id || DEFAULT_DEMUCS_ID,
     name: job.demucsSeparation?.name || "Default separation",
-    profile: job.demucsSeparation?.profile || "Standard Demucs (ONNX htdemucs)",
+    profile: job.demucsSeparation?.profile || `Standard Demucs (ONNX ${orch.model})`,
     sourceTransform: job.sourceTransform || job.demucsSeparation?.sourceTransform || null,
     sourceVariantKey: job.sourceTransform?.key || job.demucsSeparation?.sourceVariantKey || "lead-in:0",
   };
 
   if (!job.forceDemucs) {
-    const cachedStems = await demucsStemMap(cacheDir, stemDir);
-    if (orch.sources.every((name) => cachedStems[name])) {
+    const cachedStems = await demucsStemMap(cacheDir, stemDir, orch.stems);
+    if (orch.stems.every((name) => cachedStems[name])) {
       const prepareOutput = {
         detail: "cached",
         demucsRan: false,
@@ -579,7 +602,7 @@ async function onnxSeparate(job, jobPath, { command }) {
         cacheHit: true,
         requestedDevice,
       });
-      return { ...prepareOutput, stemArrays: {} };
+      return { ...prepareOutput, stemArrays: {}, demucsModel: orch.model };
     }
   }
 
@@ -594,7 +617,7 @@ async function onnxSeparate(job, jobPath, { command }) {
     type: "log",
     stage: "demucs",
     stream: "stdout",
-    message: `ONNX Demucs: requestedDevice=${requestedDevice} segment=${orch.segmentLength} overlap=${orch.overlap} stems=${orch.sources.join(",")}`,
+    message: `ONNX Demucs: model=${orch.model} requestedDevice=${requestedDevice} segment=${orch.segmentLength} overlap=${orch.overlap} sources=${orch.sources.join(",")} stems=${orch.stems.join(",")}`,
   });
 
   const audioPath = path.resolve(job.audioPath);
@@ -623,7 +646,7 @@ async function onnxSeparate(job, jobPath, { command }) {
   planar.set(decoded.right, length);
   emit({ type: "log", stage: "demucs", stream: "stdout", message: `running ${orch.sources.length}-stem separation` });
 
-  const stems = await onnxLib.separate(planar, length, sessions, orch, {
+  const sourceStems = await onnxLib.separate(planar, length, sessions, orch, {
     log: (m) => emit({ type: "log", stage: "demucs", stream: "stdout", message: m }),
     onProgress: ({ index, total, offset, chunkLength }) => {
       emit({
@@ -635,6 +658,7 @@ async function onnxSeparate(job, jobPath, { command }) {
       emit({ type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0 });
     },
   });
+  const stems = onnxLib.foldStems(sourceStems, orch);
 
   const stemsMap = {};
   const stemArrays = {};
@@ -676,7 +700,7 @@ async function onnxSeparate(job, jobPath, { command }) {
     device: executionProvider,
     requestedDevice,
   });
-  return { ...prepareOutput, stemArrays };
+  return { ...prepareOutput, stemArrays, demucsModel: orch.model };
 }
 
 async function prepareDemucsOnnx(job, jobPath, { lifecycle = createGenerationLifecycle({ emit }) } = {}) {
@@ -690,14 +714,14 @@ async function prepareDemucsOnnx(job, jobPath, { lifecycle = createGenerationLif
   );
   const logPath = path.join(outputDir, "engine.log");
   const prepared = await lifecycle.runStage("demucs", () =>
-    onnxSeparate(job, jobPath, { command: "prepare-demucs" })
+    onnxSeparate(job, jobPath, { command: "prepare-demucs", generator })
   );
   const device = prepared.executionProvider ?? null;
 
   const sourceSeparation = {
     id: job.demucsSeparation?.id || DEFAULT_DEMUCS_ID,
     name: job.demucsSeparation?.name || "Default separation",
-    profile: job.demucsSeparation?.profile || "Standard Demucs (ONNX htdemucs)",
+    profile: job.demucsSeparation?.profile || `Standard Demucs (ONNX ${prepared.demucsModel || "htdemucs"})`,
     sourceTransform: job.sourceTransform || job.demucsSeparation?.sourceTransform || null,
     sourceVariantKey: job.sourceTransform?.key || job.demucsSeparation?.sourceVariantKey || "lead-in:0",
   };
@@ -732,7 +756,7 @@ async function prepareDemucsOnnx(job, jobPath, { lifecycle = createGenerationLif
         devices: { demucs: device },
       },
       demucs: {
-        model: "htdemucs",
+        model: prepared.demucsModel || "htdemucs",
         backend: "onnx",
         segment_samples: 343980,
         overlap: 0.25,
@@ -878,6 +902,60 @@ async function beatsFromSourceChart(job, jobPath, { onnxLib, cacheDir, timingDir
   return { beats, beatsJsonPath, timingDir, executionProvider: null, requestedDevice: null };
 }
 
+function usableTimingCache(cached, usesSourceChartTiming) {
+  const syncLines = Array.isArray(cached?.syncLines) && cached.syncLines.length ? cached.syncLines : null;
+  return Boolean(
+    cached && Array.isArray(cached.beatTimes) && cached.beatTimes.length && Array.isArray(cached.downbeatTimes) &&
+    (!usesSourceChartTiming || syncLines)
+  );
+}
+
+// Beat maps belong to the analysis audio, not to one separation: every
+// separation and every generator of the same audio reads one map per timing
+// setting, so their takes can share a final chart. Electron passes
+// job.timingWorkspace (<cache>/features/fretformer_timing_v1/<audio sha>); a job
+// without it keeps the older per-separation <workspace>/timing layout.
+async function resolveTimingRoot(job, cacheDir, workspace) {
+  if (!job.timingWorkspace) return path.join(workspace, "timing");
+  return demucsWorkspaceSafety.ensureContainedDirectory(cacheDir, path.resolve(String(job.timingWorkspace)));
+}
+
+// Maps detected before they were shared live under each separation. Adopt the
+// active separation's first, then the default separation's, then any other
+// separation of the same audio, so new takes keep the timing of older ones.
+async function adoptLegacyTiming(cacheDir, workspace, timingKey, beatsJsonPath, usesSourceChartTiming) {
+  const separationsRoot = path.dirname(workspace);
+  const workspaces = [workspace, path.join(separationsRoot, DEFAULT_DEMUCS_ID)];
+  try {
+    const entries = await fs.readdir(separationsRoot, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.isDirectory()) workspaces.push(path.join(separationsRoot, entry.name));
+    }
+  } catch {
+    // No sibling separations to look at.
+  }
+  const seen = new Set();
+  for (const candidateWorkspace of workspaces) {
+    const legacyDir = path.join(path.resolve(candidateWorkspace), "timing", timingKey);
+    if (seen.has(legacyDir)) continue;
+    seen.add(legacyDir);
+    try {
+      const canonicalDir = await demucsWorkspaceSafety.ensureContainedDirectory(cacheDir, legacyDir, { create: false });
+      const read = await readVerifiedFile(path.join(canonicalDir, "beats.json"), {
+        label: "Separation timing cache",
+        maxBytes: 64 * 1024 * 1024,
+      });
+      const cached = JSON.parse(read.data.toString("utf8"));
+      if (!usableTimingCache(cached, usesSourceChartTiming)) continue;
+      await writeVerifiedAtomic(beatsJsonPath, read.data, { rootDirectory: cacheDir, label: "Shared timing cache" });
+      return { cached, from: path.join(canonicalDir, "beats.json") };
+    } catch {
+      // Missing, unsafe, or unreadable legacy entries are cache misses.
+    }
+  }
+  return null;
+}
+
 async function onnxDetectBeats(job, jobPath, opts = {}) {
   const onnxLib = require("../lib/onnx");
   const generator = opts.generator || await resolveGeneratorConfig(job.generatorId, job);
@@ -903,9 +981,11 @@ async function onnxDetectBeats(job, jobPath, opts = {}) {
   // Two source charts over the same audio must not share a timing cache entry.
   const sourceChart = usesSourceChartTiming ? await loadSourceChart(job, jobPath) : null;
   const sourceChartKey = sourceChart ? `v2_${sourceChart.chartFile.sha256}` : "";
+  const timingKey = transcriberTimingCacheKey(settings, sourceChartKey);
+  const timingRoot = await resolveTimingRoot(job, cacheDir, workspace);
   const timingDir = await demucsWorkspaceSafety.ensureContainedDirectory(
     cacheDir,
-    path.join(workspace, "timing", transcriberTimingCacheKey(settings, sourceChartKey))
+    path.join(timingRoot, timingKey)
   );
   const beatsJsonPath = path.join(timingDir, "beats.json");
   const logPath = path.join(outputDir, "engine.log");
@@ -916,12 +996,17 @@ async function onnxDetectBeats(job, jobPath, opts = {}) {
   }
   if (!job.forceBeats && !job.forceDemucs) {
     await demucsWorkspaceSafety.ensureContainedDirectory(cacheDir, timingDir, { create: false });
-    const cached = await readJsonIfExists(beatsJsonPath);
+    let cached = await readJsonIfExists(beatsJsonPath);
+    let adoptedFrom = "";
+    if (!usableTimingCache(cached, usesSourceChartTiming) && job.timingWorkspace) {
+      const adopted = await adoptLegacyTiming(cacheDir, workspace, timingKey, beatsJsonPath, usesSourceChartTiming);
+      if (adopted) {
+        cached = adopted.cached;
+        adoptedFrom = adopted.from;
+      }
+    }
     const cachedSyncLines = Array.isArray(cached?.syncLines) && cached.syncLines.length ? cached.syncLines : null;
-    if (
-      cached && Array.isArray(cached.beatTimes) && cached.beatTimes.length && Array.isArray(cached.downbeatTimes) &&
-      (!usesSourceChartTiming || cachedSyncLines)
-    ) {
+    if (usableTimingCache(cached, usesSourceChartTiming)) {
       const beats = {
         beatTimes: cached.beatTimes,
         downbeatTimes: cached.downbeatTimes,
@@ -953,6 +1038,9 @@ async function onnxDetectBeats(job, jobPath, opts = {}) {
       });
       if (smoothingEnabled) {
         emit({ type: "stage", stage: "smoothing", status: "completed", cache: "hit", backend: "onnxruntime-node" });
+      }
+      if (adoptedFrom) {
+        emit({ type: "log", stage: "timing", stream: "stdout", message: `timing: adopted separation beat map ${adoptedFrom}` });
       }
       emit({ type: "log", stage: "timing", stream: "stdout", message: `reusing cached beats in ${beatsJsonPath}` });
       return { beats, beatsJsonPath, timingDir, executionProvider: null, cacheHit: true, requestedDevice };
@@ -1083,7 +1171,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     });
     activeGenerationStage = "demucs";
     demucsStage = await lifecycle.runStage("demucs", () =>
-      onnxSeparate(job, jobPath, { command: "generate" })
+      onnxSeparate(job, jobPath, { command: "generate", generator })
     );
     activeGenerationStage = "timing";
     beatStage = await lifecycle.runStage("timing", () =>
@@ -1120,6 +1208,30 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     const transcriberStage = manifest.stages && manifest.stages.transcriber ? manifest.stages.transcriber : {};
     const modelConfig = (transcriberStage && transcriberStage.modelConfig) || {};
     const maxBeats = Number(modelConfig.maxBeats || 1280);
+    const channelOrder = Array.isArray(transcriberStage.channelOrder) && transcriberStage.channelOrder.length
+      ? transcriberStage.channelOrder.map(String)
+      : onnxLib.CHANNEL_ORDER;
+    const refOnlyMixes = transcriberStage.refOnlyMixes && typeof transcriberStage.refOnlyMixes === "object"
+      ? transcriberStage.refOnlyMixes
+      : onnxLib.DEFAULT_REF_ONLY_MIXES;
+    if (modelConfig.inChannels != null && Number(modelConfig.inChannels) !== channelOrder.length) {
+      throw new Error(`transcription: model expects ${modelConfig.inChannels} channels but the manifest orders ${channelOrder.length}`);
+    }
+    const vocab = transcriberStage.vocab || {};
+    // The token layout is compiled into chartEventStream.cjs; refuse a model
+    // whose manifest disagrees instead of feeding it the wrong prefix ids.
+    for (const key of ["DIFF_BASE", "DESC_BASE", "N_DESCRIPTORS", "DESCRIPTOR_BIN_COUNT", "VOCAB_SIZE"]) {
+      if (vocab[key] != null && Number(vocab[key]) !== onnxLib[key]) {
+        throw new Error(`transcription: model vocab ${key}=${vocab[key]} does not match the engine (${onnxLib[key]})`);
+      }
+    }
+    const descNames = Array.isArray(vocab.DESCRIPTOR_NAMES) && vocab.DESCRIPTOR_NAMES.length
+      ? vocab.DESCRIPTOR_NAMES.map(String)
+      : onnxLib.DESCRIPTOR_NAMES;
+    const generatorKnobNames = descriptorKnobNames(generator);
+    if (descNames.join(",") !== generatorKnobNames.join(",")) {
+      throw new Error(`transcription: model knobs (${descNames.join(", ")}) do not match generator knobs (${generatorKnobNames.join(", ")})`);
+    }
     const decoderSettings = {
       difficulty: settings.difficulty,
       temperature: settings.temperature,
@@ -1131,7 +1243,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       descriptorTrained: Boolean(transcriberStage && transcriberStage.prefixConditioning),
     };
 
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decoding 5 channels to mono 22050` });
+    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decoding ${channelOrder.length} channels (${channelOrder.join(", ")}) to mono 22050` });
     const melSession = await onnxLib.loadMelSession(manifest, transcriberDevice);
     transcriberExecutionProvider = onnxLib.sessionDevice
       ? onnxLib.sessionDevice(melSession, transcriberDevice)
@@ -1149,7 +1261,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     for (let i = 0; i < fullStereo.length; i += 1) fullMono[i] = 0.5 * (fullStereo.left[i] + fullStereo.right[i]);
     const audioDuration = fullStereo.length / 22050;
     const stemMonos = {};
-    for (const name of ["drums", "bass", "vocals", "other"]) {
+    for (const name of channelOrder.filter((channel) => channel !== "full")) {
       const stemPathObj = demucsStage.stems && demucsStage.stems[name];
       if (!stemPathObj || !stemPathObj.path) {
         throw new Error(`transcription: missing ${name} stem wav under ${demucsStage.cache && demucsStage.cache.stemDir}`);
@@ -1180,11 +1292,13 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       beatTimes,
       maxBeats,
       audioDuration,
+      channelOrder,
+      refOnlyMixes,
       log: (m) => emit({ type: "log", stage: "transcription", stream: "stdout", message: m }),
     });
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: beat_mel shape [1, ${nBeats}, 5, 80, 32] nFrames=${nFramesFinal} refDb=${refDb.toFixed(3)}` });
+    const beatMelShape = [1, nBeats, channelOrder.length, 80, 32];
+    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: beat_mel shape [${beatMelShape.join(", ")}] nFrames=${nFramesFinal} refDb=${refDb.toFixed(3)}` });
 
-    const descNames = onnxLib.DESCRIPTOR_NAMES;
     const knobs = settings.knobs || {};
     const bins = descNames.map((name) => {
       const v = knobs[name];
@@ -1197,29 +1311,42 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     for (let knex = 0; knex < descNames.length; knex += 1) {
       prefixTokens.push(onnxLib.descriptorToken(knex, bins[knex]));
     }
+    // Structure-marker models (v2) take solo/section flags after the knobs.
+    const structure = transcriberStage.structure || null;
+    const structurePrefix = onnxLib.structurePrefixTokens(structure, { solos: settings.solos });
+    prefixTokens.push(...structurePrefix);
     const prefixTablesPath = path.join(manifest.folder, transcriberStage.prefixConditioning.file);
     const tables = onnxLib.loadNpz(prefixTablesPath);
     const dModel = Number(modelConfig.dModel || 512);
     const descPrefixScan = Number((transcriberStage.prefixConditioning && transcriberStage.prefixConditioning.descPrefixScan) || 8);
+    // v1's manifest has no descriptorTokenBase, which keeps its original knob
+    // lookup (see computePrefixBias); v1.2 declares the model's DESC_BASE.
+    const descriptorTokenBase = Number(transcriberStage.prefixConditioning.descriptorTokenBase || 0);
     const prefixBias = onnxLib.computePrefixBias(prefixTokens, {
       descPrefixScan,
       pervasiveDifficulty: Boolean(transcriberStage.prefixConditioning.pervasiveDifficulty),
       pervasiveDescriptors: Boolean(transcriberStage.prefixConditioning.pervasiveDescriptors),
-      dModel, tables,
+      dModel, tables, descriptorTokenBase,
     });
 
-    const useCfg = settings.guidanceScale > 1.0 && Boolean(transcriberStage.prefixConditioning && transcriberStage.prefixConditioning.pervasiveDescriptors);
+    // All-Auto CFG reproduces the unguided logits exactly (cond == uncond), so
+    // models that opt in skip the second decoder stream when no knob is set.
+    const cfgNeedsSetKnob = Boolean(transcriberStage.prefixConditioning && transcriberStage.prefixConditioning.cfgOnlyWithSetKnobs);
+    const useCfg = settings.guidanceScale > 1.0 &&
+      Boolean(transcriberStage.prefixConditioning && transcriberStage.prefixConditioning.pervasiveDescriptors) &&
+      (!cfgNeedsSetKnob || settings.knobsActive);
     let uncondPrefixTokens = null, uncondPrefixBias = null;
     if (useCfg) {
       uncondPrefixTokens = [onnxLib.BOS_TOKEN, onnxLib.difficultyToken(settings.difficulty)];
       for (let knex = 0; knex < descNames.length; knex += 1) {
         uncondPrefixTokens.push(onnxLib.descriptorToken(knex, onnxLib.DESC_AUTO_BIN));
       }
+      uncondPrefixTokens.push(...structurePrefix);
       uncondPrefixBias = onnxLib.computePrefixBias(uncondPrefixTokens, {
         descPrefixScan,
         pervasiveDifficulty: Boolean(transcriberStage.prefixConditioning.pervasiveDifficulty),
         pervasiveDescriptors: Boolean(transcriberStage.prefixConditioning.pervasiveDescriptors),
-        dModel, tables,
+        dModel, tables, descriptorTokenBase,
       });
       emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: CFG w=${settings.guidanceScale} uncond prefix len ${uncondPrefixTokens.length}` });
     } else {
@@ -1248,7 +1375,8 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
 
     const partialState = { sequence: 0, sentTiming: false };
 
-    const decodeResult = await onnxLib.generate({
+    const forceSolo = Boolean(structure && settings.solos && settings.forceSolo);
+    const generateOptions = {
       manifest,
       encoderSession,
       decoderSession,
@@ -1263,6 +1391,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       guidanceScale: useCfg ? settings.guidanceScale : 1.0,
       uncondPrefixTokens,
       uncondPrefixBias,
+      sampleOnlyAfterPrefix: Boolean(transcriberStage.decode && transcriberStage.decode.sampleOnlyAfterPrefix),
       progressIntervalBeats: 4,
       onProgress: ({ tokens, committedBeats, totalBeats, done }) => {
         if (committedBeats <= 0 && !done) return;
@@ -1299,7 +1428,18 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
         emit(event);
       },
       log: (m) => emit({ type: "log", stage: "transcription", stream: "stdout", message: m }),
-    });
+    };
+    let decodeResult;
+    let forcedSolo = null;
+    if (forceSolo) {
+      ({ result: decodeResult, forcedSolo } = await onnxLib.generateWithForcedSolo(generateOptions, {
+        structure,
+        seed: settings.seed,
+        log: generateOptions.log,
+      }));
+    } else {
+      decodeResult = await onnxLib.generate(generateOptions);
+    }
     const tokens = Array.from(decodeResult.tokens);
     emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decoded ${tokens.length} tokens in ${decodeResult.stats.generationSeconds}s` });
     emit({
@@ -1317,6 +1457,8 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       emit({ type: "stage", stage: "chart", status: "running", backend: "onnxruntime-node" });
     const { events, issues } = onnxLib.decodeTokens(tokens);
     const rows = onnxLib.eventsToChartNotes(events, resolution);
+    const structureMarks = onnxLib.decodeStructure(tokens, structure);
+    const { trackEvents, globalEvents } = onnxLib.structureChartLines(structureMarks, resolution, nBeats);
     const chartMetadata = {
       title: String(job.title || job.metadata?.title || "Untitled").trim() || "Untitled",
       artist: String(job.metadata?.artist || "Unknown Artist").trim() || "Unknown Artist",
@@ -1331,6 +1473,8 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       resolution,
       syncLines,
       offset,
+      globalEvents,
+      trackEvents,
     });
     await writeVerifiedAtomic(chartPath, chartText, {
       rootDirectory: outputDir,
@@ -1343,7 +1487,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       generatorId: job.generatorId,
       generatorLabel: generator.label,
       backend: "onnxruntime-node",
-      model: transcriberStage && transcriberStage.note ? "fretformer-v1" : null,
+      model: manifest.profileId || null,
       difficulty: settings.difficulty,
       temperature: settings.temperature,
       top_p: settings.topP,
@@ -1357,6 +1501,15 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
           }, {})
         : null,
       guidance_scale: useCfg ? settings.guidanceScale : null,
+      structure: structure
+        ? {
+            solos_flag: settings.solos,
+            force_solo: forceSolo,
+            forced_solo: forcedSolo,
+            solos: structureMarks.solos,
+            sections: structureMarks.sections,
+          }
+        : null,
       event_count: events.length,
       note_line_count: noteLineCount,
       token_stats: {
@@ -1399,8 +1552,9 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       },
       featureBuild: {
         refDb, nFramesFinal, nBeats, maxBeats,
-        channelOrder: ["full", "drums", "bass", "vocals", "other"],
-        beatMelShape: [1, nBeats, 5, 80, 32],
+        channelOrder,
+        beatMelShape,
+        demucsModel: demucsStage.demucsModel || null,
       },
       generatedStats: null,
     };

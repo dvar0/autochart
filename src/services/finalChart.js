@@ -4,6 +4,7 @@ import {
   timingDetectorLabel,
   timingDetectorOptionFromResolved,
   timingSmoothingEnabledFromGeneration,
+  usesOlderTimingSmoother,
 } from "../data/generationSettings.js";
 import { createFinalChartVersion, versionTimingSignature } from "./chartVersions.js";
 import { importedFinalSlotSeed } from "../../shared/finalSlots.js";
@@ -46,7 +47,8 @@ function versionTimingLabel(version) {
   const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
   const label = timingDetectorLabel(timingDetector);
   if (timingDetector === SOURCE_CHART_TIMING_DETECTOR_ID) return label;
-  return `${label} (${timingSmoothingEnabledFromGeneration(generation) ? "smoothed" : "raw grid"})`;
+  if (!timingSmoothingEnabledFromGeneration(generation)) return `${label} (raw grid)`;
+  return `${label} (${usesOlderTimingSmoother(generation) ? "old smoothing" : "smoothed"})`;
 }
 
 function assignedSlotEntries(slotVersions = {}, order = FINAL_SLOT_ORDER) {

@@ -140,6 +140,7 @@ function defaultDemucsArtifact(stored = null, sourceTransform = null) {
     profile: stored?.profile || "Standard Demucs",
     audioSha256: stored?.audioSha256 || null,
     stems: stored?.stems || {},
+    stemSets: stored?.stemSets || {},
     cache: stored?.cache || {},
     provenance: stored?.provenance || null,
     metrics: stored?.metrics || null,
@@ -227,12 +228,53 @@ function upsertDemucsArtifact(sourceArtifacts, artifact, activeId = null) {
   };
 }
 
-// Whether a separation already has cached stems on disk. When it does, a
-// generation reuses them and never re-runs Demucs, so the live card must not
-// claim it's "separating stems" — that only happens for a fresh separation
-// (e.g. a new lead-in variant).
-function separationIsCached(artifact) {
+const EMPTY_PREVIEW_AUDIO = Object.freeze({ path: "", buffer: null });
+// Padded lead-in audio files kept in memory while switching between takes.
+const PREVIEW_AUDIO_CACHE_SIZE = 3;
+
+// Generators marked availability "installed" (test models) are offered only
+// once their model folder is present; every other generator is always listed.
+function selectableGeneratorsFrom(generators = []) {
+  return generators.filter((generator) => generator.availability !== "installed" || generator.setup?.ready);
+}
+
+function effectiveGenerator(generators = [], generatorId = "") {
+  const selectable = selectableGeneratorsFrom(generators);
+  return selectable.find((generator) => generator.id === generatorId) || selectable[0] || generators[0] || null;
+}
+
+// The stem set a generator separates with: v1's htdemucs stems unless the
+// generator names its own (Fretformer v1.2: htdemucs_6s).
+export function generatorStemSetId(generator = null) {
+  const separation = generator?.separation || {};
+  return separation.cacheSubdir ? String(separation.stemSet || separation.cacheSubdir) : "htdemucs";
+}
+
+// One separation can hold a stem set per separation model; `stems` is v1's.
+export function separationStemSet(artifact, stemSetId = "htdemucs") {
+  const fromSet = artifact?.stemSets?.[stemSetId]?.stems;
+  if (fromSet && Object.keys(fromSet).length) return fromSet;
+  return stemSetId === "htdemucs" ? artifact?.stems || {} : {};
+}
+
+export function demucsAuditionKey(artifactId, stemSetId, stem) {
+  return `${artifactId}:${stemSetId}:${stem}`;
+}
+
+export function separationStemsFor(artifact, generator = null) {
+  return separationStemSet(artifact, generatorStemSetId(generator));
+}
+
+// Whether a separation already has cached stems on disk for this generator's
+// separation model. When it does, a generation reuses them and never re-runs
+// Demucs, so the live card must not claim it's "separating stems" — that only
+// happens for a fresh separation (e.g. a new lead-in variant, or a model with
+// its own stems on a separation it hasn't used yet).
+function separationIsCached(artifact, generator = null) {
   if (!artifact) return false;
+  if (generatorStemSetId(generator) !== "htdemucs") {
+    return Object.values(separationStemsFor(artifact, generator)).some((stem) => stem?.path);
+  }
   if (artifact.cache?.workspace) return true;
   return Object.values(artifact.stems || {}).some((stem) => stem?.path);
 }
@@ -249,6 +291,7 @@ function demucsArtifactFromResult(result, fallback = {}) {
     profile: result.profile || fallback.profile || "Standard Demucs",
     audioSha256: result.audioSha256 || fallback.audioSha256 || null,
     stems: result.stems || fallback.stems || {},
+    stemSets: result.stemSets || fallback.stemSets || {},
     cache: result.cache || fallback.cache || {},
     provenance: result.provenance || fallback.provenance || null,
     metrics: result.metrics || fallback.metrics || null,
@@ -417,8 +460,11 @@ function revokeObjectUrlRef(ref) {
   }
 }
 
-function stemDisplayName(stem) {
+function stemDisplayName(stem, stemSetId = "htdemucs") {
+  // htdemucs_6s splits guitar out, so its "other" is everything left over.
+  if (stemSetId !== "htdemucs" && stem === "other") return "Other stem";
   const names = {
+    guitar: "Guitar stem",
     other: "Guitar / other stem",
     drums: "Drums stem",
     bass: "Bass stem",
@@ -538,7 +584,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [compareVersionIds, setCompareVersionIds] = useState(["imported"]);
   const [compareSelection, setCompareSelection] = useState([]);
   const [sourceArtifacts, setSourceArtifacts] = useState(() => emptySourceArtifacts());
-  const [previewAudioBuffer, setPreviewAudioBuffer] = useState(null);
+  // Padded analysis audio for lead-in takes, tagged with the path it was read
+  // from so a take never plays another lead-in's audio. Recent files stay in
+  // previewAudioCacheRef, so switching between takes doesn't re-read them.
+  const [previewAudio, setPreviewAudio] = useState(EMPTY_PREVIEW_AUDIO);
+  const previewAudioCacheRef = useRef(new Map());
   const [previewAudioError, setPreviewAudioError] = useState("");
   const [demucsAudition, setDemucsAudition] = useState(null);
   const [demucsAuditionLoadingKey, setDemucsAuditionLoadingKey] = useState("");
@@ -579,7 +629,13 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
             : null
         );
         setEngineError(manifest.available === false ? manifest.error || "Generator engine is unavailable." : "");
-        setGeneratorId(nextGenerators[0]?.id || DEFAULT_GENERATOR_ID);
+        // Keep the user's pick across manifest reloads; effectiveGenerator()
+        // falls back to the first listed model if it isn't selectable.
+        setGeneratorId((current) =>
+          nextGenerators.some((generator) => generator.id === current)
+            ? current
+            : nextGenerators[0]?.id || DEFAULT_GENERATOR_ID
+        );
       })
       .catch((err) => {
         if (!active) return;
@@ -593,7 +649,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   }, [visible]);
 
   useEffect(() => {
-    const selected = generators.find((item) => item.id === generatorId) || generators[0] || null;
+    const selected = effectiveGenerator(generators, generatorId);
     if (!selected) return;
     const supported = generatorDifficultyIds(selected);
     setGenerationControls((current) =>
@@ -741,7 +797,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setCompareVersionIds(["imported"]);
       setCompareSelection([]);
       setSourceArtifacts(emptySourceArtifacts());
-      setPreviewAudioBuffer(null);
+      setPreviewAudio(EMPTY_PREVIEW_AUDIO);
+      previewAudioCacheRef.current.clear();
       revokeObjectUrlRef(demucsAuditionUrlRef);
       setDemucsAudition(null);
       setDemucsAuditionLoadingKey("");
@@ -765,6 +822,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setPendingAlbumUrl(null);
     setPendingBgFromAudio(false);
     const versions = importedSong.versions || [];
+    // Reopen a project on the model it last generated with (when installed).
+    const savedGeneratorId = importedSong.settings?.generation?.generatorId;
+    if (savedGeneratorId) setGeneratorId(savedGeneratorId);
     setGenerationControls(
       controlsFromSavedGeneration(
         importedSong.settings?.generation,
@@ -897,7 +957,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       }
 
       setPendingAudioFile(f);
-      setPreviewAudioBuffer(null);
+      setPreviewAudio(EMPTY_PREVIEW_AUDIO);
+      previewAudioCacheRef.current.clear();
       setLiveAnalysisAudioBuffer(null);
       setGenRun(null);
       setLocalVersions([]);
@@ -966,7 +1027,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   };
 
   const buildRunSettings = (activeId = null) => {
-    const selectedRunGenerator = generators.find((g) => g.id === generatorId) || generators[0] || null;
+    const selectedRunGenerator = effectiveGenerator(generators, generatorId);
     const generationSettings = buildGenerationSettings({
       generatorId: selectedRunGenerator?.id || generatorId || DEFAULT_GENERATOR_ID,
       controls: generationControls,
@@ -1256,13 +1317,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setStatusMsg(`${artifact?.name || "Selected separation"} ${compactSourceVariantLabel(artifact?.sourceTransform || currentSourceTransform)} is active for matching charts.`);
   };
 
-  const prepareDemucsSeparation = async ({ id = "", name = "", makeActive = true, sourceTransform = null } = {}) => {
+  // `generator` picks the separation model (its stem set); the selected model by default.
+  const prepareDemucsSeparation = async ({ id = "", name = "", makeActive = true, sourceTransform = null, generator = selectedGenerator } = {}) => {
     const runAudioFile = pendingAudioFile || importedSong?.audioFile || null;
     if (!runAudioFile) {
       setStatusMsg("Choose a media file before preparing Demucs.");
       return null;
     }
-    const generatorSetup = selectedGenerator?.setup;
+    const generatorSetup = generator?.setup;
     if (generatorSetup && !generatorSetup.ready) {
       setStatusMsg(generatorSetup.message || "Demucs preparation needs setup before this generator can run.");
       return null;
@@ -1292,7 +1354,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         audioFile: runAudioFile,
         audioName: sourceAudioName,
         audioSource: runAudioResolution.source,
-        generatorId,
+        generatorId: generator?.id || generatorId,
         separationId: existing?.engineId || separationId,
         name: separationName,
         metadata: details,
@@ -1322,24 +1384,27 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     }
   };
 
-  const loadDemucsStem = async (artifact, stem, { activate = false } = {}) => {
+  // stemSetId says which model's stems to play (defaults to the selected
+  // model's); a missing set is separated on demand with the model that makes it.
+  const loadDemucsStem = async (artifact, stem, { activate = false, stemSetId = generatorStemSetId(selectedGenerator) } = {}) => {
     if (!artifact) return null;
-    const key = `${artifact.id}:${stem}`;
+    const key = demucsAuditionKey(artifact.id, stemSetId, stem);
     setDeckTab("demucs");
     setDemucsAuditionLoadingKey(key);
     setStatusMsg("");
     try {
       let readyArtifact = artifact;
-      if (!readyArtifact?.stems?.[stem]?.path) {
+      if (!separationStemSet(readyArtifact, stemSetId)?.[stem]?.path) {
         readyArtifact = await prepareDemucsSeparation({
           id: artifact.id,
           name: artifact.name,
           makeActive: artifact.id === activeDemucsId,
           sourceTransform: artifact.sourceTransform || sourceTransformFromKey(artifact.sourceVariantKey),
+          generator: generatorForStemSet(stemSetId) || selectedGenerator,
         });
       }
-      const stemInfo = readyArtifact?.stems?.[stem];
-      if (!stemInfo?.path) throw new Error(`No ${stemDisplayName(stem).toLowerCase()} was found for ${readyArtifact?.name || "this separation"}.`);
+      const stemInfo = separationStemSet(readyArtifact, stemSetId)?.[stem];
+      if (!stemInfo?.path) throw new Error(`No ${stemDisplayName(stem, stemSetId).toLowerCase()} was found for ${readyArtifact?.name || "this separation"}.`);
       const data = await readDemucsStem(stemInfo.path);
       const mime = stemInfo.mime || (stemInfo.format === "wav" ? "audio/wav" : "audio/flac");
       const url = URL.createObjectURL(new Blob([data], { type: mime }));
@@ -1347,8 +1412,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         id: readyArtifact.id,
         name: readyArtifact.name,
         stem,
-        stemName: stemDisplayName(stem),
-        label: `${readyArtifact.name} · ${stemDisplayName(stem)}`,
+        stemSet: stemSetId,
+        stemName: stemDisplayName(stem, stemSetId),
+        label: `${readyArtifact.name} · ${stemDisplayName(stem, stemSetId)}`,
         url,
         data,
         mime,
@@ -1367,7 +1433,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     }
   };
 
-  const auditionDemucsStem = (artifact, stem) => loadDemucsStem(artifact, stem, { activate: true });
+  const auditionDemucsStem = (artifact, stem, stemSetId) =>
+    loadDemucsStem(artifact, stem, { activate: true, ...(stemSetId ? { stemSetId } : {}) });
 
   const handleGenerate = async ({ hardwareMode, settingsSnapshot, sourceSnapshot } = {}) => {
     if (generationInFlightRef.current) return;
@@ -1502,7 +1569,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         live: null,
         runtimeFallback: null,
         hardwareMode: hardwareMode === "cpu" ? "cpu" : "auto",
-        willSeparate: !separationIsCached(runDemucsSeparation),
+        willSeparate: !separationIsCached(runDemucsSeparation, selectedGenerator),
         difficulty: runSettings.difficulty,
         // Source-transform lead-in, in ms + seconds, used by the live board to
         // align in-flight chart playback against the (usually unpadded) source
@@ -1811,6 +1878,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     ? previewAudioVersion?.meta?.analysisAudioPath || ""
     : "";
   const track = selectedSingleVersion?.track || baseTrack;
+  const previewAudioBuffer = previewAudio.path === previewAnalysisAudioPath ? previewAudio.buffer : null;
   const audioBuffer = previewAnalysisAudioPath ? previewAudioBuffer : sourceAudioBuffer;
   const activeVideoOffset = previewAnalysisAudioPath ? previewAudioLeadInSeconds : 0;
   // Lead-in seconds baked into whichever audio buffer is currently mounted
@@ -1824,7 +1892,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const difficultyTone = DIFF[diff]?.color || "red";
   const activeCompareVersionId = selectedCompareVersions[1]?.id || selectedCompareVersions[0]?.id;
   const activeVersionId = previewMode === "single" ? singleVersion : activeCompareVersionId;
-  const selectedGenerator = generators.find((g) => g.id === generatorId) || generators[0];
+  const selectedGenerator = effectiveGenerator(generators, generatorId);
+  const selectableGenerators = selectableGeneratorsFrom(generators);
+  const generatorForStemSet = (stemSetId) =>
+    selectableGenerators.find((generator) => generatorStemSetId(generator) === stemSetId) || null;
+  const selectGenerator = (id) => {
+    if (!selectableGenerators.some((generator) => generator.id === id)) return;
+    setGeneratorId(id);
+  };
   const currentRunSettings = buildRunSettings();
   const currentGeneration = currentRunSettings.generation;
   const resolvedSettings = currentGeneration.resolved;
@@ -1859,16 +1934,26 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
 
   useEffect(() => {
     let cancelled = false;
-    if (!previewAnalysisAudioPath) {
-      setPreviewAudioBuffer(null);
-      setPreviewAudioError("");
+    setPreviewAudioError("");
+    if (!previewAnalysisAudioPath) return undefined;
+    const cache = previewAudioCacheRef.current;
+    const cached = cache.get(previewAnalysisAudioPath);
+    if (cached) {
+      // Refresh its place in the small most-recently-used cache.
+      cache.delete(previewAnalysisAudioPath);
+      cache.set(previewAnalysisAudioPath, cached);
+      setPreviewAudio({ path: previewAnalysisAudioPath, buffer: cached });
       return undefined;
     }
-    setPreviewAudioBuffer(null);
-    setPreviewAudioError("");
     readEngineCacheFile(previewAnalysisAudioPath)
       .then((buffer) => {
-        if (!cancelled) setPreviewAudioBuffer(buffer);
+        if (cancelled) return;
+        cache.set(previewAnalysisAudioPath, buffer);
+        for (const key of cache.keys()) {
+          if (cache.size <= PREVIEW_AUDIO_CACHE_SIZE) break;
+          cache.delete(key);
+        }
+        setPreviewAudio({ path: previewAnalysisAudioPath, buffer });
       })
       .catch(() => {
         // The cached padded analysis audio is missing or unreadable. Without
@@ -1876,7 +1961,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         // falling back would put notes `leadInSeconds` late — so surface a
         // hard error instead of silently hanging on "Loading chart…".
         if (!cancelled) {
-          setPreviewAudioBuffer(null);
+          setPreviewAudio(EMPTY_PREVIEW_AUDIO);
           setPreviewAudioError(
             "This chart was generated with lead-in silence, but its padded audio cache is missing. Regenerate the chart before previewing."
           );
@@ -2175,6 +2260,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     generators,
     generatorId,
     selectedGenerator,
+    selectableGenerators,
+    selectGenerator,
+    generatorForStemSet,
     selectedGeneratorSetup,
     selectedGeneratorLabel,
     supportedDifficultyIds,

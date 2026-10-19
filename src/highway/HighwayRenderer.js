@@ -119,7 +119,7 @@ export class HighwayRenderer {
     this._flames = [];
     // Star-power phrase ranges (seconds), for the highway glow.
     this._starPhrases = [];
-    // Solo phrase ranges (seconds), drawn as lightweight runway bands.
+    // Solo phrase ranges (seconds), drawn as a violet runway with glowing rails.
     this._soloPhrases = [];
     this._gemSprites = new Map();
     // Static-geometry caches, rebuilt on resize: the board + lane lines layer,
@@ -519,6 +519,9 @@ export class HighwayRenderer {
     ctx.restore();
   }
 
+  // Solo sections read as a violet runway: a tinted lane wash, chunky glowing
+  // rails along both board edges, and solid gates where the solo starts and
+  // ends. The rails pulse while the playhead is inside the solo.
   _drawSoloBands(songTime) {
     const phrases = this._soloPhrases;
     if (!phrases.length) return;
@@ -528,15 +531,14 @@ export class HighwayRenderer {
     const visibleEnd = songTime + p.lookAhead;
 
     ctx.save();
+    ctx.lineCap = "round";
     for (const phrase of phrases) {
       if (phrase.end < visibleStart) continue;
       if (phrase.start > visibleEnd) break;
       const start = Math.max(phrase.start, visibleStart);
       const end = Math.min(phrase.end, visibleEnd);
-      const dStart = p.depthForTime(start, songTime);
-      const dEnd = p.depthForTime(end, songTime);
-      const yStart = p.project(dStart).y;
-      const yEnd = p.project(dEnd).y;
+      const yStart = p.project(p.depthForTime(start, songTime)).y;
+      const yEnd = p.project(p.depthForTime(end, songTime)).y;
       const topY = Math.max(p.horizonY, Math.min(yStart, yEnd));
       const bottomY = Math.min(p.height, Math.max(yStart, yEnd));
       if (bottomY <= topY) continue;
@@ -545,11 +547,13 @@ export class HighwayRenderer {
       const bottomScale = Math.max(0, p.scaleForY(bottomY));
       const topHalf = p.halfWidthNear * topScale;
       const bottomHalf = p.halfWidthNear * bottomScale;
+      const active = songTime >= phrase.start && songTime < phrase.end;
+      const pulse = active && !this.reduceMotion ? 0.5 + 0.5 * Math.sin(songTime * 7) : 0.5;
 
       const grad = ctx.createLinearGradient(0, topY, 0, bottomY);
-      grad.addColorStop(0, "rgba(154,107,255,0.04)");
-      grad.addColorStop(0.5, "rgba(154,107,255,0.13)");
-      grad.addColorStop(1, "rgba(154,107,255,0.06)");
+      grad.addColorStop(0, "rgba(168,110,255,0.06)");
+      grad.addColorStop(0.5, `rgba(168,110,255,${active ? 0.2 + pulse * 0.06 : 0.17})`);
+      grad.addColorStop(1, `rgba(168,110,255,${active ? 0.24 : 0.1})`);
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.moveTo(p.centerX - topHalf, topY);
@@ -559,14 +563,38 @@ export class HighwayRenderer {
       ctx.closePath();
       ctx.fill();
 
-      ctx.strokeStyle = "rgba(190,165,255,0.38)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(p.centerX - topHalf, topY + 0.5);
-      ctx.lineTo(p.centerX + topHalf, topY + 0.5);
-      ctx.moveTo(p.centerX - bottomHalf, bottomY - 0.5);
-      ctx.lineTo(p.centerX + bottomHalf, bottomY - 0.5);
-      ctx.stroke();
+      // Rails: a wide translucent stroke under a solid core reads as glow
+      // without per-frame shadow blur.
+      const railWidth = Math.max(2, 5 * bottomScale);
+      const rail = (x0, x1) => {
+        ctx.beginPath();
+        ctx.moveTo(x0, topY);
+        ctx.lineTo(x1, bottomY);
+        ctx.stroke();
+      };
+      ctx.strokeStyle = `rgba(178,120,255,${0.22 + pulse * 0.16})`;
+      ctx.lineWidth = railWidth * 2.6;
+      rail(p.centerX - topHalf, p.centerX - bottomHalf);
+      rail(p.centerX + topHalf, p.centerX + bottomHalf);
+      ctx.strokeStyle = active ? "#d6b8ff" : "#b98cff";
+      ctx.lineWidth = railWidth;
+      rail(p.centerX - topHalf, p.centerX - bottomHalf);
+      rail(p.centerX + topHalf, p.centerX + bottomHalf);
+
+      // Gates only where the real phrase edge is on screen, not at clip edges.
+      const gate = (y) => {
+        if (y < p.horizonY || y > p.height) return;
+        const scale = Math.max(0, p.scaleForY(y));
+        const half = p.halfWidthNear * scale;
+        ctx.lineWidth = Math.max(2, 4 * scale);
+        ctx.strokeStyle = "#c9a3ff";
+        ctx.beginPath();
+        ctx.moveTo(p.centerX - half, y);
+        ctx.lineTo(p.centerX + half, y);
+        ctx.stroke();
+      };
+      if (start === phrase.start) gate(yStart);
+      if (end === phrase.end) gate(yEnd);
     }
     ctx.restore();
   }

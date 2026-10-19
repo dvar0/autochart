@@ -1,6 +1,7 @@
 {
   "generators": {
-    "autochart.fretformer.v1-onnx": "Fretformer"
+    "autochart.fretformer.v1-onnx": "Fretformer",
+    "autochart.fretformer.v1-2-onnx": "Fretformer v1.2"
   },
   "components": {
     "demucs": "Demucs audio separation",

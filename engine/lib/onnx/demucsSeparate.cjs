@@ -285,6 +285,30 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
   return stems;
 }
 
+// Sum model sources into the cached stems per orch.stemFold (htdemucs_6s:
+// other = other + piano, in float32 like the training cache). Stems that map
+// to a single source pass through untouched, so a fold-free model is a no-op.
+function foldStems(stems, orch) {
+  const byName = new Map(stems.map((stem) => [stem.name, stem]));
+  const stemNames = Array.isArray(orch.stems) && orch.stems.length ? orch.stems : stems.map((stem) => stem.name);
+  return stemNames.map((name) => {
+    const parts = (orch.stemFold && orch.stemFold[name]) || [name];
+    const sources = parts.map((part) => {
+      const source = byName.get(part);
+      if (!source) throw new Error(`Demucs output is missing source ${part} for stem ${name}.`);
+      return source;
+    });
+    if (sources.length === 1) return { name, left: sources[0].left, right: sources[0].right };
+    const left = Float32Array.from(sources[0].left);
+    const right = Float32Array.from(sources[0].right);
+    for (const source of sources.slice(1)) {
+      for (let i = 0; i < left.length; i += 1) left[i] += source.left[i];
+      for (let i = 0; i < right.length; i += 1) right[i] += source.right[i];
+    }
+    return { name, left, right };
+  });
+}
+
 // Decode-independent convenience: take planar stereo {left,right} Float32Arrays, separate, write wavs.
 async function separateAndWrite(mix, totalLength, sessions, orch, outDir, { onProgress = null, log = null, bits = 32 } = {}) {
   const planar = new Float32Array(2 * totalLength);
@@ -302,6 +326,7 @@ async function separateAndWrite(mix, totalLength, sessions, orch, outDir, { onPr
 
 module.exports = {
   separate,
+  foldStems,
   separateAndWrite,
   triangularWeights,
   runSegment,

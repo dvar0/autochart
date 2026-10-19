@@ -84,9 +84,27 @@ async function main() {
             window.patchGeneration = (patch) => setProject((current) => ({ ...current, ...patch }));
             return <PreviewStage project={project} />;
           }
+          // Takes on different lead-ins play against different audio: the
+          // +1s take against padded audio, the 0s take against the source.
+          function LeadSwitch() {
+            const ref = useRef(null);
+            const [take, setTake] = useState(0);
+            window.preview = ref;
+            window.selectLeadTake = setTake;
+            const current = window.leadTakes[take];
+            return <HighwayPreview ref={ref} track={current.track} audioBuffer={current.audio}
+              audioLeadInSeconds={current.lead} />;
+          }
+          window.leadTakes = [
+            { lead: 1, audio: makeAudio(9), track: { song: { resolution: 192, offset: 0 }, tempoMap: { tickToSeconds: (tick) => tick / 384 },
+              notes: [{ time: 1.2, endTime: 1.2, tick: 461, sustain: 0, frets: [0] }], events: [], starPower: [] } },
+            { lead: 0, audio: makeAudio(8), track: { song: { resolution: 192, offset: 0 }, tempoMap: { tickToSeconds: (tick) => tick / 384 },
+              notes: [{ time: 0.2, endTime: 0.2, tick: 77, sustain: 0, frets: [1] }], events: [], starPower: [] } },
+          ];
           const root = createRoot(document.getElementById('root'));
           window.mountGeneration = (first, lead) => root.render(<Generation key={'generation-' + first + '-' + lead} first={first} lead={lead} />);
           window.mountPreview = (joined) => root.render(<Preview key={String(joined)} joined={joined} />);
+          window.mountLeadSwitch = () => root.render(<LeadSwitch key="lead-switch" />);
         `,
         resolveDir: path.resolve(__dirname, '..'),
         loader: 'jsx',
@@ -252,6 +270,44 @@ async function main() {
     assert.equal(await evaluate('Boolean(document.querySelector(".transport-btn"))'), false, 'missing audio must not offer stale playback');
     assert.equal(await evaluate('window.reportedPlaying'), false, 'missing audio must clear the playback report');
     console.log('Missing padded audio stops stale playback and clears the transport');
+
+    // Switching from a +1s lead-in take to a 0s take while playing: the new
+    // chart waits for its own audio (never drawn 1s off against the old
+    // audio), the song position carries over, and audio heard before is not
+    // decoded again.
+    await evaluate('window.mountLeadSwitch()');
+    await waitFor('window.preview?.current?.isReady() && window.__highway.engine.buffer', 'lead-in take ready');
+    await evaluate(`
+      window.leadEngine = window.__highway.engine;
+      window.decodeCalls = 0;
+      window.originalLeadDecode = window.leadEngine.decodeAudio.bind(window.leadEngine);
+      window.leadEngine.decodeAudio = async (data) => {
+        window.decodeCalls += 1;
+        const decoded = await window.originalLeadDecode(data);
+        await new Promise((resolve) => { window.releaseLeadDecode = resolve; });
+        return decoded;
+      };
+      window.leadEngine.seek(4);
+      window.preview.current.play();
+    `);
+    await waitFor('window.leadEngine.running', 'lead-in take playing');
+    await evaluate('window.releaseLeadDecode = null; window.beforeSwitch = window.leadEngine.songTime; window.selectLeadTake(1)');
+    await waitFor('Boolean(window.releaseLeadDecode)', 'source audio decoding');
+    assert.equal(await evaluate('window.leadEngine.notes[0].time'), 1.2, 'the 0s take waits for its audio');
+    assert.equal(await evaluate('window.leadEngine.running && window.leadEngine.songTime >= window.beforeSwitch'), true, 'the +1s take keeps playing meanwhile');
+    await evaluate('window.heldAt = window.leadEngine.songTime; window.releaseLeadDecode()');
+    await waitFor('window.leadEngine.notes[0].time === 0.2', 'the 0s take with its audio');
+    const shifted = await evaluate('window.heldAt - window.leadEngine.songTime');
+    assert.ok(shifted > 0.9 && shifted < 1.1, `position moves back exactly the lead-in (moved ${shifted.toFixed(3)}s)`);
+    assert.equal(await evaluate('window.leadEngine.running'), true, 'keeps playing after the swap');
+    await evaluate('window.backAt = window.leadEngine.songTime; window.selectLeadTake(0)');
+    await waitFor('window.leadEngine.notes[0].time === 1.2', 'back to the +1s take');
+    const back = await evaluate('window.leadEngine.songTime - window.backAt');
+    assert.ok(back > 0.9 && back < 1.2, `switching back restores the lead-in (moved ${back.toFixed(3)}s)`);
+    await evaluate('window.selectLeadTake(1)');
+    await waitFor('window.leadEngine.notes[0].time === 0.2', 'the 0s take again');
+    assert.equal(await evaluate('window.decodeCalls'), 1, 'each audio is decoded once');
+    console.log('Lead-in take switches keep chart and audio aligned and reuse decoded audio');
 
   } finally {
     win?.destroy();

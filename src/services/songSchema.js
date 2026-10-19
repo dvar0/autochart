@@ -62,6 +62,8 @@ function normalizeSourceArtifacts(raw = {}) {
           profile: item.profile || "Standard Demucs",
           audioSha256: item.audioSha256 || null,
           stems: item.stems || {},
+          // Per-model stem sets ({ htdemucs, htdemucs_6s }); `stems` stays v1's.
+          stemSets: item.stemSets || {},
           cache: item.cache || {},
           sourceTransform: item.sourceTransform || null,
           sourceVariantKey: item.sourceVariantKey || item.sourceTransform?.key || "lead-in:0",
