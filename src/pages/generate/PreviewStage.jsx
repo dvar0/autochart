@@ -830,7 +830,6 @@ export default function PreviewStage({ project }) {
   const compareLyric = activeLyricPhrase(compareLyricPhrases, compareLyricTime);
   const showingDemucsStage = deckTab === "demucs";
   const showingSinglePreview =
-    !showingEditor &&
     busyAction !== "separating" &&
     !showingDemucsStage &&
     !showingLiveStage &&
