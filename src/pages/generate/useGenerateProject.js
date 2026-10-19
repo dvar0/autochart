@@ -2051,7 +2051,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const EDITOR_MUTATING = new Set([
     "moveNotes", "deleteNotes", "addNote", "toggleTap", "toggleForce", "paintNoteFlag", "setSustain",
     "quantizeSelection", "splitChords", "eraseGesture", "addRange", "updateRange", "deleteRanges", "deleteSelection",
-    "applyRedo", "pickRedoTake", "keepRedo", "undo", "redo",
+    "applyRedo", "pickRedoTake", "undo", "redo",
   ]);
 
   const editorChangeCanMutate = (change) => {

@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { I } from "../../../icons.jsx";
 import { barNumberLabel } from "./editRegions.js";
 
 // Panel beside the preview. Its layout never changes: Redo, Notes and Redos
-// are always there, and controls turn on and off with the selection instead
-// of appearing and disappearing. A running redo shows its progress in place
-// of the Redo button.
+// are always there, and its buttons keep their colors whether or not anything
+// is selected. Pressing one with nothing to act on shakes the selection box
+// instead. A running redo shows its progress in place of the Redo button.
 
 const KNOBS = [
   { key: "density", name: "Notes", options: ["less", "auto", "more"], labels: ["Fewer", "Auto", "More"] },
@@ -31,6 +32,7 @@ export default function EditInspector({
   bars,
   regions,
   selectionName,
+  selectedRedo,
   selectedNotes,
   pending,
   knobs,
@@ -47,6 +49,8 @@ export default function EditInspector({
   const redos = doc?.redos || [];
   const hasSelection = regions.length > 0;
   const hasChord = selectedNotes.some((note) => !note.open && note.lanes.length > 1);
+  const [nudge, setNudge] = useState(0);
+  const needsSelection = (ready, run) => () => (ready ? run() : setNudge((n) => n + 1));
   const spotLabel = (region) =>
     regions.length === 1
       ? `${barNumberLabel(bars, region)} · ${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`
@@ -56,7 +60,7 @@ export default function EditInspector({
     <aside className="edit-inspector">
       <section className="insp-card">
         <div className="insp-eyebrow">REDO</div>
-        <div className={"insp-target" + (hasSelection ? "" : " empty")}>
+        <div key={nudge} className={"insp-target" + (hasSelection ? "" : " empty") + (nudge ? " nudge" : "")}>
           <b>{hasSelection ? selectionName : "Nothing selected"}</b>
           {hasSelection ? (
             <div className="insp-spots">
@@ -67,7 +71,7 @@ export default function EditInspector({
               ))}
             </div>
           ) : (
-            <span>Select notes or a section. Shift adds more.</span>
+            <span>Drag across the roll or click a section.</span>
           )}
         </div>
         {pending ? (
@@ -82,14 +86,33 @@ export default function EditInspector({
           </div>
         ) : (
           <div className="insp-redo-buttons">
-            <button className="btn-primary insp-redo" onClick={onRedo} disabled={!hasSelection} title="Redo (R)">
+            <button className="btn-primary insp-redo" onClick={needsSelection(hasSelection, onRedo)} title="Redo (R)">
               <I.spark /> Redo
-            </button>
-            <button className="settings-secondary" onClick={onRedoToEnd} title="Keep everything before this point and redo the rest of the song">
-              Redo to the end
             </button>
           </div>
         )}
+        <div className="insp-redo-row">
+          <div className="insp-takes" data-on={selectedRedo ? "" : undefined}>
+            <button
+              onClick={() => onPickRedo(selectedRedo, selectedRedo.active - 1)}
+              disabled={!selectedRedo || selectedRedo.active < 0}
+              title="Previous take"
+            >
+              <I.chevLeft />
+            </button>
+            <span>{!selectedRedo || selectedRedo.active < 0 ? "Original" : `Take ${selectedRedo.active + 1} of ${selectedRedo.takes.length}`}</span>
+            <button
+              onClick={() => onPickRedo(selectedRedo, selectedRedo.active + 1)}
+              disabled={!selectedRedo || selectedRedo.active >= selectedRedo.takes.length - 1}
+              title="Next take"
+            >
+              <I.chevRight />
+            </button>
+          </div>
+          <button className="settings-secondary" onClick={onRedoToEnd} title="Keep everything before this point and redo the rest of the song">
+            Redo to the end
+          </button>
+        </div>
         <div className="insp-knobs">
           {KNOBS.map((knob) => (
             <div className="insp-knob" key={knob.key}>
@@ -123,8 +146,7 @@ export default function EditInspector({
               <button
                 key={action.id}
                 data-tone={action.tone}
-                onClick={() => onNoteAction(action.id)}
-                disabled={!selectedNotes.length || (action.needsChord && !hasChord)}
+                onClick={needsSelection(selectedNotes.length && (!action.needsChord || hasChord), () => onNoteAction(action.id))}
                 title={action.key ? `${action.label} (${action.key})` : action.label}
               >
                 <Icon /> {action.label}
@@ -134,8 +156,7 @@ export default function EditInspector({
           <button
             className="insp-note-delete"
             data-tone="danger"
-            onClick={() => onNoteAction("delete")}
-            disabled={!selectedNotes.length}
+            onClick={needsSelection(selectedNotes.length, () => onNoteAction("delete"))}
             title="Delete (Del)"
           >
             <I.trash /> Delete
@@ -149,16 +170,13 @@ export default function EditInspector({
           <ul>
             {[...redos].reverse().map((redo) => (
               <li key={redo.id}>
-                <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title="Show it">
+                <button
+                  className={"insp-history-name" + (redo === selectedRedo ? " active" : "")}
+                  onClick={() => onFocusRedo(redo)}
+                  title="Select it"
+                >
                   <b>{redo.label}</b>
                   <span>{redo.active < 0 ? "Original" : `Take ${redo.active + 1} of ${redo.takes.length}`}</span>
-                </button>
-                <button
-                  className={"insp-history-undo" + (redo.active < 0 ? " on" : "")}
-                  onClick={() => onPickRedo(redo, redo.active < 0 ? redo.takes.length - 1 : -1)}
-                  title={redo.active < 0 ? "Bring the redo back" : "Put the original notes back"}
-                >
-                  {redo.active < 0 ? <I.redo /> : <I.undo />}
                 </button>
               </li>
             ))}

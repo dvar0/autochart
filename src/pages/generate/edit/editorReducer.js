@@ -342,11 +342,6 @@ function applyOperation(state, action) {
       const redos = doc.redos.map((r) => (r.id === redo.id ? { ...r, active: action.index } : r));
       return { ...commit(state, withNotes({ ...doc, redos }, [...kept, ...notesFor])), selectedNoteIds: [] };
     }
-    case "keepRedo": {
-      const redos = (doc.redos || []).filter((r) => r.id !== action.redoId);
-      if (redos.length === (doc.redos || []).length) return state;
-      return commit(state, { ...doc, redos });
-    }
     default:
       return state;
   }

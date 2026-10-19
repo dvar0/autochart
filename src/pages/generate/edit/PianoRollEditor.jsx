@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { I } from "../../../icons.jsx";
 import { FRET_COLORS, OPEN_NOTE_COLOR } from "../../../data/notePalette.js";
 import { snapTicks } from "./chartEditor.js";
 import { nearestBarLine, regionsCover, resizeRegion, snapSpanToBars } from "./editRegions.js";
@@ -19,7 +18,6 @@ import { nearestBarLine, regionsCover, resizeRegion, snapSpanToBars } from "./ed
 
 const SECTION_ROW_H = 24;
 const BAR_ROW_H = 22;
-const REDO_ROW_H = 30;
 const SP_H = 20;
 const SOLO_H = 20;
 const SCROLLBAR_H = 18;
@@ -37,16 +35,14 @@ const FORCE_OUTLINE = "rgba(255,255,255,0.96)";
 
 // Lanes stay compact: height adds no information, width does, so the roll
 // spends the screen on bars instead of taller rows.
-// The redo row only takes space once there is a redo to show.
-function layoutFor(laneH, withRedoRow = false) {
-  const rulerH = SECTION_ROW_H + BAR_ROW_H + (withRedoRow ? REDO_ROW_H : 0);
+function layoutFor(laneH) {
+  const rulerH = SECTION_ROW_H + BAR_ROW_H;
   const noteAreaH = laneH * 5;
   const spY = rulerH + noteAreaH;
   const soloY = spY + SP_H;
   return {
     laneH,
     rulerH,
-    withRedoRow,
     noteAreaH,
     spY,
     soloY,
@@ -90,7 +86,6 @@ function drawRoundRect(ctx, x, y, w, h, r) {
 function regionAtY(L, y) {
   if (y < SECTION_ROW_H) return { type: "sections" };
   if (y < SECTION_ROW_H + BAR_ROW_H) return { type: "bars" };
-  if (y < L.rulerH) return { type: "redos" };
   if (y < L.spY) return { type: "note", lane: Math.max(0, Math.min(4, Math.floor((y - L.rulerH) / L.laneH))) };
   if (y < L.soloY) return { type: "sp" };
   return { type: "solo" };
@@ -115,13 +110,11 @@ export default function PianoRollEditor({
   loop = null,
   apiRef,
   onViewChange,
-  onRedoMore,
 }) {
   const { editor, applyEditorChange, requestEditorSeek } = project;
   const doc = editor.doc;
   const [pxPerBeat, setPxPerBeat] = useState(56);
-  const hasRedos = Boolean(doc?.redos?.length);
-  const [layout, setLayout] = useState(() => layoutFor(laneHeightFor(window.innerHeight), hasRedos));
+  const [layout, setLayout] = useState(() => layoutFor(laneHeightFor(window.innerHeight)));
 
   const rootRef = useRef(null);
   const containerRef = useRef(null);
@@ -142,10 +135,6 @@ export default function PianoRollEditor({
   pxPerBeatRef.current = pxPerBeat;
   layoutRef.current = layout;
   viewRef.current = { bars, sections, regions, pending, loop };
-
-  useEffect(() => {
-    setLayout((prev) => (prev.withRedoRow === hasRedos ? prev : layoutFor(prev.laneH, hasRedos)));
-  }, [hasRedos]);
 
   const resolution = doc?.resolution || 192;
   const pxPerTick = pxPerBeat / resolution;
@@ -472,15 +461,15 @@ export default function PianoRollEditor({
     ctx.lineTo(viewW, SECTION_ROW_H + BAR_ROW_H - 0.5);
     ctx.stroke();
 
-    // Redo row: an orange band under every redone span; the take switchers
-    // (DOM, see RedoChips) sit on top of it.
-    for (const redo of L.withRedoRow ? activeDoc.redos || [] : []) {
+    // Redone spans get an orange edge along the top of the lanes (faint
+    // while showing the original). Takes are switched from the side panel.
+    for (const redo of activeDoc.redos || []) {
       for (const region of redo.regions) {
         const x = tickToX(region.startTick);
         const w = (region.endTick - region.startTick) * ppt;
         if (x > viewW || x + w < 0) continue;
-        ctx.fillStyle = alpha(orange, redo.active < 0 ? 0.12 : dark ? 0.3 : 0.24);
-        drawRoundRect(ctx, x + 1, SECTION_ROW_H + BAR_ROW_H + 3, Math.max(2, w - 2), REDO_ROW_H - 6, 8);
+        ctx.fillStyle = alpha(orange, redo.active < 0 ? 0.35 : 0.95);
+        ctx.fillRect(x, L.rulerH, w, 4);
       }
     }
 
@@ -595,7 +584,7 @@ export default function PianoRollEditor({
     if (!root || typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(() => {
       const laneH = laneHeightFor(window.innerHeight);
-      setLayout((prev) => (prev.laneH === laneH ? prev : layoutFor(laneH, prev.withRedoRow)));
+      setLayout((prev) => (prev.laneH === laneH ? prev : layoutFor(laneH)));
       scheduleDraw();
       reportView();
     });
@@ -892,8 +881,7 @@ export default function PianoRollEditor({
     const tick = xToTick(x);
     const erasing = e.button === 2;
 
-    if (region.type === "redos" || (erasing && (region.type === "sections" || region.type === "bars"))) {
-      if (!erasing) requestEditorSeek(timeAtTick(tick));
+    if (erasing && (region.type === "sections" || region.type === "bars")) {
       dragRef.current = { kind: "noop" };
       return;
     }
@@ -1088,8 +1076,6 @@ export default function PianoRollEditor({
     return <div className="piano-roll-empty">Pick a take and press Edit to open it here.</div>;
   }
 
-  const redos = doc.redos || [];
-
   return (
     <div className="piano-roll" ref={rootRef}>
       <div className="piano-roll-side" aria-hidden="true">
@@ -1114,44 +1100,8 @@ export default function PianoRollEditor({
             onPointerLeave={onPointerLeave}
             onContextMenu={(e) => e.preventDefault()}
           />
-          {redos.map((redo) => (
-            <RedoChips
-              key={redo.id}
-              redo={redo}
-              left={redo.regions[0].startTick * pxPerTick}
-              width={(redo.regions[redo.regions.length - 1].endTick - redo.regions[0].startTick) * pxPerTick}
-              top={SECTION_ROW_H + BAR_ROW_H + 2}
-              busy={Boolean(pending)}
-              onPick={(index) => applyEditorChange({ type: "pickRedoTake", redoId: redo.id, index })}
-              onMore={() => onRedoMore?.(redo)}
-              onKeep={() => applyEditorChange({ type: "keepRedo", redoId: redo.id })}
-            />
-          ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-// The per-redo take switcher: Original, each take, "+" for another one, and ✓
-// to keep the current one and dismiss the switcher.
-// The track spans the redo; the chips stick to its left edge while scrolling
-// through it, so they stay in view anywhere inside a long section.
-function RedoChips({ redo, left, width, top, busy, onPick, onMore, onKeep }) {
-  return (
-    <div className="redo-chips-track" style={{ left, width, top }}>
-    <div className="redo-chips" onPointerDown={(e) => e.stopPropagation()}>
-      <button className={redo.active < 0 ? "active orig" : "orig"} onClick={() => onPick(-1)} title="Original notes">
-        <I.undo />
-      </button>
-      {redo.takes.map((_, index) => (
-        <button key={index} className={redo.active === index ? "active" : ""} onClick={() => onPick(index)} title={`Take ${index + 1}`}>
-          {index + 1}
-        </button>
-      ))}
-      <button onClick={onMore} disabled={busy} title="Try another take"><I.plus /></button>
-      <button className="keep" onClick={onKeep} title="Keep this one"><I.check /></button>
-    </div>
     </div>
   );
 }

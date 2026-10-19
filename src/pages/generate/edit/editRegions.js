@@ -125,11 +125,6 @@ export function subtractSpan(regions, span) {
   return out;
 }
 
-// The whole bars under some notes, merged into regions.
-export function regionsForNotes(bars, notes) {
-  return normalizeRegions(notes.map((note) => snapSpanToBars(bars, note.tick, note.tick + 1)));
-}
-
 export function noteIdsInRegions(doc, regions) {
   if (!doc || !regions.length) return [];
   return doc.notes.filter((note) => tickInRegions(note.tick, regions)).map((note) => note.id);
@@ -195,22 +190,34 @@ export function sectionsFromDoc(doc, endTick, bars = []) {
 
 // Short human label for a selection, used on the Redo button: section names
 // when the selection is exactly whole sections, otherwise a bar count.
-export function selectionLabel(bars, regions, sections) {
-  if (!regions.length) return "";
+// Section names when the regions are exactly whole sections, else null.
+function wholeSectionNames(regions, sections) {
   const names = [];
-  let wholeSections = true;
   for (const region of regions) {
     const inside = sections.filter((s) => s.startTick >= region.startTick && s.endTick <= region.endTick);
     const covered = inside.reduce((sum, s) => sum + (s.endTick - s.startTick), 0);
-    if (!inside.length || covered !== region.endTick - region.startTick) wholeSections = false;
+    if (!inside.length || covered !== region.endTick - region.startTick) return null;
     names.push(...inside.map((s) => s.name));
   }
-  if (wholeSections) return names.length <= 2 ? names.join(" + ") : `${names.length} sections`;
+  return names;
+}
+
+export function selectionLabel(bars, regions, sections) {
+  if (!regions.length) return "";
+  const names = wholeSectionNames(regions, sections);
+  if (names) return names.length <= 2 ? names.join(" + ") : `${names.length} sections`;
   if (regions.length === 1) {
     const count = regionBarCount(bars, regions[0]);
     return `${count} bar${count === 1 ? "" : "s"}`;
   }
   return `${regions.length} spots`;
+}
+
+// A redo's name in the history list says where it is: "Chorus 2", "Bars 9–12".
+export function redoLabel(bars, regions, sections) {
+  const names = wholeSectionNames(regions, sections);
+  if (names) return names.length <= 2 ? names.join(" + ") : `${names.length} sections`;
+  return regions.map((region) => barNumberLabel(bars, region)).join(", ");
 }
 
 export function barNumberLabel(bars, region) {

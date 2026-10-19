@@ -6030,38 +6030,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .piano-roll-canvas { position: absolute; top: 0; left: 0; touch-action: none; cursor: default; }
 .piano-roll-empty { grid-area: 1 / 1; display: grid; place-items: center; color: var(--text-dim); font-size: var(--fs-md); }
 
-/* Per-redo take switcher in the roll's redo row; sticks to the left edge
-   while scrolling through a long redo. */
-.redo-chips-track { position: absolute; z-index: 3; pointer-events: none; }
-.redo-chips {
-  position: sticky;
-  left: 8px;
-  pointer-events: auto;
-  display: inline-flex; gap: 2px;
-  padding: 2px;
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  box-shadow: var(--shadow-pop);
-  margin-left: 4px;
-}
-.redo-chips button {
-  min-width: 22px; height: 22px;
-  padding: 0 6px;
-  display: grid; place-items: center;
-  border: none; border-radius: calc(var(--r-pill) - 2px);
-  background: transparent; color: var(--text-dim);
-  font: 800 var(--fs-sm) var(--font-mono);
-  cursor: pointer;
-  transition: .1s;
-}
-.redo-chips button svg { width: 13px; height: 13px; }
-.redo-chips button:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
-.redo-chips button.active { background: var(--orange); color: var(--orange-fg); }
-.redo-chips button.orig.active { background: var(--text-dim); color: var(--surface); }
-.redo-chips button.keep { color: var(--green-solid); }
-.redo-chips button.keep:hover { background: var(--green-bg); color: var(--green-fg); }
-.redo-chips button:disabled { opacity: .4; cursor: default; }
-
 /* ---- inspector ---- */
 .edit-inspector {
   grid-area: insp;
@@ -6094,9 +6062,17 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-spots button:only-child { margin-left: -6px; }
 .insp-spots button:not(:only-child) { background: color-mix(in srgb, var(--purple-bri) 10%, transparent); }
 .insp-target.empty { background: var(--surface-2); }
+.insp-target.nudge { animation: insp-nudge .4s ease; }
+@keyframes insp-nudge {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-6px); box-shadow: inset 0 0 0 2px var(--purple-bri); }
+  40% { transform: translateX(5px); box-shadow: inset 0 0 0 2px var(--purple-bri); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
 .insp-target.empty b { color: var(--text-dim); }
 .insp-target.empty span { font-family: inherit; font-weight: 500; color: var(--text-faint); }
-.insp-redo-buttons, .insp-running { display: flex; flex-direction: column; gap: 6px; min-height: 92px; }
+.insp-redo-buttons, .insp-running { display: flex; flex-direction: column; gap: 6px; min-height: 48px; }
 .insp-running { justify-content: center; gap: 10px; }
 .insp-running-row { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm); color: var(--text-dim); }
 .insp-note-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -6110,22 +6086,20 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   transition: .12s;
 }
 .insp-note-grid button svg { width: 14px; height: 14px; flex: none; color: var(--text-dim); }
-.insp-note-grid button:hover:not(:disabled) { background: var(--purple-bg); color: var(--purple); }
-.insp-note-grid button:disabled { opacity: .4; cursor: default; }
+.insp-note-grid button:hover { background: var(--purple-bg); color: var(--purple); }
 .insp-note-grid button[data-tone="tap"] svg { color: #0f92b3; }
 .insp-note-grid button[data-tone="force"] svg { color: var(--green-solid); }
 .insp-note-grid button[data-tone="sp"] svg { color: #36c5f0; }
 .insp-note-grid button[data-tone="solo"] svg { color: #9a6bff; }
 .insp-note-grid .insp-note-delete { grid-column: 1 / -1; color: var(--red-fg); }
 .insp-note-grid .insp-note-delete svg { color: var(--red-solid); }
-.insp-note-grid .insp-note-delete:hover:not(:disabled) { background: var(--red-bg); color: var(--red-fg); }
+.insp-note-grid .insp-note-delete:hover { background: var(--red-bg); color: var(--red-fg); }
 .edit-help { width: 340px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; cursor: default; }
 .edit-help .insp-keys dt { font-size: var(--fs-xs); font-weight: 700; font-family: inherit; }
 .insp-link { border: none; background: none; padding: 0; color: var(--purple-bri); font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
 .insp-sub { margin: 0; font-size: var(--fs-sm); color: var(--text-faint); }
 .insp-redo { justify-content: center; font-size: var(--fs-base); padding: 13px 16px; }
 .insp-redo svg { width: 17px; height: 17px; }
-.insp-redo:disabled { opacity: .35; box-shadow: none; cursor: default; }
 .insp-knobs { display: flex; flex-direction: column; gap: 8px; }
 .insp-knob { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; }
 .insp-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
@@ -6173,16 +6147,28 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-history-name b { font-size: var(--fs-sm); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .insp-history-name span { font-size: var(--fs-xs); color: var(--text-faint); }
 .insp-history-name:hover { background: var(--purple-bg); }
-.insp-history-undo {
-  width: 38px;
+.insp-history-name.active { box-shadow: inset 0 0 0 2px var(--orange); }
+.insp-redo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.insp-redo-row .settings-secondary { justify-content: center; padding-inline: 8px; white-space: nowrap; color: var(--text); }
+.insp-takes {
+  display: flex; align-items: center;
+  min-height: 38px;
+  border-radius: var(--r-box);
+  background: var(--surface-2);
+}
+.insp-takes[data-on] { background: var(--orange-bg); }
+.insp-takes span { flex: 1; text-align: center; font: 700 var(--fs-xs) var(--font-mono); color: var(--text-dim); white-space: nowrap; }
+.insp-takes[data-on] span { color: var(--text); }
+.insp-takes button {
+  width: 30px; align-self: stretch;
   display: grid; place-items: center;
   border: none; border-radius: var(--r-box);
-  background: var(--surface-2); color: var(--text-dim);
+  background: transparent; color: var(--text);
   cursor: pointer;
 }
-.insp-history-undo svg { width: 15px; height: 15px; }
-.insp-history-undo:hover { background: var(--purple-bg); color: var(--purple); }
-.insp-history-undo.on { background: var(--orange-bg); color: var(--text); }
+.insp-takes button svg { width: 15px; height: 15px; }
+.insp-takes button:hover:not(:disabled) { background: color-mix(in srgb, var(--orange) 30%, transparent); }
+.insp-takes button:disabled { opacity: .3; cursor: default; }
 
 .edit-toast {
   position: absolute; left: 50%; bottom: 18px;

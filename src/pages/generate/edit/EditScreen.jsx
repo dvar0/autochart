@@ -11,8 +11,8 @@ import {
   buildBarGrid,
   noteIdsInRegions,
   normalizeRegions,
+  redoLabel,
   regionsCover,
-  regionsForNotes,
   sectionsFromDoc,
   selectionLabel,
   subtractSpan,
@@ -74,18 +74,20 @@ export default function EditScreen({ project }) {
   const sections = useMemo(() => sectionsFromDoc(doc, songEndTick, bars), [doc?.events, songEndTick, bars]); // eslint-disable-line react-hooks/exhaustive-deps
   const redos = doc?.redos || [];
 
-  // The bars a Redo would rewrite: picked spans plus the bars under every
-  // selected note.
   const selectedNotes = useMemo(() => {
     if (!doc || !editor.selectedNoteIds.length) return [];
     const ids = new Set(editor.selectedNoteIds);
     return doc.notes.filter((note) => ids.has(note.id));
   }, [doc, editor.selectedNoteIds]);
-  const targetRegions = useMemo(
-    () => normalizeRegions([...regions, ...regionsForNotes(bars, selectedNotes)]),
-    [regions, bars, selectedNotes]
-  );
+  // The bars a Redo would rewrite. Only picked spans count: clicking a note
+  // (to stretch it, say) never turns its bars into a redo target.
+  const targetRegions = regions;
   const selectionName = selectionLabel(bars, targetRegions, sections);
+  // The redo whose bars are exactly the selection; its takes show in the panel.
+  const selectedRedo = useMemo(() => redos.find((redo) =>
+    redo.regions.length === targetRegions.length &&
+    redo.regions.every((r, i) => r.startTick === targetRegions[i].startTick && r.endTick === targetRegions[i].endTick)
+  ) || null, [redos, targetRegions]);
 
   // Loop the picked bars, or the newest redo, with a bar of run-in and run-out
   // so both seams are heard.
@@ -158,8 +160,9 @@ export default function EditScreen({ project }) {
     job.promise
       .then((notes) => {
         applyEditorChange({ type: "applyRedo", redoId, regions: targetRegions, notes, label });
-        applyEditorChange({ type: "clearSelection" });
-        setRegions([]);
+        // The redone bars stay selected, so Redo again tries another take.
+        setRegions(targetRegions);
+        applyEditorChange({ type: "select", noteIds: notes.map((note) => note.id) });
         setLoopOn(true);
         seekTick(bars[Math.max(0, barIndexAt(bars, targetRegions[0].startTick) - 1)]);
         rollApiRef.current?.scrollToTick(targetRegions[0].startTick, "start");
@@ -175,14 +178,16 @@ export default function EditScreen({ project }) {
 
   useEffect(() => () => jobRef.current?.cancel(), []);
 
-  const redoSelection = () => runRedo(targetRegions, { label: selectionName });
+  // Redoing the exact bars of an earlier redo adds a take to it, so its
+  // Original stays reachable.
+  const redoSelection = () =>
+    runRedo(targetRegions, { redoId: selectedRedo?.id ?? null, label: selectedRedo?.label ?? redoLabel(bars, targetRegions, sections) });
   const redoToEnd = () => {
     const start = targetRegions[0]?.startTick ?? bars[barIndexAt(bars, doc.tempoMap.secondsToTick(editor.playhead.time || 0))];
     const lastBar = barIndexAt(bars, Math.max(start, songEndTick - 1));
     const span = { startTick: start, endTick: barEndTick(bars, lastBar) };
     runRedo([span], { label: `Bar ${barIndexAt(bars, start) + 1} to the end` });
   };
-  const redoMore = (redo) => runRedo(redo.regions, { redoId: redo.id, label: redo.label });
 
   // ---- selection ----
   // Picking spans selects every note inside them too.
@@ -345,6 +350,7 @@ export default function EditScreen({ project }) {
         bars={bars}
         regions={targetRegions}
         selectionName={selectionName}
+        selectedRedo={selectedRedo}
         selectedNotes={selectedNotes}
         pending={pending}
         knobs={knobs}
@@ -353,7 +359,7 @@ export default function EditScreen({ project }) {
         onRedoToEnd={redoToEnd}
         onCancelRedo={() => jobRef.current?.cancel()}
         onNoteAction={noteAction}
-        onFocusRedo={(redo) => { rollApiRef.current?.scrollToTick(redo.regions[0].startTick, "start"); seekTick(redo.regions[0].startTick); }}
+        onFocusRedo={(redo) => { selectSpans(redo.regions); rollApiRef.current?.scrollToTick(redo.regions[0].startTick, "start"); seekTick(redo.regions[0].startTick); }}
         onFocusRegion={(region) => { rollApiRef.current?.scrollToTick(region.startTick, "start"); seekTick(region.startTick); }}
         onPickRedo={(redo, index) => applyEditorChange({ type: "pickRedoTake", redoId: redo.id, index })}
       />
@@ -420,7 +426,6 @@ export default function EditScreen({ project }) {
           loop={loop}
           apiRef={rollApiRef}
           onViewChange={setView}
-          onRedoMore={redoMore}
         />
       </div>
 
