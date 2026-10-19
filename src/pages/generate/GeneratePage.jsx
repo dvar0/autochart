@@ -5,6 +5,7 @@ import PreviewStage from "./PreviewStage.jsx";
 import TakesDeck from "./TakesDeck.jsx";
 import Console from "./Console.jsx";
 import LibraryFolderPrompt from "../../components/LibraryFolderPrompt.jsx";
+import EditScreen from "./edit/EditScreen.jsx";
 
 import UnsupportedGenerationState from "./UnsupportedGenerationState.jsx";
 import { targetLabel } from "../../data/supportedTargets.js";
@@ -51,6 +52,16 @@ export default function GeneratePage({ importedSong, onSaved, onGeneratedSong, o
             </button>
           </section>
         </main>
+      </div>
+    );
+  }
+
+  if (project.deckTab === "edit" && project.editor.hasSession) {
+    return (
+      <div className="ac-body">
+        <div className="main" style={{ padding: 0 }}>
+          <EditScreen project={project} />
+        </div>
       </div>
     );
   }

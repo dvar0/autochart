@@ -181,6 +181,7 @@ export function parseEditableChart(chartText, difficulty = "expert") {
     tempoMap,
     notes,
     ranges: [...starPower, ...solos],
+    redos: [],
     durationSec,
   };
 }

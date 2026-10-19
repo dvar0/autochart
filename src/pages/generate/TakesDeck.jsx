@@ -24,7 +24,6 @@ import { I } from "../../icons.jsx";
 import { FINAL_SLOT_ORDER, getVersionDifficulty } from "../../services/finalChart.js";
 import { LiveGenerationTakeCard } from "./LiveGeneration.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
-import PianoRollEditor from "./edit/PianoRollEditor.jsx";
 import {
   demucsAuditionKey,
   generatorStemSetId,
@@ -466,12 +465,10 @@ export default function TakesDeck({ project }) {
     activeDemucsArtifact,
     demucsAuditionMode,
     setDemucsAuditionMode,
-    editor,
     startEditingVersion,
     justGeneratedId,
   } = project;
   const badgedGeneratorIds = new Set((project.generators || []).filter((generator) => generator.badge).map((generator) => generator.id));
-  const showingEditor = deckTab === "edit";
 
   // Hovering a FINAL chip highlights the take card that fills that slot, so
   // the chip↔card link reads without any extra chrome.
@@ -514,29 +511,9 @@ export default function TakesDeck({ project }) {
           >
             SEPARATION <span>{demucsArtifacts.length}</span>
           </button>
-          {editor?.hasSession && (
-            <button
-              className={showingEditor ? "active" : ""}
-              onClick={() => setDeckTab("edit")}
-              role="tab"
-              aria-selected={showingEditor}
-              title={editor.draftVersion?.name || editor.sourceVersion?.name || "Editing"}
-            >
-              EDIT <span>{editor.dirty ? "•" : editor.savedAt ? "✓" : "draft"}</span>
-            </button>
-          )}
         </div>
 
-        {showingEditor ? (
-          <div className="editor-deck-head">
-            <b title={editor.draftVersion?.name || editor.sourceVersion?.name}>
-              {editor.draftVersion?.name || editor.sourceVersion?.name || "Editing"}
-            </b>
-            <span className={"editor-save-state" + (editor.dirty ? " dirty" : editor.savedAt ? " saved" : "")}>
-              {busyAction === "saving-edit" ? "Saving…" : editor.dirty ? "Unsaved changes" : editor.savedAt ? "Saved" : "Draft"}
-            </span>
-          </div>
-        ) : !showingDemucs ? (
+        {!showingDemucs ? (
           <>
             <div className="final-strip" title={`Final chart · ${finalReadyLabel} assigned`}>
               <span className="final-strip-label">FINAL</span>
@@ -654,10 +631,6 @@ export default function TakesDeck({ project }) {
       </div>
 
       <div className="deck-body">
-        {showingEditor ? (
-          <PianoRollEditor project={project} />
-        ) : (
-        <>
         <div className={"deck-pane" + (deckTab === "takes" ? " active" : "")} aria-hidden={showingDemucs}>
           <div className="takes-row">
             {generating && project.track && (
@@ -822,8 +795,6 @@ export default function TakesDeck({ project }) {
         <div className={"deck-pane" + (showingDemucs ? " active" : "")} aria-hidden={!showingDemucs}>
           <DemucsPanel project={project} />
         </div>
-        </>
-        )}
       </div>
     </section>
   );

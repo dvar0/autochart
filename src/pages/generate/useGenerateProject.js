@@ -578,6 +578,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [editorSeekRequest, setEditorSeekRequest] = useState(null);
   const [editorPlayRequest, setEditorPlayRequest] = useState(null);
   const [editorPlaying, setEditorPlaying] = useState(false);
+  const editorSavingRef = useRef(false);
+  const editorRevisionRef = useRef(0);
+  editorRevisionRef.current = editorState.revision;
   const [localVersions, setLocalVersions] = useState([]);
   const [finalSlots, setFinalSlots] = useState(() => emptyFinalSlots());
   const [singleVersion, setSingleVersion] = useState("imported");
@@ -2048,7 +2051,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const EDITOR_MUTATING = new Set([
     "moveNotes", "deleteNotes", "addNote", "toggleTap", "toggleForce", "paintNoteFlag", "setSustain",
     "quantizeSelection", "splitChords", "eraseGesture", "addRange", "updateRange", "deleteRanges", "deleteSelection",
-    "undo", "redo",
+    "applyRedo", "pickRedoTake", "keepRedo", "undo", "redo",
   ]);
 
   const editorChangeCanMutate = (change) => {
@@ -2140,13 +2143,19 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setEditorSeekRequest({ seconds: Math.max(0, Number(seconds) || 0), nonce: Date.now() + Math.random() });
   const requestEditorPlayToggle = () => setEditorPlayRequest({ nonce: Date.now() + Math.random() });
 
-  const saveEditorDraft = async () => {
+  // Edits autosave into the draft take; `quiet` saves skip the busy state and
+  // status line so typing in the editor never flickers the rest of the app.
+  const saveEditorDraft = async ({ quiet = false } = {}) => {
     const doc = editorState.doc;
-    if (!doc) return false;
+    if (!doc || editorSavingRef.current) return false;
     const source = editorVersionOptions.find((v) => v.id === editorSourceVersionId) || null;
     const chartText = writeEditableChart(doc.chartText, doc.difficulty, doc);
-    setBusyAction("saving-edit");
-    setStatusMsg("");
+    const savedRevision = editorState.revision;
+    editorSavingRef.current = true;
+    if (!quiet) {
+      setBusyAction("saving-edit");
+      setStatusMsg("");
+    }
     try {
       let draftId = editorDraftVersionId;
       const existing = draftId ? editorVersionOptions.find((v) => v.id === draftId) : null;
@@ -2169,9 +2178,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setEditorDraftVersionId(draftId);
       setSingleVersion(draftId);
       setDeckTab("edit");
-      setEditorDirty(false);
+      // Changes made while this save was in flight stay dirty for the next one.
+      if (editorRevisionRef.current === savedRevision) setEditorDirty(false);
       setEditorSavedAt(Date.now());
-      setStatusMsg("Edit saved as draft.");
+      if (!quiet) setStatusMsg("Edit saved as draft.");
       onSaved?.();
       return true;
     } catch (err) {
@@ -2179,12 +2189,27 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setStatusMsg(err.message || "Could not save edit.");
       return false;
     } finally {
-      setBusyAction("");
+      editorSavingRef.current = false;
+      if (!quiet) setBusyAction("");
     }
   };
 
-  const discardEditorDraft = () => {
-    if (editorDraftVersionId && editorSavedAt === 0) {
+  useEffect(() => {
+    if (!editorDirty || !editorState.doc || busyAction) return undefined;
+    const timer = setTimeout(() => { void saveEditorDraft({ quiet: true }); }, 1200);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorDirty, editorState.revision, busyAction]);
+
+  // Deletes the edited take. A draft that never reached the library only
+  // lives in local state.
+  const discardEditorDraft = async () => {
+    const saved = editorDraftVersionId ? versionOptions.find((v) => v.id === editorDraftVersionId) : null;
+    if (saved && songId) {
+      await removeCandidate(saved);
+      return;
+    }
+    if (editorDraftVersionId) {
       setLocalVersions((prev) => prev.filter((v) => v.id !== editorDraftVersionId));
     }
     resetEditorSession();

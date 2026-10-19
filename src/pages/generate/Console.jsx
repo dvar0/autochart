@@ -14,7 +14,6 @@ const FORCE_SOLO_INFO =
   "songs. The model was unsure about that spot, so a forced solo can be less convincing than one it " +
   "found itself.";
 import GenerationProgress from "./GenerationProgress.jsx";
-import EditorConsole from "./edit/EditorConsole.jsx";
 
 // The slider carries one stop below bin 0 for "auto" — a fenced bay, not a
 // magnitude. Bin 7 is what the model actually calls auto; we park it on the
@@ -81,17 +80,6 @@ export default function Console({ project }) {
   const generating = busyAction === "generating";
   const stopping = Boolean(genRun?.stopping);
   const runActive = generating && genRun && !genRun.finishedAt;
-
-  if (deckTab === "edit") {
-    return (
-      <aside className="console-rail">
-        <EditorConsole project={project} />
-        {(engineError || (statusMsg && busyAction !== "generating")) && (
-          <div className="rail-toast">{statusMsg || engineError}</div>
-        )}
-      </aside>
-    );
-  }
 
   const visibleDifficulties = GENERATION_DIFFICULTIES.filter((option) =>
     supportedDifficultyIds?.includes(option.id)

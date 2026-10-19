@@ -685,12 +685,7 @@ export default function PreviewStage({ project }) {
     deckTab,
     demucsAudition,
     activeDemucsArtifact,
-    editor,
-    setEditorPlayhead,
-    setEditorPlaying,
   } = project;
-  const editorHighwayRef = useRef(null);
-  const showingEditor = deckTab === "edit";
 
   const [dropHot, setDropHot] = useState(false);
   const [compareLayout, setCompareLayout] = useState("joined");
@@ -851,27 +846,11 @@ export default function PreviewStage({ project }) {
     return () => reportPreviewPlaying?.(false);
   }, [showingSinglePreview, reportPreviewPlaying]);
 
-  // The piano roll requests highway seeks through editor.seekRequest; replay
-  // each new request onto the editable highway preview.
-  useEffect(() => {
-    if (!showingEditor || !editor?.seekRequest) return;
-    editorHighwayRef.current?.seek?.(editor.seekRequest.seconds);
-  }, [showingEditor, editor?.seekRequest]);
-
-  // Spacebar in the piano roll toggles editable-highway playback.
-  useEffect(() => {
-    if (!showingEditor || !editor?.playRequest) return;
-    const preview = editorHighwayRef.current;
-    if (!preview) return;
-    if (preview.isPlaying?.()) preview.pause?.();
-    else preview.play?.();
-  }, [showingEditor, editor?.playRequest]);
-
   return (
     <section className="gen-preview-card">
       <div className="gen-panel-head">
         <div className="gen-head-line">
-          <div className="gen-head">{showingEditor ? "EDITOR PREVIEW" : showingDemucsStage ? "SEPARATION AUDITION" : "PREVIEW STAGE"}</div>
+          <div className="gen-head">{showingDemucsStage ? "SEPARATION AUDITION" : "PREVIEW STAGE"}</div>
           {!showingDemucsStage && previewMode === "compare" && compareLyric && (
             <div className="compare-head-lyrics" title={compareLyric.text}>
               {compareLyric.text}
@@ -879,17 +858,6 @@ export default function PreviewStage({ project }) {
           )}
         </div>
         <div className="preview-head-actions">
-          {showingEditor && (
-            <div className="single-version-head">
-              <span className="compare-badge">{editor?.draftVersion?.badge || editor?.sourceVersion?.badge || "E"}</span>
-              <span className="single-version-name" title={editor?.draftVersion?.name || editor?.sourceVersion?.name || "Editing"}>
-                {editor?.draftVersion?.name || editor?.sourceVersion?.name || "Editing"}
-              </span>
-              <span className={"editor-save-pill" + (editor?.dirty ? " dirty" : "")}>
-                {editor?.dirty ? "Unsaved" : editor?.savedAt ? "Saved" : "Draft"}
-              </span>
-            </div>
-          )}
           {showingDemucsStage && (
             <div className="single-version-head demucs-stage-head-pill">
               <span className="compare-badge">A</span>
@@ -898,7 +866,7 @@ export default function PreviewStage({ project }) {
               </span>
             </div>
           )}
-          {!showingEditor && !showingDemucsStage && track && previewMode === "single" && selectedSingleVersion && (
+          {!showingDemucsStage && track && previewMode === "single" && selectedSingleVersion && (
             <div className="single-version-head">
               <span className="compare-badge">{selectedSingleVersion.badge}</span>
               <span className="single-version-name" title={selectedSingleVersion.name}>
@@ -906,7 +874,7 @@ export default function PreviewStage({ project }) {
               </span>
             </div>
           )}
-          {!showingEditor && !showingDemucsStage && track && previewMode === "compare" && (
+          {!showingDemucsStage && track && previewMode === "compare" && (
             <>
               <div className="compare-layout-tabs" aria-label="Compare layout">
                 <button
@@ -930,20 +898,7 @@ export default function PreviewStage({ project }) {
         </div>
       </div>
 
-      {showingEditor ? (
-        <div className="single-chart-shell">
-          <HighwayPreview
-            ref={editorHighwayRef}
-            track={editor?.previewTrack || null}
-            audioBuffer={audioBuffer}
-            videoOffset={activeVideoOffset}
-            background={background}
-            className="single-preview"
-            onProgress={(time, duration) => setEditorPlayhead({ time, duration })}
-            onPlayingChange={setEditorPlaying}
-          />
-        </div>
-      ) : busyAction === "separating" ? (
+      {busyAction === "separating" ? (
         <StemSeparationStage />
       ) : showingDemucsStage ? (
         <DemucsAuditionStage project={project} />

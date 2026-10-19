@@ -305,6 +305,48 @@ function applyOperation(state, action) {
       const ranges = doc.ranges.filter((range) => !ids.has(range.id));
       return { ...commit(state, { ...doc, ranges }), selectedRangeIds: [] };
     }
+    // Redo records live on the doc so undo/redo restores which take is showing.
+    // A record keeps the original notes and every take for its regions; star
+    // power and solo ranges inside the regions are left alone.
+    case "applyRedo": {
+      const regions = action.regions || [];
+      if (!regions.length) return state;
+      const redos = doc.redos || [];
+      const existing = action.redoId ? redos.find((redo) => redo.id === action.redoId) : null;
+      const inRegions = (note) => regions.some((r) => note.tick >= r.startTick && note.tick < r.endTick);
+      const kept = doc.notes.filter((note) => !inRegions(note));
+      const record = existing
+        ? { ...existing, takes: [...existing.takes, action.notes], active: existing.takes.length }
+        : {
+            id: `redo_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+            label: action.label || "",
+            regions,
+            original: doc.notes.filter(inRegions),
+            takes: [action.notes],
+            active: 0,
+          };
+      // A new redo over an older one's bars replaces that older record.
+      const others = redos.filter(
+        (redo) => redo.id !== record.id && !redo.regions.some((a) => regions.some((b) => a.startTick < b.endTick && b.startTick < a.endTick))
+      );
+      const nextDoc = withNotes({ ...doc, redos: [...others, record] }, [...kept, ...action.notes]);
+      return { ...commit(state, nextDoc), selectedNoteIds: [] };
+    }
+    case "pickRedoTake": {
+      const redo = (doc.redos || []).find((r) => r.id === action.redoId);
+      if (!redo || redo.active === action.index) return state;
+      const notesFor = action.index < 0 ? redo.original : redo.takes[action.index];
+      if (!notesFor) return state;
+      const inRegions = (note) => redo.regions.some((r) => note.tick >= r.startTick && note.tick < r.endTick);
+      const kept = doc.notes.filter((note) => !inRegions(note));
+      const redos = doc.redos.map((r) => (r.id === redo.id ? { ...r, active: action.index } : r));
+      return { ...commit(state, withNotes({ ...doc, redos }, [...kept, ...notesFor])), selectedNoteIds: [] };
+    }
+    case "keepRedo": {
+      const redos = (doc.redos || []).filter((r) => r.id !== action.redoId);
+      if (redos.length === (doc.redos || []).length) return state;
+      return commit(state, { ...doc, redos });
+    }
     default:
       return state;
   }
