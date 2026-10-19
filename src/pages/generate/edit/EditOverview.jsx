@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import { FRET_COLORS } from "../../../data/notePalette.js";
-import { barEndTick } from "./editRegions.js";
+import { barEndTick, regionsCover } from "./editRegions.js";
 
-// Whole-song map above the piano roll: section blocks, one column per bar
-// (height = notes, color = the bar's busiest fret), redo regions, the piano
-// roll's visible window and the playhead. Click to jump there.
+// The whole song in one strip: a block per section (name inside, the bars'
+// note counts drawn along the bottom), the playhead, and a thin marker under
+// the part the piano roll is showing. Clicking a section selects it and moves
+// the playhead there; Shift-click adds it to the selection.
 
 function barProfile(doc, bars) {
   const out = bars.map(() => ({ count: 0, lanes: [0, 0, 0, 0, 0], open: 0 }));
@@ -45,17 +46,18 @@ export default function EditOverview({ doc, bars, sections, regions, pending, vi
       ctx.clearRect(0, 0, w, h);
       const profile = barProfile(doc, bars);
       const max = Math.max(4, ...profile.map((bar) => bar.count));
+      const maxH = h * 0.42;
       profile.forEach((bar, index) => {
         if (!bar.count) return;
         const x = (bars[index] / total) * w;
         const bw = Math.max(1, ((barEndTick(bars, index) - bars[index]) / total) * w - 1);
-        const bh = Math.max(3, (bar.count / max) * (h - 4));
+        const bh = Math.max(2, (bar.count / max) * maxH);
         let lane = 0;
         for (let i = 1; i < 5; i += 1) if (bar.lanes[i] > bar.lanes[lane]) lane = i;
         ctx.fillStyle = bar.open > bar.lanes[lane] ? "#a66be3" : FRET_COLORS[lane];
-        ctx.globalAlpha = 0.85;
+        ctx.globalAlpha = 0.9;
         ctx.beginPath();
-        ctx.roundRect(x, h - bh, bw, bh, Math.min(3, bw / 2));
+        ctx.roundRect(x, h - 4 - bh, bw, bh, Math.min(2, bw / 2));
         ctx.fill();
       });
       ctx.globalAlpha = 1;
@@ -66,49 +68,41 @@ export default function EditOverview({ doc, bars, sections, regions, pending, vi
     return () => observer?.disconnect();
   }, [doc, bars, total]);
 
-  const jumpFromEvent = (e) => {
+  const onPointerDown = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    onJump?.(((e.clientX - rect.left) / rect.width) * total);
+    const tick = ((e.clientX - rect.left) / rect.width) * total;
+    const section = sections.find((s) => tick >= s.startTick && tick < s.endTick);
+    if (section) onSection?.(section, e.shiftKey);
+    else onJump?.(tick);
   };
 
   return (
-    <div className="edit-overview">
-      <div className="edit-overview-sections">
-        {sections.length ? (
-          sections.map((section) => {
-            const selected = regions.some((r) => r.startTick === section.startTick && r.endTick === section.endTick);
-            return (
-              <button
-                key={section.id}
-                className={"ov-section" + (selected ? " selected" : "")}
-                style={{ ...span(section.startTick, section.endTick), "--sec": section.color }}
-                onClick={(e) => onSection?.(section, e.shiftKey)}
-                title={section.name}
-              >
-                <span>{section.name}</span>
-              </button>
-            );
-          })
-        ) : (
-          <span className="ov-no-sections">No sections in this chart</span>
-        )}
-      </div>
-      <div className="edit-overview-map" ref={wrapRef} onPointerDown={jumpFromEvent}>
-        <canvas ref={canvasRef} />
-        {regions.map((region) => (
-          <span key={`r${region.startTick}`} className="ov-region" style={span(region.startTick, region.endTick)} />
-        ))}
-        {(doc?.redos || []).flatMap((redo) =>
-          redo.regions.map((region) => (
-            <span key={`d${redo.id}${region.startTick}`} className="ov-redo" style={span(region.startTick, region.endTick)} />
-          ))
-        )}
-        {pending?.regions.map((region) => (
-          <span key={`p${region.startTick}`} className="ov-pending" style={span(region.startTick, region.endTick)} />
-        ))}
-        {view && <span className="ov-window" style={span(view.startTick, view.endTick)} />}
-        <span className="ov-playhead" style={{ left: pct(playheadTick) }} />
-      </div>
+    <div
+      className="song-strip"
+      ref={wrapRef}
+      onPointerDown={onPointerDown}
+      title={sections.length ? "Click a section to select it. Shift-click to add more." : undefined}
+    >
+      {sections.map((section) => (
+        <span
+          key={section.id}
+          className={"strip-section" + (regionsCover(regions, section) ? " selected" : "")}
+          style={{ ...span(section.startTick, section.endTick), "--sec": section.color }}
+        >
+          <b>{section.name}</b>
+        </span>
+      ))}
+      <canvas ref={canvasRef} />
+      {(doc?.redos || []).flatMap((redo) =>
+        redo.regions.map((region) => (
+          <span key={`d${redo.id}${region.startTick}`} className="strip-redo" style={span(region.startTick, region.endTick)} />
+        ))
+      )}
+      {pending?.regions.map((region) => (
+        <span key={`p${region.startTick}`} className="strip-pending" style={span(region.startTick, region.endTick)} />
+      ))}
+      {view && <span className="strip-view" style={span(view.startTick, view.endTick)} />}
+      <span className="strip-playhead" style={{ left: pct(playheadTick) }} />
     </div>
   );
 }

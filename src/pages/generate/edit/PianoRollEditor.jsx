@@ -2,7 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "r
 import { I } from "../../../icons.jsx";
 import { FRET_COLORS, OPEN_NOTE_COLOR } from "../../../data/notePalette.js";
 import { snapTicks } from "./chartEditor.js";
-import { normalizeRegions, snapSpanToBars } from "./editRegions.js";
+import { regionsCover, snapSpanToBars } from "./editRegions.js";
 
 // Canvas-based piano roll. The editor doc (ticks) is the source of truth; this
 // component renders a virtualized horizontal timeline and translates pointer
@@ -104,7 +104,11 @@ export default function PianoRollEditor({
   bars = [],
   sections = [],
   regions = [],
-  onRegionsChange,
+  onPickSection,
+  onSelectBars,
+  onBoxSelect,
+  onClearSelection,
+  onNoteClick,
   pending = null,
   loop = null,
   apiRef,
@@ -471,7 +475,7 @@ export default function PianoRollEditor({
       const x1 = tickToX(section.startTick);
       const x2 = tickToX(section.endTick);
       if (x2 < 0 || x1 > viewW) continue;
-      const selected = view.regions.some((r) => r.startTick === section.startTick && r.endTick === section.endTick);
+      const selected = regionsCover(view.regions, section);
       const left = Math.max(x1 + 2, 0);
       const width = Math.max(0, x2 - 2 - left);
       ctx.fillStyle = alpha(section.color, selected ? 0.95 : dark ? 0.32 : 0.26);
@@ -864,15 +868,7 @@ export default function PianoRollEditor({
     if (region.type === "sections") {
       const section = sections.find((s) => tick >= s.startTick && tick < s.endTick);
       if (section) {
-        const span = { startTick: section.startTick, endTick: section.endTick };
-        const already = regions.some((r) => r.startTick === span.startTick && r.endTick === span.endTick);
-        if (e.shiftKey) {
-          onRegionsChange?.(already
-            ? regions.filter((r) => r.startTick !== span.startTick || r.endTick !== span.endTick)
-            : normalizeRegions([...regions, span]));
-        } else {
-          onRegionsChange?.(already && regions.length === 1 ? [] : [span]);
-        }
+        onPickSection?.(section, e.shiftKey);
       } else {
         requestEditorSeek(timeAtTick(tick));
       }
@@ -915,6 +911,7 @@ export default function PianoRollEditor({
     if (hit?.note) {
       const alreadySelected = editor.selectedNoteIds.includes(hit.note.id);
       if (!alreadySelected || e.shiftKey) {
+        if (!e.shiftKey) onNoteClick?.();
         applyEditorChange({ type: "select", noteIds: [hit.note.id], additive: e.shiftKey });
       }
       if (hit.part === "tail") {
@@ -991,8 +988,7 @@ export default function PianoRollEditor({
     }
     if (drag.kind === "barSelect") {
       if (drag.moved) {
-        const span = snapSpanToBars(bars, drag.anchorTick, drag.curTick);
-        onRegionsChange?.(drag.additive ? normalizeRegions([...regions, span]) : [span]);
+        onSelectBars?.(snapSpanToBars(bars, drag.anchorTick, drag.curTick), drag.additive);
       } else {
         requestEditorSeek(timeAtTick(drag.anchorTick));
       }
@@ -1003,8 +999,7 @@ export default function PianoRollEditor({
     } else if (drag.kind === "emptyPress") {
       const ed = editorRef.current;
       if (ed.selectedNoteIds.length || ed.selectedRangeIds.length || regions.length) {
-        applyEditorChange({ type: "clearSelection" });
-        if (regions.length) onRegionsChange?.([]);
+        onClearSelection?.();
       } else {
         applyEditorChange({ type: "addNote", tick: drag.tick, lane: drag.lane, sustain: 0 });
       }
@@ -1023,7 +1018,10 @@ export default function PianoRollEditor({
       drag.curX = x;
       drag.curY = y;
       const moved = drag.moved || Math.hypot(drag.curX - drag.startX, drag.curY - drag.startY) >= BOX_SELECT_MIN_DRAG;
-      if (moved) applyEditorChange({ type: "select", noteIds: noteIdsInBox(drag), additive: drag.additive });
+      if (moved) {
+        const span = snapSpanToBars(bars, xToTick(Math.min(drag.startX, drag.curX)), xToTick(Math.max(drag.startX, drag.curX)));
+        onBoxSelect?.(noteIdsInBox(drag), span, drag.additive);
+      }
     } else if (drag.kind === "range") {
       const { x } = toLocal(e);
       const endTick = snapTick(xToTick(x));

@@ -86,6 +86,35 @@ export function tickInRegions(tick, regions) {
   return regions.some((r) => tick >= r.startTick && tick < r.endTick);
 }
 
+// True when some region fully contains the span (merged neighbours count).
+export function regionsCover(regions, span) {
+  return regions.some((r) => r.startTick <= span.startTick && r.endTick >= span.endTick);
+}
+
+// Removes a span from the regions, splitting any region it cuts through.
+export function subtractSpan(regions, span) {
+  const out = [];
+  for (const r of regions) {
+    if (!regionsOverlap(r, span)) {
+      out.push(r);
+      continue;
+    }
+    if (r.startTick < span.startTick) out.push({ startTick: r.startTick, endTick: span.startTick });
+    if (r.endTick > span.endTick) out.push({ startTick: span.endTick, endTick: r.endTick });
+  }
+  return out;
+}
+
+// The whole bars under some notes, merged into regions.
+export function regionsForNotes(bars, notes) {
+  return normalizeRegions(notes.map((note) => snapSpanToBars(bars, note.tick, note.tick + 1)));
+}
+
+export function noteIdsInRegions(doc, regions) {
+  if (!doc || !regions.length) return [];
+  return doc.notes.filter((note) => tickInRegions(note.tick, regions)).map((note) => note.id);
+}
+
 // Section kinds get fret colors, so the song map reads like the highway.
 const SECTION_KINDS = [
   { kind: "intro", match: /intro|start/i, color: FRET_COLORS[0] },
@@ -111,15 +140,25 @@ function cleanSectionName(raw) {
 
 // `[Events]` section markers (`E "section Chorus 2"`, or `section Chorus` from
 // hand-written charts) as contiguous spans that end where the next one starts.
-export function sectionsFromDoc(doc, endTick) {
+// Sections snap to the nearest bar line: Redo works in whole bars, so a
+// picked section has to be exactly the bars it will rewrite.
+export function sectionsFromDoc(doc, endTick, bars = []) {
   if (!doc?.events?.length) return [];
+  const snap = (tick) => {
+    if (!bars.length) return tick;
+    const index = barIndexAt(bars, tick);
+    const next = bars[index + 1];
+    return next != null && next - tick < tick - bars[index] ? next : bars[index];
+  };
   const markers = doc.events
     .map((event) => {
       const m = String(event.text || "").match(/^section\s+(.+)$/i);
-      return m ? { tick: event.tick, name: cleanSectionName(m[1]) } : null;
+      return m ? { tick: snap(event.tick), name: cleanSectionName(m[1]) } : null;
     })
     .filter(Boolean)
-    .sort((a, b) => a.tick - b.tick);
+    .sort((a, b) => a.tick - b.tick)
+    .filter((marker, index, all) => all[index + 1]?.tick !== marker.tick);
+  const songEnd = bars.length ? barEndTick(bars, bars.length - 1) : endTick;
   return markers.map((marker, index) => {
     const next = markers[index + 1];
     const { kind, color } = sectionKind(marker.name);
@@ -129,19 +168,26 @@ export function sectionsFromDoc(doc, endTick) {
       kind,
       color,
       startTick: marker.tick,
-      endTick: next ? next.tick : Math.max(endTick || marker.tick, marker.tick + 1),
+      endTick: next ? next.tick : Math.max(songEnd || marker.tick, marker.tick + 1),
     };
   });
 }
 
-// Short human label for a selection, used on the Redo button.
+// Short human label for a selection, used on the Redo button: section names
+// when the selection is exactly whole sections, otherwise a bar count.
 export function selectionLabel(bars, regions, sections) {
   if (!regions.length) return "";
+  const names = [];
+  let wholeSections = true;
+  for (const region of regions) {
+    const inside = sections.filter((s) => s.startTick >= region.startTick && s.endTick <= region.endTick);
+    const covered = inside.reduce((sum, s) => sum + (s.endTick - s.startTick), 0);
+    if (!inside.length || covered !== region.endTick - region.startTick) wholeSections = false;
+    names.push(...inside.map((s) => s.name));
+  }
+  if (wholeSections) return names.length <= 2 ? names.join(" + ") : `${names.length} sections`;
   if (regions.length === 1) {
-    const region = regions[0];
-    const section = sections.find((s) => s.startTick === region.startTick && s.endTick === region.endTick);
-    if (section) return section.name;
-    const count = regionBarCount(bars, region);
+    const count = regionBarCount(bars, regions[0]);
     return `${count} bar${count === 1 ? "" : "s"}`;
   }
   return `${regions.length} spots`;

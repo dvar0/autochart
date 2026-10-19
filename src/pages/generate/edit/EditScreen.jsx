@@ -9,29 +9,24 @@ import {
   barEndTick,
   barIndexAt,
   buildBarGrid,
+  noteIdsInRegions,
   normalizeRegions,
+  regionsCover,
+  regionsForNotes,
   sectionsFromDoc,
   selectionLabel,
+  subtractSpan,
 } from "./editRegions.js";
 import { startRedo } from "./inpaintService.js";
 
-// The full-screen chart editor. Preview on top, the whole-width timeline
-// (song map, transport, piano roll) below. Two layers share the timeline:
-// Redo (pick bars or sections, let the model rewrite them, flip between
-// takes) and touch-up (click, drag and right-click notes in the roll). Only
-// one kind of selection exists at a time: picked bars or picked notes.
-// Every change autosaves into the edited draft take; the source take is never
+// The full-screen chart editor. Preview on top with the panel beside it; the
+// transport + song strip and the full-width piano roll below.
+//
+// One selection drives everything: the notes you pick, plus the whole bars
+// under them (or whole sections / bar ranges picked from the strip or the
+// ruler). Note actions apply to the notes; Redo applies to the bars. Every
+// change autosaves into the edited draft take; the source take is never
 // touched.
-
-const NOTE_ACTIONS = [
-  { id: "tap", label: "Tap", key: "T", icon: I.bolt, tone: "tap" },
-  { id: "force", label: "HOPO", key: "H", icon: I.chevsRight, tone: "force" },
-  { id: "starPower", label: "Star power", key: "S", icon: I.starOutline, tone: "sp" },
-  { id: "solo", label: "Solo", icon: I.spark, tone: "solo" },
-  { id: "quantize", label: "Snap", key: "Q", icon: I.grid },
-  { id: "split", label: "Split chord", icon: I.cut, needsChord: true },
-  { id: "delete", label: "Delete", key: "Del", icon: I.trash, tone: "danger" },
-];
 
 const SNAP_OPTIONS = ["off", "1/4", "1/8", "1/12", "1/16", "1/24", "1/32"];
 
@@ -68,6 +63,7 @@ export default function EditScreen({ project }) {
   const [loopOn, setLoopOn] = useState(false);
   const [view, setView] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const songEndTick = useMemo(() => {
     if (!doc) return 0;
@@ -75,23 +71,35 @@ export default function EditScreen({ project }) {
     return Math.ceil(doc.tempoMap.secondsToTick(seconds));
   }, [doc, editor.playhead.duration]);
   const bars = useMemo(() => buildBarGrid(doc, songEndTick), [doc?.sync, doc?.resolution, songEndTick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sections = useMemo(() => sectionsFromDoc(doc, songEndTick), [doc?.events, songEndTick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const selectionName = selectionLabel(bars, regions, sections);
+  const sections = useMemo(() => sectionsFromDoc(doc, songEndTick, bars), [doc?.events, songEndTick, bars]); // eslint-disable-line react-hooks/exhaustive-deps
   const redos = doc?.redos || [];
+
+  // The bars a Redo would rewrite: picked spans plus the bars under every
+  // selected note.
+  const selectedNotes = useMemo(() => {
+    if (!doc || !editor.selectedNoteIds.length) return [];
+    const ids = new Set(editor.selectedNoteIds);
+    return doc.notes.filter((note) => ids.has(note.id));
+  }, [doc, editor.selectedNoteIds]);
+  const targetRegions = useMemo(
+    () => normalizeRegions([...regions, ...regionsForNotes(bars, selectedNotes)]),
+    [regions, bars, selectedNotes]
+  );
+  const selectionName = selectionLabel(bars, targetRegions, sections);
 
   // Loop the picked bars, or the newest redo, with a bar of run-in and run-out
   // so both seams are heard.
   const loop = useMemo(() => {
     if (!loopOn || !bars.length) return null;
-    const target = regions.length ? regions : redos[redos.length - 1]?.regions;
+    const target = targetRegions.length ? targetRegions : redos[redos.length - 1]?.regions;
     if (!target?.length) return null;
     const first = barIndexAt(bars, target[0].startTick);
     const last = barIndexAt(bars, target[target.length - 1].endTick - 1);
     return { startTick: bars[Math.max(0, first - 1)], endTick: barEndTick(bars, Math.min(bars.length - 1, last + 1)) };
-  }, [loopOn, regions, redos, bars]);
+  }, [loopOn, targetRegions, redos, bars]);
   const loopRef = useRef(loop);
   loopRef.current = loop;
-  const canLoop = Boolean(regions.length || redos.length);
+  const canLoop = Boolean(targetRegions.length || redos.length);
 
   // ---- playback ----
   useEffect(() => {
@@ -150,6 +158,7 @@ export default function EditScreen({ project }) {
     job.promise
       .then((notes) => {
         applyEditorChange({ type: "applyRedo", redoId, regions: targetRegions, notes, label });
+        applyEditorChange({ type: "clearSelection" });
         setRegions([]);
         setLoopOn(true);
         seekTick(bars[Math.max(0, barIndexAt(bars, targetRegions[0].startTick) - 1)]);
@@ -166,31 +175,48 @@ export default function EditScreen({ project }) {
 
   useEffect(() => () => jobRef.current?.cancel(), []);
 
-  const redoSelection = () => runRedo(regions, { label: selectionName });
+  const redoSelection = () => runRedo(targetRegions, { label: selectionName });
   const redoToEnd = () => {
-    const start = regions[0]?.startTick ?? bars[barIndexAt(bars, doc.tempoMap.secondsToTick(editor.playhead.time || 0))];
+    const start = targetRegions[0]?.startTick ?? bars[barIndexAt(bars, doc.tempoMap.secondsToTick(editor.playhead.time || 0))];
     const lastBar = barIndexAt(bars, Math.max(start, songEndTick - 1));
     const span = { startTick: start, endTick: barEndTick(bars, lastBar) };
     runRedo([span], { label: `Bar ${barIndexAt(bars, start) + 1} to the end` });
   };
   const redoMore = (redo) => runRedo(redo.regions, { redoId: redo.id, label: redo.label });
 
-  // Picking bars drops any note selection, and selecting notes drops picked
-  // bars, so the panels never show two selections at once.
-  const pickRegions = useCallback((next) => {
-    if (next.length && editor.selectedNoteIds.length) applyEditorChange({ type: "clearSelection" });
+  // ---- selection ----
+  // Picking spans selects every note inside them too.
+  const selectSpans = useCallback((next) => {
     setRegions(next);
-  }, [applyEditorChange, editor.selectedNoteIds.length]);
-  useEffect(() => {
-    if (editor.selectedNoteIds.length) setRegions([]);
-  }, [editor.selectedNoteIds]);
+    applyEditorChange({ type: "select", noteIds: noteIdsInRegions(doc, next) });
+  }, [applyEditorChange, doc]);
 
+  const clearAll = useCallback(() => {
+    setRegions([]);
+    applyEditorChange({ type: "clearSelection" });
+  }, [applyEditorChange]);
+
+  // Clicking a section selects it and moves the playhead there. Shift adds
+  // it, or takes it out if it is already in the selection.
   const pickSection = (section, additive) => {
     const span = { startTick: section.startTick, endTick: section.endTick };
-    const has = regions.some((r) => r.startTick === span.startTick && r.endTick === span.endTick);
-    if (additive) pickRegions(has ? regions.filter((r) => r.startTick !== span.startTick) : normalizeRegions([...regions, span]));
-    else pickRegions(has && regions.length === 1 ? [] : [span]);
+    const covered = regionsCover(targetRegions, span);
+    if (additive) {
+      selectSpans(covered ? subtractSpan(targetRegions, span) : normalizeRegions([...targetRegions, span]));
+      if (covered) return;
+    } else {
+      selectSpans([span]);
+    }
+    seekTick(span.startTick);
     rollApiRef.current?.scrollToTick(span.startTick, "start");
+  };
+
+  const selectBarSpan = (span, additive) => selectSpans(additive ? normalizeRegions([...targetRegions, span]) : [span]);
+
+  // A box drag selects the notes in the box and the whole bars it crosses.
+  const boxSelect = (noteIds, span, additive) => {
+    setRegions(additive ? normalizeRegions([...regions, span]) : [span]);
+    applyEditorChange({ type: "select", noteIds, additive });
   };
 
   // ---- note actions ----
@@ -212,7 +238,7 @@ export default function EditScreen({ project }) {
 
   // ---- keyboard ----
   const keyActions = useRef({});
-  keyActions.current = { togglePlay, noteAction, redoSelection, regions, pending, canLoop };
+  keyActions.current = { togglePlay, noteAction, redoSelection, targetRegions, pending, canLoop, clearAll };
   useEffect(() => {
     const onKey = (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
@@ -235,14 +261,14 @@ export default function EditScreen({ project }) {
         e.preventDefault();
         a.noteAction("delete");
       } else if (e.key === "Escape") {
-        setRegions([]);
-        applyEditorChange({ type: "clearSelection" });
+        a.clearAll();
+        setHelpOpen(false);
       } else if (key === "t") a.noteAction("tap");
       else if (key === "h") a.noteAction("force");
       else if (key === "s") a.noteAction("starPower");
       else if (key === "q") a.noteAction("quantize");
       else if (key === "l" && a.canLoop) setLoopOn((v) => !v);
-      else if (key === "r" && a.regions.length && !a.pending) a.redoSelection();
+      else if (key === "r" && a.targetRegions.length && !a.pending) a.redoSelection();
       else if (e.key === "=" || e.key === "+") rollApiRef.current?.zoom(1.25);
       else if (e.key === "-") rollApiRef.current?.zoom(0.8);
     };
@@ -251,11 +277,14 @@ export default function EditScreen({ project }) {
   }, [applyEditorChange, redoEditorChange, undoEditorChange]);
 
   useEffect(() => {
-    if (!menuOpen) return undefined;
-    const close = () => setMenuOpen(false);
+    if (!menuOpen && !helpOpen) return undefined;
+    const close = () => {
+      setMenuOpen(false);
+      setHelpOpen(false);
+    };
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
-  }, [menuOpen]);
+  }, [menuOpen, helpOpen]);
 
   if (!doc) return null;
 
@@ -263,9 +292,6 @@ export default function EditScreen({ project }) {
   const diff = DIFF[doc.difficulty] || DIFF.expert;
   const saveLabel = editor.dirty ? "Saving…" : editor.savedAt ? "Saved" : "";
   const playheadTick = doc.tempoMap.secondsToTick(editor.playhead.time || 0);
-  const selectedIds = new Set(editor.selectedNoteIds);
-  const selectedNotes = doc.notes.filter((note) => selectedIds.has(note.id));
-  const hasChord = selectedNotes.some((note) => !note.open && note.lanes.length > 1);
 
   return (
     <div className="edit-screen">
@@ -283,6 +309,10 @@ export default function EditScreen({ project }) {
         <div className="edit-head-actions">
           <button className="edit-icon-btn" onClick={undoEditorChange} disabled={!editor.canUndo} title="Undo (Ctrl+Z)" aria-label="Undo"><I.undo /></button>
           <button className="edit-icon-btn" onClick={redoEditorChange} disabled={!editor.canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><I.redo /></button>
+          <div className="edit-menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
+            <button className="edit-icon-btn" onClick={() => setHelpOpen((v) => !v)} aria-expanded={helpOpen} aria-label="Mouse and keys" title="Mouse and keys"><I.info /></button>
+            {helpOpen && <EditHelp />}
+          </div>
           <div className="edit-menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
             <button className="edit-icon-btn" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-label="More"><I.kebab /></button>
             {menuOpen && (
@@ -311,36 +341,21 @@ export default function EditScreen({ project }) {
       </div>
 
       <EditInspector
-        bars={bars}
         doc={doc}
-        regions={regions}
+        bars={bars}
+        regions={targetRegions}
         selectionName={selectionName}
+        selectedNotes={selectedNotes}
         pending={pending}
         knobs={knobs}
         onKnob={(key, value) => setKnobs((current) => ({ ...current, [key]: value }))}
         onRedo={redoSelection}
         onRedoToEnd={redoToEnd}
         onCancelRedo={() => jobRef.current?.cancel()}
-        onClearRegions={() => setRegions([])}
-        onRemoveRegion={(region) => setRegions(regions.filter((r) => r !== region))}
+        onNoteAction={noteAction}
         onFocusRedo={(redo) => { rollApiRef.current?.scrollToTick(redo.regions[0].startTick, "start"); seekTick(redo.regions[0].startTick); }}
         onPickRedo={(redo, index) => applyEditorChange({ type: "pickRedoTake", redoId: redo.id, index })}
       />
-
-      <div className="edit-map">
-        <EditOverview
-          doc={doc}
-          bars={bars}
-          sections={sections}
-          regions={regions}
-          pending={pending}
-          view={view}
-          playheadTick={playheadTick}
-          endTick={songEndTick}
-          onJump={(tick) => { rollApiRef.current?.scrollToTick(tick); seekTick(tick); }}
-          onSection={pickSection}
-        />
-      </div>
 
       <div className="edit-toolbar">
         <div className="edit-transport">
@@ -353,42 +368,24 @@ export default function EditScreen({ project }) {
             onClick={() => setLoopOn((v) => !v)}
             disabled={!canLoop}
             aria-pressed={Boolean(loop)}
-            title={canLoop ? "Loop the picked bars (L)" : "Pick bars to loop"}
+            title={canLoop ? "Loop the selection (L)" : "Select something to loop"}
           >
             ⟲ Loop
           </button>
         </div>
 
-        <div className="edit-context">
-          {selectedNotes.length ? (
-            <>
-              <span className="edit-context-count">{selectedNotes.length} note{selectedNotes.length === 1 ? "" : "s"}</span>
-              <div className="edit-note-actions">
-                {NOTE_ACTIONS.map((action) => {
-                  const Icon = action.icon;
-                  return (
-                    <button
-                      key={action.id}
-                      data-tone={action.tone}
-                      onClick={() => noteAction(action.id)}
-                      disabled={action.needsChord && !hasChord}
-                      title={action.key ? `${action.label} (${action.key})` : action.label}
-                    >
-                      <Icon /> <span>{action.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <p className="edit-hint">
-              <span><b>Click</b> add note</span>
-              <span><b>Drag</b> select</span>
-              <span><b>Drag note end</b> sustain</span>
-              <span><b>Right-click</b> delete</span>
-            </p>
-          )}
-        </div>
+        <EditOverview
+          doc={doc}
+          bars={bars}
+          sections={sections}
+          regions={targetRegions}
+          pending={pending}
+          view={view}
+          playheadTick={playheadTick}
+          endTick={songEndTick}
+          onJump={(tick) => { rollApiRef.current?.scrollToTick(tick); seekTick(tick); }}
+          onSection={pickSection}
+        />
 
         <div className="edit-view-controls">
           <label className="edit-snap" title="Notes snap to this grid">
@@ -411,8 +408,12 @@ export default function EditScreen({ project }) {
           project={project}
           bars={bars}
           sections={sections}
-          regions={regions}
-          onRegionsChange={pickRegions}
+          regions={targetRegions}
+          onPickSection={pickSection}
+          onSelectBars={selectBarSpan}
+          onBoxSelect={boxSelect}
+          onClearSelection={clearAll}
+          onNoteClick={() => setRegions([])}
           pending={pending}
           loop={loop}
           apiRef={rollApiRef}
@@ -422,6 +423,37 @@ export default function EditScreen({ project }) {
       </div>
 
       {statusMsg && busyAction !== "generating" && <div className="edit-toast">{statusMsg}</div>}
+    </div>
+  );
+}
+
+// Mouse and key reference, opened from the ? in the header so the screen
+// itself stays free of instructions.
+function EditHelp() {
+  const Kbd = ({ children }) => <kbd className="edit-kbd">{children}</kbd>;
+  return (
+    <div className="edit-menu edit-help">
+      <div className="insp-eyebrow">MOUSE</div>
+      <dl className="insp-keys">
+        <dt>Click empty space</dt><dd>Add a note</dd>
+        <dt>Drag</dt><dd>Select notes and their bars</dd>
+        <dt>Click a section</dt><dd>Select it and jump there</dd>
+        <dt><Kbd>Shift</Kbd> + click</dt><dd>Add to the selection</dd>
+        <dt>Drag a note</dt><dd>Move it</dd>
+        <dt>Drag a note's end</dt><dd>Sustain</dd>
+        <dt>Right-click</dt><dd>Delete</dd>
+        <dt><Kbd>Ctrl</Kbd> + wheel</dt><dd>Zoom</dd>
+      </dl>
+      <div className="insp-eyebrow">KEYS</div>
+      <dl className="insp-keys">
+        <dt><Kbd>Space</Kbd></dt><dd>Play / pause</dd>
+        <dt><Kbd>R</Kbd></dt><dd>Redo the selection</dd>
+        <dt><Kbd>L</Kbd></dt><dd>Loop</dd>
+        <dt><Kbd>T</Kbd> <Kbd>H</Kbd> <Kbd>S</Kbd> <Kbd>Q</Kbd></dt><dd>Tap, HOPO, star power, snap</dd>
+        <dt><Kbd>Del</Kbd></dt><dd>Delete notes</dd>
+        <dt><Kbd>Ctrl</Kbd> <Kbd>Z</Kbd></dt><dd>Undo</dd>
+        <dt><Kbd>Esc</Kbd></dt><dd>Clear the selection</dd>
+      </dl>
     </div>
   );
 }

@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { I } from "../../../icons.jsx";
 import { barNumberLabel } from "./editRegions.js";
 
-// Panel beside the preview. Picked bars get the Redo controls, otherwise it
-// explains how to pick some. Past redos stay listed underneath so any of them
-// can be put back. (Note actions live in the toolbar above the roll.)
+// Panel beside the preview. Its layout never changes: Redo, Notes and Redos
+// are always there, and controls turn on and off with the selection instead
+// of appearing and disappearing. A running redo shows its progress in place
+// of the Redo button.
 
 const KNOBS = [
   { key: "density", name: "Notes", options: ["less", "auto", "more"], labels: ["Fewer", "Auto", "More"] },
@@ -12,13 +12,18 @@ const KNOBS = [
   { key: "movement", name: "Movement", options: ["less", "auto", "more"], labels: ["Less", "Auto", "More"] },
 ];
 
+const NOTE_ACTIONS = [
+  { id: "tap", label: "Tap", key: "T", icon: I.bolt, tone: "tap" },
+  { id: "force", label: "HOPO", key: "H", icon: I.chevsRight, tone: "force" },
+  { id: "starPower", label: "Star power", key: "S", icon: I.starOutline, tone: "sp" },
+  { id: "solo", label: "Solo", icon: I.spark, tone: "solo" },
+  { id: "quantize", label: "Snap to grid", key: "Q", icon: I.grid },
+  { id: "split", label: "Split chord", icon: I.cut, needsChord: true },
+];
+
 function fmtTime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-function Kbd({ children }) {
-  return <kbd className="edit-kbd">{children}</kbd>;
 }
 
 export default function EditInspector({
@@ -26,106 +31,111 @@ export default function EditInspector({
   bars,
   regions,
   selectionName,
+  selectedNotes,
   pending,
   knobs,
   onKnob,
   onRedo,
   onRedoToEnd,
   onCancelRedo,
-  onClearRegions,
-  onRemoveRegion,
+  onNoteAction,
   onFocusRedo,
   onPickRedo,
 }) {
-  const [adjustOpen, setAdjustOpen] = useState(false);
   const tempo = doc?.tempoMap;
-  const spanTime = (region) => `${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`;
-  const knobsSet = KNOBS.some((knob) => knobs[knob.key] !== "auto");
   const redos = doc?.redos || [];
+  const hasSelection = regions.length > 0;
+  const hasChord = selectedNotes.some((note) => !note.open && note.lanes.length > 1);
+  const where = hasSelection
+    ? regions.length === 1
+      ? `${barNumberLabel(bars, regions[0])} · ${fmtTime(tempo?.tickToSeconds(regions[0].startTick))}–${fmtTime(tempo?.tickToSeconds(regions[0].endTick))}`
+      : regions.map((region) => barNumberLabel(bars, region).replace("Bars ", "").replace("Bar ", "")).join(", ")
+    : "";
 
   return (
     <aside className="edit-inspector">
-      {pending ? (
-        <section className="insp-card insp-running">
-          <div className="insp-eyebrow">REDOING</div>
-          <div className="insp-title">{pending.label}</div>
-          <div className="insp-progress" style={{ "--p": pending.total ? pending.done / pending.total : 0 }}>
-            <span />
-          </div>
-          <div className="insp-sub">Bar {Math.min(pending.done + 1, pending.total)} of {pending.total}</div>
-          <button className="settings-secondary" onClick={onCancelRedo}>Cancel</button>
-        </section>
-      ) : regions.length ? (
-        <section className="insp-card">
-          <div className="insp-eyebrow-row">
-            <div className="insp-eyebrow">REDO</div>
-            <button className="insp-link" onClick={onClearRegions}>Clear</button>
-          </div>
-          <div className="insp-title">{selectionName}</div>
-          <ul className="insp-regions">
-            {regions.map((region) => (
-              <li key={region.startTick}>
-                <span>{barNumberLabel(bars, region)}</span>
-                <span className="insp-mono">{spanTime(region)}</span>
-                {regions.length > 1 && (
-                  <button onClick={() => onRemoveRegion(region)} aria-label="Remove this spot"><I.minus /></button>
-                )}
-              </li>
-            ))}
-          </ul>
-          <button className="btn-primary insp-redo" onClick={onRedo}>
-            <I.spark /> Redo {selectionName}
-          </button>
-          <button className="settings-secondary" onClick={onRedoToEnd} title="Keep everything before this point and redo the rest of the song">
-            Redo from here to the end
-          </button>
-          <button className={"insp-adjust" + (adjustOpen ? " open" : "")} onClick={() => setAdjustOpen((v) => !v)} aria-expanded={adjustOpen}>
-            Adjust{knobsSet ? " ·" : ""} <I.chev />
-          </button>
-          {adjustOpen && (
-            <div className="insp-knobs">
-              {KNOBS.map((knob) => (
-                <div className="insp-knob" key={knob.key}>
-                  <span>{knob.name}</span>
-                  <div className="insp-seg" role="radiogroup" aria-label={knob.name}>
-                    {knob.options.map((option, index) => (
-                      <button
-                        key={option}
-                        className={knobs[knob.key] === option ? "active" : ""}
-                        onClick={() => onKnob(knob.key, option)}
-                        role="radio"
-                        aria-checked={knobs[knob.key] === option}
-                      >
-                        {knob.labels[index]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+      <section className="insp-card">
+        <div className="insp-eyebrow">REDO</div>
+        <div className={"insp-target" + (hasSelection ? "" : " empty")}>
+          <b>{hasSelection ? selectionName : "Nothing selected"}</b>
+          <span>{hasSelection ? where : "Select notes or a section. Shift adds more."}</span>
+        </div>
+        {pending ? (
+          <div className="insp-running">
+            <div className="insp-progress" style={{ "--p": pending.total ? pending.done / pending.total : 0 }}>
+              <span />
             </div>
-          )}
-          <p className="insp-hint">Start where the problem starts.</p>
-        </section>
-      ) : null}
+            <div className="insp-running-row">
+              <span>Bar {Math.min(pending.done + 1, pending.total)} of {pending.total}</span>
+              <button className="insp-link" onClick={onCancelRedo}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="insp-redo-buttons">
+            <button className="btn-primary insp-redo" onClick={onRedo} disabled={!hasSelection} title="Redo (R)">
+              <I.spark /> Redo
+            </button>
+            <button className="settings-secondary" onClick={onRedoToEnd} title="Keep everything before this point and redo the rest of the song">
+              Redo to the end
+            </button>
+          </div>
+        )}
+        <div className="insp-knobs">
+          {KNOBS.map((knob) => (
+            <div className="insp-knob" key={knob.key}>
+              <span>{knob.name}</span>
+              <div className="insp-seg" role="radiogroup" aria-label={knob.name}>
+                {knob.options.map((option, index) => (
+                  <button
+                    key={option}
+                    className={knobs[knob.key] === option ? "active" : ""}
+                    onClick={() => onKnob(knob.key, option)}
+                    role="radio"
+                    aria-checked={knobs[knob.key] === option}
+                  >
+                    {knob.labels[index]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      {!pending && !regions.length && (
-        <section className="insp-card insp-idle">
-          <div className="insp-eyebrow">REDO A PART</div>
-          <p className="insp-lead">Click a section name, or drag across the bar numbers.</p>
-          <p className="insp-sub">Shift adds another spot. The new notes replace the old ones right away, and you can always go back.</p>
-          <dl className="insp-keys">
-            <dt><Kbd>Space</Kbd></dt><dd>Play / pause</dd>
-            <dt><Kbd>L</Kbd></dt><dd>Loop</dd>
-            <dt><Kbd>R</Kbd></dt><dd>Redo picked bars</dd>
-            <dt><Kbd>Ctrl</Kbd><Kbd>Z</Kbd></dt><dd>Undo</dd>
-            <dt><Kbd>Ctrl</Kbd>+wheel</dt><dd>Zoom</dd>
-          </dl>
-        </section>
-      )}
+      <section className="insp-card">
+        <div className="insp-eyebrow">
+          NOTES{selectedNotes.length ? <span className="insp-count">{selectedNotes.length} selected</span> : null}
+        </div>
+        <div className="insp-note-grid">
+          {NOTE_ACTIONS.map((action) => {
+            const Icon = action.icon;
+            return (
+              <button
+                key={action.id}
+                data-tone={action.tone}
+                onClick={() => onNoteAction(action.id)}
+                disabled={!selectedNotes.length || (action.needsChord && !hasChord)}
+                title={action.key ? `${action.label} (${action.key})` : action.label}
+              >
+                <Icon /> {action.label}
+              </button>
+            );
+          })}
+          <button
+            className="insp-note-delete"
+            data-tone="danger"
+            onClick={() => onNoteAction("delete")}
+            disabled={!selectedNotes.length}
+            title="Delete (Del)"
+          >
+            <I.trash /> Delete
+          </button>
+        </div>
+      </section>
 
-      {redos.length > 0 && (
-        <section className="insp-card insp-history">
-          <div className="insp-eyebrow">REDOS</div>
+      <section className="insp-card insp-history">
+        <div className="insp-eyebrow">REDOS</div>
+        {redos.length ? (
           <ul>
             {[...redos].reverse().map((redo) => (
               <li key={redo.id}>
@@ -143,8 +153,10 @@ export default function EditInspector({
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        ) : (
+          <p className="insp-sub">Nothing redone yet.</p>
+        )}
+      </section>
     </aside>
   );
 }
