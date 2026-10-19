@@ -5908,6 +5908,12 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .strip-section:hover { background: color-mix(in srgb, var(--sec) 34%, var(--surface-2)); }
 .strip-section.selected { background: color-mix(in srgb, var(--sec) 62%, var(--surface-2)); }
 .strip-section.selected b { color: #fff; }
+.strip-sel {
+  position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--purple-bri) 30%, transparent);
+  box-shadow: inset 0 0 0 2px var(--purple-bri);
+  border-radius: 4px;
+}
 .strip-redo, .strip-pending, .strip-view { position: absolute; pointer-events: none; }
 .strip-redo { top: 0; height: 3px; background: var(--orange); }
 .strip-pending { top: 0; bottom: 0; background: color-mix(in srgb, var(--orange) 30%, transparent); animation: strip-pulse 1s ease-in-out infinite alternate; }
@@ -6009,13 +6015,17 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   overflow-x: auto;
   overflow-y: hidden;
   position: relative;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
 }
-.piano-roll-scroll::-webkit-scrollbar { height: 8px; }
+.piano-roll-scroll::-webkit-scrollbar { height: 18px; }
 .piano-roll-scroll::-webkit-scrollbar-track { background: transparent; }
-.piano-roll-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
-.piano-roll-scroll::-webkit-scrollbar-thumb:hover { background: var(--purple-bd); }
+.piano-roll-scroll::-webkit-scrollbar-thumb {
+  background: var(--text-faint);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 99px;
+}
+.piano-roll-scroll::-webkit-scrollbar-thumb:hover,
+.piano-roll-scroll::-webkit-scrollbar-thumb:active { background-color: var(--purple-bri); }
 .piano-roll-content { position: relative; }
 .piano-roll-canvas { position: absolute; top: 0; left: 0; touch-action: none; cursor: default; }
 .piano-roll-empty { grid-area: 1 / 1; display: grid; place-items: center; color: var(--text-dim); font-size: var(--fs-md); }
@@ -6072,6 +6082,17 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 }
 .insp-target b { font: 700 var(--fs-lg) var(--font-display); color: var(--purple); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .insp-target span { font: 600 var(--fs-xs) var(--font-mono); color: var(--text-dim); }
+.insp-spots { display: flex; flex-wrap: wrap; gap: 4px; }
+.insp-spots button {
+  padding: 1px 6px;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  font: 600 var(--fs-xs) var(--font-mono); color: var(--text-dim);
+  cursor: pointer;
+}
+.insp-spots button:hover { background: color-mix(in srgb, var(--purple-bri) 18%, transparent); color: var(--purple); }
+.insp-spots button:only-child { margin-left: -6px; }
+.insp-spots button:not(:only-child) { background: color-mix(in srgb, var(--purple-bri) 10%, transparent); }
 .insp-target.empty { background: var(--surface-2); }
 .insp-target.empty b { color: var(--text-dim); }
 .insp-target.empty span { font-family: inherit; font-weight: 500; color: var(--text-faint); }

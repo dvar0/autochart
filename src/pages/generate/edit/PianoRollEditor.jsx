@@ -2,7 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "r
 import { I } from "../../../icons.jsx";
 import { FRET_COLORS, OPEN_NOTE_COLOR } from "../../../data/notePalette.js";
 import { snapTicks } from "./chartEditor.js";
-import { regionsCover, snapSpanToBars } from "./editRegions.js";
+import { nearestBarLine, regionsCover, resizeRegion, snapSpanToBars } from "./editRegions.js";
 
 // Canvas-based piano roll. The editor doc (ticks) is the source of truth; this
 // component renders a virtualized horizontal timeline and translates pointer
@@ -22,9 +22,10 @@ const BAR_ROW_H = 22;
 const REDO_ROW_H = 30;
 const SP_H = 20;
 const SOLO_H = 20;
-const SCROLLBAR_H = 15;
+const SCROLLBAR_H = 18;
 const EDGE_GRAB = 5;
 const SUSTAIN_GRAB = 7;
+const SELECTION_GRAB = 6;
 const BOX_SELECT_MIN_DRAG = 3;
 const REGION_MIN_DRAG = 4;
 
@@ -109,6 +110,7 @@ export default function PianoRollEditor({
   onBoxSelect,
   onClearSelection,
   onNoteClick,
+  onResizeSelection,
   pending = null,
   loop = null,
   apiRef,
@@ -281,8 +283,20 @@ export default function PianoRollEditor({
       ctx.fillRect(x, L.rulerH, 2, L.noteAreaH);
       ctx.fillRect(x + w - 2, L.rulerH, 2, L.noteAreaH);
     };
-    for (const region of view.regions) {
+    const shownRegions = drag?.kind === "selectionResize"
+      ? resizeRegion(view.bars, view.regions, drag.index, drag.edge, drag.curTick)
+      : view.regions;
+    for (const region of shownRegions) {
       drawRegionBand(region, alpha(purpleBri, dark ? 0.24 : 0.14), alpha(purpleBri, 0.9));
+      // Grips on both edges say the span can be stretched.
+      for (const edgeTick of [region.startTick, region.endTick]) {
+        const ex = tickToX(edgeTick);
+        if (ex < -10 || ex > viewW + 10) continue;
+        ctx.fillStyle = purpleBri;
+        drawRoundRect(ctx, ex - 4, L.rulerH + L.noteAreaH / 2 - 16, 8, 32, 4);
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.fillRect(ex - 1, L.rulerH + L.noteAreaH / 2 - 9, 2, 18);
+      }
     }
     if (pendingJob) {
       const now = performance.now();
@@ -495,7 +509,7 @@ export default function PianoRollEditor({
     const barW = (view.bars[1] - view.bars[0] || activeDoc.resolution * 4) * ppt;
     const every = barW >= 34 ? 1 : barW >= 16 ? 2 : barW >= 8 ? 4 : 8;
     ctx.font = "600 10px 'JetBrains Mono', ui-monospace, monospace";
-    for (const region of view.regions) {
+    for (const region of shownRegions) {
       const x = tickToX(region.startTick);
       const w = (region.endTick - region.startTick) * ppt;
       ctx.fillStyle = alpha(purpleBri, 0.9);
@@ -801,6 +815,20 @@ export default function PianoRollEditor({
 
   const newEraseDrag = (x, y) => ({ kind: "erase", noteIds: new Set(), rangeIds: new Set(), sustainCuts: new Map(), rangeCuts: new Map(), lastX: x, lastY: y, changed: false });
 
+  // Edge of a selected span under the pointer; dragging it stretches or
+  // shrinks the span to another bar line.
+  const selectionEdgeAt = (x) => {
+    const ppt = pxPerBeatRef.current / (docRef.current?.resolution || 192);
+    const list = viewRef.current.regions;
+    for (let index = 0; index < list.length; index += 1) {
+      for (const edge of ["start", "end"]) {
+        const edgeTick = edge === "start" ? list[index].startTick : list[index].endTick;
+        if (Math.abs(x - (edgeTick * ppt - scrollLeftRef.current)) <= SELECTION_GRAB) return { index, edge };
+      }
+    }
+    return null;
+  };
+
   // Hover feedback: a ghost note where a click would add one (only when
   // nothing is selected, since that click deselects instead), a stretch
   // handle on note ends, and a cursor that says what a drag would do.
@@ -810,7 +838,12 @@ export default function PianoRollEditor({
     const region = regionAtY(layoutRef.current, y);
     let next = null;
     let cursor = "default";
-    if (region.type === "note") {
+    const overEdge = (region.type === "note" || region.type === "bars") && selectionEdgeAt(x);
+    if (region.type === "note" && !hitTest(x, y)?.note && overEdge) {
+      cursor = "ew-resize";
+    } else if (region.type === "bars" && overEdge) {
+      cursor = "ew-resize";
+    } else if (region.type === "note") {
       const hit = hitTest(x, y);
       if (hit?.part === "tail") {
         next = { handle: { x: hit.endX, cy: hit.cy } };
@@ -873,6 +906,13 @@ export default function PianoRollEditor({
         requestEditorSeek(timeAtTick(tick));
       }
       dragRef.current = { kind: "noop" };
+      return;
+    }
+
+    const edge = !erasing && (region.type === "bars" || region.type === "note") ? selectionEdgeAt(x) : null;
+    if (edge && (region.type === "bars" || !hitTest(x, y)?.note)) {
+      dragRef.current = { kind: "selectionResize", ...edge, curTick: edge.edge === "start" ? regions[edge.index].startTick : regions[edge.index].endTick };
+      scheduleDraw();
       return;
     }
 
@@ -941,6 +981,11 @@ export default function PianoRollEditor({
       drag.kind = "boxSelect";
       drag.moved = true;
     }
+    if (drag.kind === "selectionResize") {
+      drag.curTick = nearestBarLine(bars, tick);
+      scheduleDraw();
+      return;
+    }
     if (drag.kind === "barSelect") {
       drag.curTick = tick;
       drag.moved = drag.moved || Math.abs(x - drag.startX) >= REGION_MIN_DRAG;
@@ -986,7 +1031,9 @@ export default function PianoRollEditor({
     } catch {
       /* pointer already released */
     }
-    if (drag.kind === "barSelect") {
+    if (drag.kind === "selectionResize") {
+      onResizeSelection?.(resizeRegion(bars, regions, drag.index, drag.edge, drag.curTick));
+    } else if (drag.kind === "barSelect") {
       if (drag.moved) {
         onSelectBars?.(snapSpanToBars(bars, drag.anchorTick, drag.curTick), drag.additive);
       } else {

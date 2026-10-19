@@ -40,17 +40,17 @@ export default function EditInspector({
   onCancelRedo,
   onNoteAction,
   onFocusRedo,
+  onFocusRegion,
   onPickRedo,
 }) {
   const tempo = doc?.tempoMap;
   const redos = doc?.redos || [];
   const hasSelection = regions.length > 0;
   const hasChord = selectedNotes.some((note) => !note.open && note.lanes.length > 1);
-  const where = hasSelection
-    ? regions.length === 1
-      ? `${barNumberLabel(bars, regions[0])} · ${fmtTime(tempo?.tickToSeconds(regions[0].startTick))}–${fmtTime(tempo?.tickToSeconds(regions[0].endTick))}`
-      : regions.map((region) => barNumberLabel(bars, region).replace("Bars ", "").replace("Bar ", "")).join(", ")
-    : "";
+  const spotLabel = (region) =>
+    regions.length === 1
+      ? `${barNumberLabel(bars, region)} · ${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`
+      : barNumberLabel(bars, region);
 
   return (
     <aside className="edit-inspector">
@@ -58,7 +58,17 @@ export default function EditInspector({
         <div className="insp-eyebrow">REDO</div>
         <div className={"insp-target" + (hasSelection ? "" : " empty")}>
           <b>{hasSelection ? selectionName : "Nothing selected"}</b>
-          <span>{hasSelection ? where : "Select notes or a section. Shift adds more."}</span>
+          {hasSelection ? (
+            <div className="insp-spots">
+              {regions.map((region) => (
+                <button key={region.startTick} onClick={() => onFocusRegion(region)} title="Show it">
+                  {spotLabel(region)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span>Select notes or a section. Shift adds more.</span>
+          )}
         </div>
         {pending ? (
           <div className="insp-running">

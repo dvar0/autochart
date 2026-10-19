@@ -59,6 +59,26 @@ export function snapSpanToBars(bars, a, b) {
   return { startTick: bars[first], endTick: barEndTick(bars, last) };
 }
 
+// The bar line closest to a tick (the song's last bar end counts too).
+export function nearestBarLine(bars, tick) {
+  if (!bars.length) return Math.round(tick);
+  const index = barIndexAt(bars, tick);
+  const next = barEndTick(bars, index);
+  return next - tick < tick - bars[index] ? next : bars[index];
+}
+
+// One selected span with an edge dragged to a new bar line. The span keeps
+// at least one bar, and the edges may cross.
+export function resizeRegion(bars, regions, index, edge, tick) {
+  const region = regions[index];
+  if (!region) return regions;
+  const fixed = edge === "start" ? region.endTick : region.startTick;
+  let span;
+  if (tick === fixed) span = edge === "start" ? snapSpanToBars(bars, fixed - 1, fixed) : snapSpanToBars(bars, fixed, fixed + 1);
+  else span = { startTick: Math.min(tick, fixed), endTick: Math.max(tick, fixed) };
+  return normalizeRegions(regions.map((r, i) => (i === index ? span : r)));
+}
+
 export function regionBarCount(bars, region) {
   return barIndexAt(bars, region.endTick - 1) - barIndexAt(bars, region.startTick) + 1;
 }

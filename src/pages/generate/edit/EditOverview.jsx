@@ -3,8 +3,8 @@ import { FRET_COLORS } from "../../../data/notePalette.js";
 import { barEndTick, regionsCover } from "./editRegions.js";
 
 // The whole song in one strip: a block per section (name inside, the bars'
-// note counts drawn along the bottom), the playhead, and a thin marker under
-// the part the piano roll is showing. Clicking a section selects it and moves
+// note counts drawn along the bottom), the selected spans, the playhead, and a
+// thin marker under the part the piano roll is showing. Clicking a section selects it and moves
 // the playhead there; Shift-click adds it to the selection.
 
 function barProfile(doc, bars) {
@@ -93,6 +93,9 @@ export default function EditOverview({ doc, bars, sections, regions, pending, vi
         </span>
       ))}
       <canvas ref={canvasRef} />
+      {regions.map((region) => (
+        <span key={`s${region.startTick}`} className="strip-sel" style={span(region.startTick, region.endTick)} />
+      ))}
       {(doc?.redos || []).flatMap((redo) =>
         redo.regions.map((region) => (
           <span key={`d${redo.id}${region.startTick}`} className="strip-redo" style={span(region.startTick, region.endTick)} />

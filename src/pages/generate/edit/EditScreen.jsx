@@ -354,6 +354,7 @@ export default function EditScreen({ project }) {
         onCancelRedo={() => jobRef.current?.cancel()}
         onNoteAction={noteAction}
         onFocusRedo={(redo) => { rollApiRef.current?.scrollToTick(redo.regions[0].startTick, "start"); seekTick(redo.regions[0].startTick); }}
+        onFocusRegion={(region) => { rollApiRef.current?.scrollToTick(region.startTick, "start"); seekTick(region.startTick); }}
         onPickRedo={(redo, index) => applyEditorChange({ type: "pickRedoTake", redoId: redo.id, index })}
       />
 
@@ -414,6 +415,7 @@ export default function EditScreen({ project }) {
           onBoxSelect={boxSelect}
           onClearSelection={clearAll}
           onNoteClick={() => setRegions([])}
+          onResizeSelection={selectSpans}
           pending={pending}
           loop={loop}
           apiRef={rollApiRef}
