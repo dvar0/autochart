@@ -48,6 +48,54 @@
       }
     },
     {
+      "id": "autochart.fretformer.v2-dpo-fim-onnx",
+      "label": "Fretformer v2 DPO+FIM",
+      "titleTag": "Fretformer v2 DPO+FIM",
+      "badge": "New",
+      "description": "Fretformer 2's Inpaint model: rewrites picked bars, and can also write whole charts. Comes with Fretformer 2.",
+      "status": "experimental",
+      "availability": "installed",
+      "platforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ],
+      "capabilities": {
+        "difficulties": [
+          "easy",
+          "medium",
+          "hard",
+          "expert"
+        ],
+        "sustains": "never-strip",
+        "triples": true,
+        "requiresGpu": false,
+        "usesTimingCache": true,
+        "usesStemCache": true,
+        "descriptorKnobs": ["speed", "chords", "hopos", "taps", "movement"],
+        "structureMarkers": ["solos", "sections"],
+        "inpaint": true
+      },
+      "separation": {
+        "model": "htdemucs_6s",
+        "stemSet": "htdemucs_6s",
+        "cacheSubdir": "stems_htdemucs_6s",
+        "stems": ["drums", "bass", "vocals", "guitar", "other"]
+      },
+      "models": {
+        "onnxFolder": "fretformer-v2-dpo-fim"
+      },
+      "runtime": {
+        "backend": "onnxruntime-node",
+        "executionProvider": "cpu",
+        "devices": {
+          "linux": { "demucs": "cpu" },
+          "darwin": { "demucs": "cpu" },
+          "win32": { "demucs": "cpu" }
+        }
+      }
+    },
+    {
       "id": "autochart.fretformer.v2-dpo-onnx",
       "label": "Fretformer v2 DPO",
       "titleTag": "Fretformer v2 DPO",

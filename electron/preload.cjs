@@ -105,6 +105,7 @@ contextBridge.exposeInMainWorld("autochart", {
     isAvailable: () => true,
     getManifest: () => ipcRenderer.invoke("engine:getManifest"),
     generateChart: (payload) => ipcRenderer.invoke("engine:generateChart", payload),
+    inpaintChart: (payload) => ipcRenderer.invoke("engine:inpaintChart", payload),
     cancelJob: (payload) => ipcRenderer.invoke("engine:cancelJob", payload),
     prepareDemucs: (payload) => ipcRenderer.invoke("engine:prepareDemucs", payload),
     readDemucsStem: (payload) => ipcRenderer.invoke("engine:readDemucsStem", payload),

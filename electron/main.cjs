@@ -756,6 +756,34 @@ function registerIpcHandlers() {
     }
   });
 
+  // Regenerate: new notes for picked bars of a take. Nothing is saved here;
+  // the edit screen puts the notes in its draft.
+  ipcMain.handle("engine:inpaintChart", async (event, payload) => {
+    runtimeSelection.assertSupportedTarget(process.platform, process.arch);
+    try {
+      if (!payload?.inpaint) throw new Error("Regenerate needs bars to rewrite.");
+      const enginePayload = await resolveEnginePayload(event, payload);
+      const settings = await readRuntimeSettings();
+      const manifest = await engineManager.loadManifest();
+      if (!manifest.available) throw new Error(manifest.error || "Autochart engine is unavailable.");
+      const catalog = await modelManager.loadCatalog(manifest);
+      const scan = await scanModelSetup(settings, manifest);
+      const generatorId = enginePayload.generatorId;
+      const setup = modelManager.readinessForCommand(scan, catalog, generatorId, {
+        command: "generate",
+        generation: enginePayload.generation,
+      });
+      if (!setup?.ready) {
+        throw new Error(setup?.message || modelManager.generatorFailureMessage(generatorId, scan));
+      }
+      const result = await engineManager.generateChart(userDataPath(), event.sender, enginePayload, { settings });
+      if (result.status !== "completed") return { jobId: result.jobId, status: result.status };
+      return { jobId: result.jobId, status: result.status, chartText: result.chartText, inpaint: result.inpaint };
+    } catch (err) {
+      throw new Error(err.message || "Regenerate failed.");
+    }
+  });
+
   ipcMain.handle("engine:cancelJob", async (event, payload) => {
     return engineManager.cancelJob(payload?.jobId, event.sender);
   });

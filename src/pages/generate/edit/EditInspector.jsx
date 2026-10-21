@@ -53,6 +53,7 @@ export default function EditInspector({ project, ws }) {
           selectionName={ws.selectionName}
           selectedRedo={ws.selectedRedo}
           pending={ws.pending}
+          blockedReason={ws.regenBlockedReason}
           knobs={ws.knobs}
           confirm={ws.confirm}
           onConfirm={ws.confirmOverwrite}
@@ -111,6 +112,7 @@ function RegenTab({
   selectionName,
   selectedRedo,
   pending,
+  blockedReason,
   knobs,
   confirm,
   onConfirm,
@@ -167,13 +169,18 @@ function RegenTab({
               <span />
             </div>
             <div className="insp-running-row">
-              <span>Bar {Math.min(pending.done + 1, pending.total)} of {pending.total}</span>
+              <span>{pending.done ? `${Math.round((100 * pending.done) / pending.total)}%` : "Loading the song"}</span>
               <button className="insp-link" onClick={onCancelRedo}>Cancel</button>
             </div>
           </div>
         ) : (
           <div className="insp-redo-buttons">
-            <button className="btn-primary insp-redo" onClick={needsSelection(hasSelection, onRedo)} title="Regenerate (R)">
+            <button
+              className="btn-primary insp-redo"
+              onClick={needsSelection(hasSelection, onRedo)}
+              disabled={Boolean(blockedReason)}
+              title={blockedReason || "Regenerate (R)"}
+            >
               <I.spark /> Regenerate
             </button>
           </div>

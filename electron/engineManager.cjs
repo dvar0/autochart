@@ -1483,6 +1483,35 @@ async function readContainedOutputFile(outputDir, filePath, label, maxBytes = 64
   return readVerifiedFile(candidate, { label, maxBytes });
 }
 
+const INPAINT_PICKS = new Set(["less", "auto", "more"]);
+const INPAINT_DIFFICULTIES = new Set(["expert", "hard", "medium", "easy"]);
+
+// Regenerate's request, checked before it reaches the engine.
+function inpaintRequest(value, generator) {
+  if (!generator.capabilities?.inpaint) throw new Error(`${generator.label} can't regenerate part of a chart.`);
+  const request = plainObject(value);
+  const chartText = typeof request.chartText === "string" ? request.chartText : "";
+  if (!chartText || chartText.length > 32 * 1024 * 1024) throw new Error("Regenerate needs the take's chart.");
+  const regions = (Array.isArray(request.regions) ? request.regions : []).slice(0, 512).map((region) => ({
+    startTick: Math.trunc(Number(region?.startTick)),
+    endTick: Math.trunc(Number(region?.endTick)),
+  })).filter((region) => Number.isSafeInteger(region.startTick) && Number.isSafeInteger(region.endTick) && region.startTick >= 0 && region.endTick > region.startTick);
+  if (!regions.length) throw new Error("Pick bars to regenerate.");
+  const knobs = {};
+  for (const name of ["density", "chords", "movement"]) {
+    const pick = plainObject(request.knobs)[name];
+    knobs[name] = INPAINT_PICKS.has(pick) ? pick : "auto";
+  }
+  const seed = Math.trunc(Number(request.seed));
+  return {
+    chartText,
+    difficulty: INPAINT_DIFFICULTIES.has(request.difficulty) ? request.difficulty : "expert",
+    regions,
+    knobs,
+    ...(Number.isSafeInteger(seed) && seed >= 0 ? { seed: seed % (2 ** 31 - 1) } : {}),
+  };
+}
+
 async function generateChart(userDataPath, sender, payload, options = {}) {
   runtimeSelection.assertSupportedTarget(CURRENT_PLATFORM, process.arch);
   // Recovery overrides only this job. The user's saved hardware preference is
@@ -1584,6 +1613,7 @@ async function generateChart(userDataPath, sender, payload, options = {}) {
       audioIdentity: cachedAudio.identity || null,
       sourceTransform: cachedAudio.sourceTransform,
       ...(sourceChart ? { sourceChart } : {}),
+      ...(payload.inpaint ? { inpaint: inpaintRequest(payload.inpaint, generator) } : {}),
       outputDir,
       cacheDir: cacheRoot(userDataPath, settings),
       title,

@@ -186,6 +186,31 @@ export function parseEditableChart(chartText, difficulty = "expert") {
   };
 }
 
+// Editor notes from [tick, type, sustain] .chart note lines (an engine
+// Regenerate result), grouped by tick like parseEditableChart.
+export function notesFromNoteLines(noteLines) {
+  const byTick = new Map();
+  for (const [tick, fret, sustain] of noteLines) {
+    let note = byTick.get(tick);
+    if (!note) {
+      note = { id: makeNoteId(tick), tick, lanes: [], open: false, tap: false, force: false, sustainsByLane: {} };
+      byTick.set(tick, note);
+    }
+    if (fret === FRET_FORCE) note.force = true;
+    else if (fret === FRET_TAP) note.tap = true;
+    else if (fret === FRET_OPEN) {
+      note.open = true;
+      note.sustainsByLane.open = sustain;
+    } else if (fret >= 0 && fret <= 4 && !note.lanes.includes(fret)) {
+      note.lanes.push(fret);
+      note.sustainsByLane[fret] = sustain;
+    }
+  }
+  return [...byTick.values()]
+    .map((note) => ({ ...note, lanes: [...note.lanes].sort((a, b) => a - b) }))
+    .sort((a, b) => a.tick - b.tick);
+}
+
 // Deep-clones an editor doc's mutable pieces (notes/ranges). The parsed
 // song/sync/events/tempoMap are treated as immutable and shared by reference.
 export function cloneEditorDoc(doc) {

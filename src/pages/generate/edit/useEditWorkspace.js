@@ -191,7 +191,8 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
       bars,
       regions: targetRegions,
       knobs,
-      onProgress: ({ done, notes }) => setPending((current) => (current ? { ...current, done, notes } : current)),
+      run: editor.startInpaint,
+      onProgress: ({ done, total: of, notes }) => setPending((current) => (current ? { ...current, done, total: of ?? current.total, notes } : current)),
     });
     jobRef.current = job;
     job.promise
@@ -210,7 +211,7 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
         if (jobRef.current === job) jobRef.current = null;
         setPending(null);
       });
-  }, [doc, pending, bars, knobs, applyEditorChange, setRegions, seekTick]);
+  }, [doc, pending, bars, knobs, editor, applyEditorChange, setRegions, seekTick]);
 
   useEffect(() => () => jobRef.current?.cancel(), []);
 
@@ -236,11 +237,11 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
   // Redoing the exact bars of an earlier redo adds a take to it, so its
   // Original stays reachable.
   const redoSelection = useCallback(() => {
-    if (!regions.length || pending) return;
+    if (!regions.length || pending || editor.inpaintBlockedReason) return;
     guardHandEdits(regions, "regen", () =>
       runRedo(regions, { redoId: selectedRedo?.id ?? null, label: selectedRedo?.label ?? redoLabel(bars, regions, sections) })
     );
-  }, [regions, pending, guardHandEdits, runRedo, selectedRedo, bars, sections]);
+  }, [regions, pending, editor.inpaintBlockedReason, guardHandEdits, runRedo, selectedRedo, bars, sections]);
 
   const pickRedoTake = useCallback((redo, index) => {
     guardHandEdits(redo.regions, "take", () => applyEditorChange({ type: "pickRedoTake", redoId: redo.id, index }));
@@ -383,6 +384,7 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     selectedRedo,
     songEndTick,
     pending,
+    regenBlockedReason: editor.inpaintBlockedReason,
     knobs,
     setKnob: (key, value) => setKnobs((current) => ({ ...current, [key]: value })),
     loop,

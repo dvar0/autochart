@@ -13,4 +13,6 @@ module.exports = {
   ...require("./buildBeatMel.cjs"),
   ...require("./transcribe.cjs"),
   ...require("./forceSolo.cjs"),
+  ...require("./chartTokens.cjs"),
+  ...require("./inpaint.cjs"),
 };

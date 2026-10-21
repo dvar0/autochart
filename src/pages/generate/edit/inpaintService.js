@@ -1,17 +1,11 @@
 // Redo (inpainting) requests for the edit screen.
 //
-// MOCK: nothing here runs a model yet. The UI talks to startRedo() only, so
-// the engine job can replace mockRedo() without touching the screen. The real
-// job will be an engine `inpaint` request:
-//   { chartText, difficulty, regions: [{ startTick, endTick }] (bar-aligned,
-//     filled left to right so later fills see earlier ones), knobs,
-//     seed, keepMarkers: true }
-// streaming `partial_chart` lines per region and resolving with the new notes
-// for every region. Timing comes from the take's own tempo map; nothing is
-// re-separated or re-beat-tracked unless the take's stems don't match the model.
-//
-// Until then the mock rebuilds each bar from another bar of the same chart,
-// so results look like plausible charting instead of noise.
+// The desktop app runs the engine's `inpaint` job (Fretformer v2 DPO+FIM, see
+// useGenerateProject startInpaint): the edited chart as it stands, the picked
+// bar spans (filled left to right, so later fills see earlier ones), the
+// style picks and a seed; timing is the take's own tempo map, stems come from
+// the take's separation. The browser preview has no engine, so it keeps a
+// mock that rebuilds each bar from another bar of the same chart.
 
 import { barEndTick, barIndexAt, tickInRegions } from "./editRegions.js";
 
@@ -132,9 +126,11 @@ function mockRedo({ doc, bars, regions, knobs, seed, onProgress, signal }) {
 /**
  * Starts a redo. Resolves with the new notes for every region (editor-doc
  * note shape). onProgress({ done, total, notes }) streams partial results.
+ * run: the engine runner (editor.startInpaint); without it, the mock.
  * Returns { promise, cancel }.
  */
-export function startRedo({ doc, bars, regions, knobs = {}, seed = Date.now(), onProgress }) {
+export function startRedo({ doc, bars, regions, knobs = {}, seed = Date.now() % 2147483647, onProgress, run = null }) {
+  if (run) return run({ regions, knobs, seed, onProgress });
   const controller = new AbortController();
   const promise = mockRedo({ doc, bars, regions, knobs, seed, onProgress, signal: controller.signal });
   return { promise, cancel: () => controller.abort() };

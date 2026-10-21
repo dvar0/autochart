@@ -10,6 +10,7 @@ import {
   nextEditName,
   parseEditableChart,
   updateEditedVersion,
+  notesFromNoteLines,
   writeEditableChart,
 } from "./edit/chartEditor.js";
 import { isUnsupportedGenerationTarget } from "./generationGate.js";
@@ -51,7 +52,9 @@ import {
 import {
   exportChart,
   cancelGeneration,
+  canInpaint,
   generateChart,
+  inpaintChart,
   listGenerators,
   prepareDemucs,
   requiresPathBackedAudio,
@@ -73,6 +76,9 @@ import {
 } from "../../services/songLibrary.js";
 import { DEFAULT_DEMUCS_ID, newSongId } from "../../services/songSchema.js";
 
+// Regenerate's model: Fretformer v2 DPO stays the Generate model; its FIM
+// sibling rewrites picked bars.
+const INPAINT_GENERATOR_ID = "autochart.fretformer.v2-dpo-fim-onnx";
 const EMPTY_DETAILS = { title: "", artist: "", album: "", year: "", genre: "", charter: "Autochart" };
 export const MIN_COMPARE_CHARTS = 2;
 export const MAX_COMPARE_CHARTS = 4;
@@ -2311,6 +2317,62 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     [editorState.doc]
   );
 
+  // Regenerate runs the fill-in-the-middle model on the edited chart as it
+  // stands, with the take's own audio, lead-in and separation.
+  const inpaintGenerator = generators.find((g) => g.id === INPAINT_GENERATOR_ID && g.capabilities?.inpaint) || null;
+  // The browser preview has no engine; the edit screen mocks Regenerate there.
+  const inpaintBlockedReason = !canInpaint()
+    ? ""
+    : !inpaintGenerator || (inpaintGenerator.setup && !inpaintGenerator.setup.ready)
+      ? "Regenerate needs Fretformer v2 DPO+FIM installed"
+      : !importedSong?.audioSource
+        ? "Save the song first"
+        : "";
+  const startInpaint = ({ regions, knobs, seed, onProgress }) => {
+    const doc = editorState.doc;
+    const source = editorSourceVersion;
+    const jobId = crypto.randomUUID();
+    let unsubscribe = () => {};
+    let canceled = false;
+    const toNotes = (regionsOut) => notesFromNoteLines(regionsOut.flatMap((region) => region.noteLines));
+    const promise = (async () => {
+      if (inpaintBlockedReason) throw new Error(inpaintBlockedReason);
+      unsubscribe = subscribeGenerationEvents((event) => {
+        if (event?.jobId !== jobId || event.type !== "inpaint_progress") return;
+        onProgress?.({ done: event.done, total: event.total, notes: toNotes(event.regions || []) });
+      });
+      const result = await inpaintChart({
+        jobId,
+        generatorId: INPAINT_GENERATOR_ID,
+        audioSource: importedSong.audioSource,
+        sourceTransform: source?.provenance?.sourceTransform || null,
+        demucsSeparation: source?.provenance?.sourceSeparation || null,
+        metadata: { title: details.title, artist: details.artist },
+        inpaint: {
+          chartText: writeEditableChart(doc.chartText, doc.difficulty, doc),
+          difficulty: doc.difficulty,
+          regions: regions.map(({ startTick, endTick }) => ({ startTick, endTick })),
+          knobs,
+          seed,
+        },
+      });
+      if (canceled || result.status === "canceled") throw new DOMException("Regenerate canceled", "AbortError");
+      return toNotes(result.inpaint.regions);
+    })()
+      .catch((err) => {
+        if (err?.name !== "AbortError") setStatusMsg(err.message || "Regenerate failed.");
+        throw err;
+      })
+      .finally(() => unsubscribe());
+    return {
+      promise,
+      cancel: () => {
+        canceled = true;
+        void cancelGeneration(jobId);
+      },
+    };
+  };
+
   const editor = {
     doc: editorState.doc,
     selectedNoteIds: editorState.selectedNoteIds,
@@ -2331,6 +2393,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     draftVersion: editorDraftVersion,
     previewTrack: editorPreviewTrack,
     hasSession: hasEditorSession,
+    inpaintBlockedReason,
+    startInpaint: canInpaint() ? startInpaint : null,
   };
 
   return {
