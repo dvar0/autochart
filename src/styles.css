@@ -5384,19 +5384,27 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-stage .preview-stage,
 .edit-stage .highway-wrap { min-height: 0; }
 
-/* Whole-song strip in the toolbar: one block per section, note counts along
-   the bottom, playhead, and a thin marker under what the roll shows. */
-.song-strip {
+/* Whole-song map in the toolbar: a section band on top (click picks) and a
+   timeline below (click or drag moves the playhead), one playhead through
+   both with its knob on the seam. */
+.song-map {
+  --map-sec: 22px;
+  --map-track: 30px;
   position: relative;
   flex: 1; min-width: 0;
-  height: 42px;
+  display: grid;
+  grid-template-rows: var(--map-sec) var(--map-track);
+  row-gap: 2px;
   border-radius: var(--r-box);
-  background: var(--surface-2);
+  background: var(--bg);
   overflow: hidden;
-  cursor: pointer;
   user-select: none;
 }
-.song-strip canvas { position: absolute; inset: 0; pointer-events: none; }
+.map-sections, .map-track { position: relative; background: var(--surface-2); }
+.map-sections { cursor: pointer; }
+.map-track { cursor: pointer; touch-action: none; }
+.song-map.scrubbing, .song-map.scrubbing * { cursor: grabbing; }
+.map-track canvas { position: absolute; inset: 0; pointer-events: none; }
 .strip-section {
   position: absolute; top: 0; bottom: 0;
   border-right: 2px solid var(--bg);
@@ -5404,7 +5412,8 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   transition: background .12s;
 }
 .strip-section b {
-  position: absolute; left: 7px; right: 4px; top: 4px;
+  position: absolute; left: 7px; right: 4px; top: 0;
+  line-height: var(--map-sec);
   font-size: var(--fs-xs); font-weight: 800; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -5427,12 +5436,62 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   border-radius: 4px;
   opacity: .8;
 }
-.strip-redo, .strip-pending, .strip-view { position: absolute; pointer-events: none; }
+.strip-redo, .strip-pending, .track-view, .track-sel, .track-hover, .track-time { position: absolute; pointer-events: none; }
 .strip-redo { top: 0; height: 3px; background: var(--orange); }
 .strip-pending { top: 0; bottom: 0; background: color-mix(in srgb, var(--orange) 30%, transparent); animation: strip-pulse 1s ease-in-out infinite alternate; }
 @keyframes strip-pulse { from { opacity: .45; } to { opacity: 1; } }
-.strip-view { bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--text-dim); opacity: .7; }
-.strip-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--orange); pointer-events: none; }
+/* What the roll is showing: a pair of brackets, [ ], around that span. */
+.track-view { top: 3px; bottom: 3px; z-index: 1; }
+.track-view::before, .track-view::after {
+  content: "";
+  position: absolute; top: 0; bottom: 0;
+  width: 5px;
+  border: 2px solid var(--text-dim);
+}
+.track-view::before { left: 0; border-right: none; border-radius: 4px 0 0 4px; }
+.track-view::after { right: 0; border-left: none; border-radius: 0 4px 4px 0; }
+.track-sel { top: 0; bottom: 0; background: color-mix(in srgb, var(--purple-bri) 18%, transparent); }
+.track-hover { top: 0; bottom: 0; width: 2px; margin-left: -1px; background: color-mix(in srgb, var(--text) 35%, transparent); }
+.track-time {
+  top: 4px;
+  transform: translateX(7px);
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font: 600 var(--fs-xs)/18px var(--font-mono);
+  color: var(--text);
+  z-index: 2;
+}
+.track-time.flip { transform: translateX(calc(-100% - 7px)); }
+/* Snapped onto a section start: the ghost line and label take its colour. */
+.track-hover.snapped { width: 3px; margin-left: 0; background: var(--sec); }
+.track-time b {
+  margin-right: 6px;
+  font: 800 var(--fs-xs) var(--font-ui);
+  color: color-mix(in srgb, var(--sec) 70%, var(--text));
+}
+/* The playhead: one shape, a line through both bands with a grabbable
+   handle on the seam. The element is wider than the line so it is easy to
+   catch. The SVG is 54px tall: 22px section band + 2px seam + 30px track. */
+.map-playhead {
+  position: absolute; top: 0; bottom: 0;
+  width: 16px; margin-left: -8px;
+  z-index: 3;
+  cursor: grab;
+  touch-action: none;
+}
+.map-playhead svg { display: block; overflow: visible; }
+.ph-edge { fill: var(--bg); stroke: var(--bg); stroke-width: 3; }
+.ph-fill { fill: var(--orange); }
+.ph-grip { fill: none; stroke: #fff; stroke-opacity: .75; stroke-width: 1.4; stroke-linecap: round; }
+.ph-head {
+  transform-box: view-box;
+  transform-origin: 8px 23px;
+  transition: transform .16s cubic-bezier(.34, 1.56, .64, 1);
+}
+.map-playhead:hover .ph-head,
+.song-map.scrubbing .ph-head { transform: scale(1.18); }
 
 .edit-toolbar {
   grid-area: toolbar;
@@ -5586,9 +5645,19 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-target-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .insp-target-head b { flex: 1; min-width: 0; }
 .insp-target-head .insp-link:disabled { color: var(--text-faint); opacity: .5; cursor: default; }
-.insp-spots { display: flex; flex-wrap: wrap; gap: 4px; }
+.insp-target-row { display: flex; align-items: center; height: 22px; min-width: 0; }
+.insp-target-row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insp-spots {
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
+}
+.insp-spots::-webkit-scrollbar { display: none; }
 .insp-spot {
+  flex: none;
   display: inline-flex; align-items: center;
+  height: 20px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--purple-bri) 12%, transparent);
 }
@@ -5726,7 +5795,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 
 @media (max-width: 1180px) {
   .edit-toolbar { flex-wrap: wrap; }
-  .song-strip { order: 3; flex-basis: 100%; }
+  .song-map { order: 3; flex-basis: 100%; }
 }
 .editor-action svg {
   width: 15px;

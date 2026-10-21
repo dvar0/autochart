@@ -157,6 +157,38 @@ export default function EditScreen({ project }) {
     highwayRef.current?.seek?.(doc.tempoMap.tickToSeconds(Math.max(0, tick)));
   }, [doc]);
 
+  // The song map's timeline: the playhead and the roll follow the pointer.
+  // Playback holds while the pointer is down and picks up where it lets go.
+  const scrubResumeRef = useRef(false);
+  const scrub = useCallback((tick, phase) => {
+    const preview = highwayRef.current;
+    if (phase === "start") {
+      scrubResumeRef.current = Boolean(preview?.isPlaying?.());
+      if (scrubResumeRef.current) preview.pause?.();
+    }
+    seekTick(tick);
+    rollApiRef.current?.scrollToTick(tick);
+    if (phase === "end" && scrubResumeRef.current) {
+      scrubResumeRef.current = false;
+      preview?.play?.();
+    }
+  }, [seekTick]);
+
+  // [ and ] jump to the start of the previous or next section. A press just
+  // after a section starts goes back past it, like a music player's back.
+  const jumpSection = useCallback((dir) => {
+    if (!doc || !sections.length) return;
+    const now = doc.tempoMap.secondsToTick(editor.playhead.time || 0);
+    const grace = (doc.resolution || 192) * 2;
+    const starts = sections.map((s) => s.startTick);
+    const target = dir > 0
+      ? starts.find((t) => t > now + 1)
+      : [...starts].reverse().find((t) => t < now - grace) ?? 0;
+    if (target == null) return;
+    seekTick(target);
+    rollApiRef.current?.scrollToTick(target, "start");
+  }, [doc, sections, editor.playhead.time, seekTick]);
+
   // ---- redo ----
   const runRedo = useCallback((targetRegions, { redoId = null, label }) => {
     if (!doc || pending || !targetRegions.length) return;
@@ -204,11 +236,12 @@ export default function EditScreen({ project }) {
     else applyEditorChange({ type: "clearSelection" });
   }, [applyEditorChange, tab]);
 
-  // Clicking a section moves the playhead there. On the Regenerate tab it
-  // also adds the section to the picked bars, or takes it out if it is
-  // already picked, the same toggle as clicking bars on the roll. Unpicking
-  // a section right after picking it puts back whatever was picked before,
-  // so a partial pick inside it survives the round trip.
+  // Clicking a section moves the playhead to its start and scrolls the roll
+  // there. On the Regenerate tab it also adds the section to the picked bars,
+  // or takes it out if it is already picked, the same toggle as clicking bars
+  // on the roll. Unpicking a section right after picking it puts back
+  // whatever was picked before, so a partial pick inside it survives the
+  // round trip.
   const pickSection = (section) => {
     const span = { startTick: section.startTick, endTick: section.endTick };
     if (tab === "regen") {
@@ -252,7 +285,7 @@ export default function EditScreen({ project }) {
 
   // ---- keyboard ----
   const keyActions = useRef({});
-  keyActions.current = { tab, togglePlay, noteAction, redoSelection, targetRegions, pending, canLoop, clearSelection };
+  keyActions.current = { tab, togglePlay, noteAction, redoSelection, targetRegions, pending, canLoop, clearSelection, jumpSection };
   useEffect(() => {
     const onKey = (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
@@ -277,6 +310,9 @@ export default function EditScreen({ project }) {
       } else if (e.key === "Escape") {
         a.clearSelection();
         setHelpOpen(false);
+      } else if (e.key === "[" || e.key === "]") {
+        e.preventDefault();
+        a.jumpSection(e.key === "]" ? 1 : -1);
       } else if (key === "l" && a.canLoop) setLoopOn((v) => !v);
       else if (a.tab === "regen") {
         if (key === "r" && a.targetRegions.length && !a.pending) a.redoSelection();
@@ -412,7 +448,7 @@ export default function EditScreen({ project }) {
           view={view}
           playheadTick={playheadTick}
           endTick={songEndTick}
-          onJump={(tick) => { rollApiRef.current?.scrollToTick(tick); seekTick(tick); }}
+          onScrub={scrub}
           onSection={pickSection}
         />
 
@@ -459,22 +495,31 @@ function EditHelp({ tab }) {
       {tab === "regen" ? (
         <dl className="insp-keys">
           <dt>Click a section or bar</dt><dd>Pick it, or unpick it</dd>
+          <dt>Click or drag the timeline</dt><dd>Move the playhead</dd>
+          <dt>[ ] on the timeline</dt><dd>What the roll shows</dd>
+          <dt><Kbd>Alt</Kbd> + drag the timeline</dt><dd>Don't snap to sections</dd>
           <dt>Drag across the roll</dt><dd>Pick bars</dd>
           <dt>Drag over picked bars</dt><dd>Unpick them</dd>
           <dt>Right-drag</dt><dd>Unpick bars</dd>
           <dt>Drag a bar-row block</dt><dd>Move that area</dd>
           <dt>Drag its grips</dt><dd>Stretch it</dd>
           <dt>Click its arrow</dt><dd>Stretch it to the end</dd>
+          <dt>Wheel</dt><dd>Scroll the roll</dd>
           <dt><Kbd>Ctrl</Kbd> + wheel</dt><dd>Zoom</dd>
         </dl>
       ) : (
         <dl className="insp-keys">
+          <dt>Click a section</dt><dd>Jump to it</dd>
+          <dt>Click or drag the timeline</dt><dd>Move the playhead</dd>
+          <dt>[ ] on the timeline</dt><dd>What the roll shows</dd>
+          <dt><Kbd>Alt</Kbd> + drag the timeline</dt><dd>Don't snap to sections</dd>
           <dt>Click empty space</dt><dd>Add a note</dd>
           <dt>Drag</dt><dd>Select notes</dd>
           <dt><Kbd>Shift</Kbd> + click</dt><dd>Add to the selection</dd>
           <dt>Drag a note</dt><dd>Move it</dd>
           <dt>Drag a note's end</dt><dd>Sustain</dd>
           <dt>Right-click</dt><dd>Delete</dd>
+          <dt>Wheel</dt><dd>Scroll the roll</dd>
           <dt><Kbd>Ctrl</Kbd> + wheel</dt><dd>Zoom</dd>
         </dl>
       )}
@@ -482,6 +527,7 @@ function EditHelp({ tab }) {
       <dl className="insp-keys">
         <dt><Kbd>Tab</Kbd></dt><dd>Switch tabs</dd>
         <dt><Kbd>Space</Kbd></dt><dd>Play / pause</dd>
+        <dt><Kbd>[</Kbd> <Kbd>]</Kbd></dt><dd>Previous / next section</dd>
         <dt><Kbd>L</Kbd></dt><dd>Loop</dd>
         {tab === "regen" ? (
           <><dt><Kbd>R</Kbd></dt><dd>Regenerate the selection</dd></>

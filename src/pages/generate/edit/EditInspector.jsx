@@ -99,8 +99,10 @@ function RegenTab({
             <b>{hasSelection ? selectionName : "Nothing selected"}</b>
             <button className="insp-link" onClick={onClearAreas} disabled={!hasSelection}>Clear</button>
           </div>
+          {/* One fixed-height row holds the hint or the area chips, so the box
+              keeps its size; extra chips scroll sideways instead of wrapping. */}
           {hasSelection ? (
-            <div className="insp-spots">
+            <div className="insp-target-row insp-spots">
               {regions.map((region) => (
                 <span className="insp-spot" key={region.startTick}>
                   <button onClick={() => onFocusRegion(region)} title="Show it">
@@ -113,7 +115,7 @@ function RegenTab({
               ))}
             </div>
           ) : (
-            <span>Drag across the roll or click a section.</span>
+            <div className="insp-target-row"><span>Drag across the roll or click a section.</span></div>
           )}
         </div>
         {pending ? (

@@ -781,12 +781,18 @@ export default function PianoRollEditor({
     },
   }), [pxPerTick]);
 
-  // Ctrl/Cmd + wheel zooms around the pointer.
+  // A plain wheel scrolls the roll sideways (a sideways wheel or trackpad
+  // swipe already does); Ctrl/Cmd + wheel zooms around the pointer.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
     const onWheel = (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (!e.ctrlKey && !e.metaKey) {
+        if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        e.preventDefault();
+        container.scrollLeft += e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+        return;
+      }
       e.preventDefault();
       const rect = container.getBoundingClientRect();
       const offsetX = e.clientX - rect.left;
