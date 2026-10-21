@@ -5338,6 +5338,20 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-icon-btn svg { width: 16px; height: 16px; }
 .edit-icon-btn:hover:not(:disabled) { background: var(--purple-bg); color: var(--purple); }
 .edit-icon-btn:disabled { opacity: .4; cursor: default; }
+.edit-history { display: flex; gap: 3px; padding: 3px; border-radius: var(--r-box); background: var(--surface-2); }
+.edit-history button {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 12px;
+  border: none; border-radius: calc(var(--r-box) - 2px);
+  background: var(--surface); color: var(--purple);
+  font-size: var(--fs-sm); font-weight: 700;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12);
+  cursor: pointer; transition: .12s;
+}
+.edit-history button svg { width: 16px; height: 16px; }
+.edit-history button:hover:not(:disabled) { background: var(--purple); color: var(--purple-fg); }
+.edit-history button:disabled { background: transparent; color: var(--text-faint); box-shadow: none; cursor: default; }
+.edit-head-actions > .edit-history { margin-right: 6px; }
 .edit-menu-wrap { position: relative; }
 .edit-menu {
   position: absolute; right: 0; top: calc(100% + 6px);
@@ -5402,6 +5416,16 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   background: color-mix(in srgb, var(--purple-bri) 30%, transparent);
   box-shadow: inset 0 0 0 2px var(--purple-bri);
   border-radius: 4px;
+}
+.strip-sel.lifted {
+  background: color-mix(in srgb, color-mix(in srgb, var(--purple-bri) 60%, #fff) 45%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--purple-bri) 60%, #fff), 0 0 10px color-mix(in srgb, var(--purple-bri) 50%, transparent);
+}
+.strip-origin {
+  position: absolute; top: 0; bottom: 0; pointer-events: none;
+  border: 1.5px dashed var(--purple-bri);
+  border-radius: 4px;
+  opacity: .8;
 }
 .strip-redo, .strip-pending, .strip-view { position: absolute; pointer-events: none; }
 .strip-redo { top: 0; height: 3px; background: var(--orange); }
@@ -5526,6 +5550,26 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   overflow-y: auto;
   display: flex; flex-direction: column;
 }
+.insp-tabs {
+  flex: none;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+  margin: var(--sp-4) var(--sp-5) 0;
+  padding: 3px;
+  border-radius: var(--r-box);
+  background: var(--surface-2);
+}
+.insp-tabs button {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 40px;
+  border: none; border-radius: calc(var(--r-box) - 2px);
+  background: transparent; color: var(--text-dim);
+  font-size: var(--fs-base); font-weight: 700;
+  cursor: pointer;
+  transition: .12s;
+}
+.insp-tabs button svg { width: 16px; height: 16px; }
+.insp-tabs button:hover:not(.active) { color: var(--purple); }
+.insp-tabs button.active { background: var(--purple); color: var(--purple-fg); box-shadow: 0 1px 2px rgba(0,0,0,.14); }
 .insp-card { padding: 18px var(--sp-5); display: flex; flex-direction: column; gap: 10px; }
 .insp-card + .insp-card { border-top: 1px solid var(--border-soft); }
 .insp-eyebrow { display: flex; align-items: center; gap: 8px; font: 800 var(--fs-xs) var(--font-mono); letter-spacing: .06em; color: var(--text-faint); }
@@ -5539,17 +5583,25 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 }
 .insp-target b { font: 700 var(--fs-lg) var(--font-display); color: var(--purple); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .insp-target span { font: 600 var(--fs-xs) var(--font-mono); color: var(--text-dim); }
+.insp-target-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.insp-target-head b { flex: 1; min-width: 0; }
+.insp-target-head .insp-link:disabled { color: var(--text-faint); opacity: .5; cursor: default; }
 .insp-spots { display: flex; flex-wrap: wrap; gap: 4px; }
-.insp-spots button {
+.insp-spot {
+  display: inline-flex; align-items: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--purple-bri) 12%, transparent);
+}
+.insp-spot button {
   padding: 1px 6px;
   border: 0; border-radius: 6px;
   background: transparent;
   font: 600 var(--fs-xs) var(--font-mono); color: var(--text-dim);
   cursor: pointer;
 }
-.insp-spots button:hover { background: color-mix(in srgb, var(--purple-bri) 18%, transparent); color: var(--purple); }
-.insp-spots button:only-child { margin-left: -6px; }
-.insp-spots button:not(:only-child) { background: color-mix(in srgb, var(--purple-bri) 10%, transparent); }
+.insp-spot button:hover { background: color-mix(in srgb, var(--purple-bri) 18%, transparent); color: var(--purple); }
+.insp-spot .insp-spot-x { padding: 1px 6px 1px 2px; font: 700 var(--fs-sm) var(--font-ui); line-height: 1; }
+.insp-spot .insp-spot-x:hover { background: var(--red-bg); color: var(--red-fg); }
 .insp-target.empty { background: var(--surface-2); }
 .insp-target.nudge { animation: insp-nudge .4s ease; }
 @keyframes insp-nudge {
@@ -5589,11 +5641,15 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-sub { margin: 0; font-size: var(--fs-sm); color: var(--text-faint); }
 .insp-redo { justify-content: center; font-size: var(--fs-base); padding: 13px 16px; }
 .insp-redo svg { width: 17px; height: 17px; }
-.insp-knobs { display: flex; flex-direction: column; gap: 8px; }
 .insp-knob { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; }
+/* Style knobs line up as one table: a label column, then three equal segments. */
+.insp-knobs { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 14px; }
+.insp-knobs .insp-knob { display: contents; }
+.insp-knobs .insp-knob > span { color: var(--text); }
+.insp-knobs .insp-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .insp-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
 .insp-seg button {
-  min-height: 26px; padding: 0 9px;
+  min-height: 28px; padding: 0 9px;
   border: none; border-radius: calc(var(--r-pill) - 2px);
   background: transparent; color: var(--text-dim);
   font-size: var(--fs-xs); font-weight: 700;
@@ -5637,8 +5693,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-history-name span { font-size: var(--fs-xs); color: var(--text-faint); }
 .insp-history-name:hover { background: var(--purple-bg); }
 .insp-history-name.active { box-shadow: inset 0 0 0 2px var(--orange); }
-.insp-redo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.insp-redo-row .settings-secondary { justify-content: center; padding-inline: 8px; white-space: nowrap; color: var(--text); }
 .insp-takes {
   display: flex; align-items: center;
   min-height: 38px;

@@ -2,6 +2,10 @@
 // chartEditor.parseEditableChart) is the source of truth; every committed
 // operation snapshots the previous doc for undo. Drag gestures are committed
 // as a single action on pointerup, so history stays one-entry-per-gesture.
+//
+// The Regenerate tab's picked bars (`regions`) share that history: building a
+// custom pick takes work, so picking is undoable like an edit. A history entry
+// is { doc, regions }; a pick-only entry keeps the same doc.
 
 import { cloneEditorDoc, quantizeTick, snapTicks } from "./chartEditor.js";
 
@@ -12,6 +16,7 @@ export function createEditorState(doc) {
     doc,
     selectedNoteIds: [],
     selectedRangeIds: [],
+    regions: [],
     past: [],
     future: [],
     revision: 0,
@@ -110,9 +115,14 @@ function nextFreeTick(tick, usedTicks, step) {
   return next;
 }
 
+const snapshot = (state) => ({ doc: state.doc, regions: state.regions });
+
+const sameRegions = (a, b) =>
+  a.length === b.length && a.every((r, i) => r.startTick === b[i].startTick && r.endTick === b[i].endTick);
+
 // Pushes the current doc onto the undo stack and applies a producer.
 function commit(state, nextDoc) {
-  const past = [...state.past, state.doc];
+  const past = [...state.past, snapshot(state)];
   if (past.length > HISTORY_CAP) past.shift();
   return { ...state, doc: nextDoc, past, future: [], revision: state.revision + 1 };
 }
@@ -351,6 +361,13 @@ export function editorReducer(state, action) {
   switch (action.type) {
     case "replaceDoc":
       return createEditorState(action.doc);
+    case "setRegions": {
+      const regions = action.regions || [];
+      if (sameRegions(regions, state.regions)) return state;
+      const past = [...state.past, snapshot(state)];
+      if (past.length > HISTORY_CAP) past.shift();
+      return { ...state, regions, past, future: [] };
+    }
     case "select": {
       const notes = action.additive
         ? toggleMembership(state.selectedNoteIds, action.noteIds || [])
@@ -375,12 +392,13 @@ export function editorReducer(state, action) {
     case "undo": {
       if (!state.past.length) return state;
       const past = [...state.past];
-      const previous = past.pop();
+      const { doc: previous, regions } = past.pop();
       return {
         ...state,
         doc: previous,
+        regions,
         past,
-        future: [state.doc, ...state.future].slice(0, HISTORY_CAP),
+        future: [snapshot(state), ...state.future].slice(0, HISTORY_CAP),
         revision: state.revision + 1,
         selectedNoteIds: pruneNoteSelection(state.selectedNoteIds, previous),
         selectedRangeIds: pruneRangeSelection(state.selectedRangeIds, previous),
@@ -388,11 +406,12 @@ export function editorReducer(state, action) {
     }
     case "redo": {
       if (!state.future.length) return state;
-      const [next, ...rest] = state.future;
+      const [{ doc: next, regions }, ...rest] = state.future;
       return {
         ...state,
         doc: next,
-        past: [...state.past, state.doc].slice(-HISTORY_CAP),
+        regions,
+        past: [...state.past, snapshot(state)].slice(-HISTORY_CAP),
         future: rest,
         revision: state.revision + 1,
         selectedNoteIds: pruneNoteSelection(state.selectedNoteIds, next),

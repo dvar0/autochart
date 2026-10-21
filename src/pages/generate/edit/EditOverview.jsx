@@ -1,11 +1,13 @@
 import { useEffect, useRef } from "react";
 import { FRET_COLORS } from "../../../data/notePalette.js";
-import { barEndTick, regionsCover } from "./editRegions.js";
+import { barEndTick, regionsCover, regionsOverlap } from "./editRegions.js";
 
 // The whole song in one strip: a block per section (name inside, the bars'
 // note counts drawn along the bottom), the selected spans, the playhead, and a
-// thin marker under the part the piano roll is showing. Clicking a section selects it and moves
-// the playhead there; Shift-click adds it to the selection.
+// thin marker under the part the piano roll is showing. Clicking a section
+// hands it to the screen (which picks or unpicks it and moves the playhead).
+// While an area is dragged on the roll it follows live: `lifted` is the area
+// being moved or stretched, `origin` where a moved one started.
 
 function barProfile(doc, bars) {
   const out = bars.map(() => ({ count: 0, lanes: [0, 0, 0, 0, 0], open: 0 }));
@@ -22,7 +24,7 @@ function barProfile(doc, bars) {
   return out;
 }
 
-export default function EditOverview({ doc, bars, sections, regions, pending, view, playheadTick, endTick, onJump, onSection }) {
+export default function EditOverview({ doc, bars, sections, regions, lifted = null, origin = null, pending, view, playheadTick, endTick, onJump, onSection }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const total = Math.max(1, endTick);
@@ -72,7 +74,7 @@ export default function EditOverview({ doc, bars, sections, regions, pending, vi
     const rect = e.currentTarget.getBoundingClientRect();
     const tick = ((e.clientX - rect.left) / rect.width) * total;
     const section = sections.find((s) => tick >= s.startTick && tick < s.endTick);
-    if (section) onSection?.(section, e.shiftKey);
+    if (section) onSection?.(section);
     else onJump?.(tick);
   };
 
@@ -81,7 +83,6 @@ export default function EditOverview({ doc, bars, sections, regions, pending, vi
       className="song-strip"
       ref={wrapRef}
       onPointerDown={onPointerDown}
-      title={sections.length ? "Click a section to select it. Shift-click to add more." : undefined}
     >
       {sections.map((section) => (
         <span
@@ -93,8 +94,13 @@ export default function EditOverview({ doc, bars, sections, regions, pending, vi
         </span>
       ))}
       <canvas ref={canvasRef} />
+      {origin && <span className="strip-origin" style={span(origin.startTick, origin.endTick)} />}
       {regions.map((region) => (
-        <span key={`s${region.startTick}`} className="strip-sel" style={span(region.startTick, region.endTick)} />
+        <span
+          key={`s${region.startTick}`}
+          className={"strip-sel" + (lifted && regionsOverlap(region, lifted) ? " lifted" : "")}
+          style={span(region.startTick, region.endTick)}
+        />
       ))}
       {(doc?.redos || []).flatMap((redo) =>
         redo.regions.map((region) => (

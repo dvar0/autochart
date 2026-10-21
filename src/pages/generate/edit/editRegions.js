@@ -69,14 +69,53 @@ export function nearestBarLine(bars, tick) {
 
 // One selected span with an edge dragged to a new bar line. The span keeps
 // at least one bar, and the edges may cross.
+export function resizedSpan(bars, region, edge, tick) {
+  const fixed = edge === "start" ? region.endTick : region.startTick;
+  if (tick === fixed) return edge === "start" ? snapSpanToBars(bars, fixed - 1, fixed) : snapSpanToBars(bars, fixed, fixed + 1);
+  return { startTick: Math.min(tick, fixed), endTick: Math.max(tick, fixed) };
+}
+
 export function resizeRegion(bars, regions, index, edge, tick) {
   const region = regions[index];
   if (!region) return regions;
-  const fixed = edge === "start" ? region.endTick : region.startTick;
-  let span;
-  if (tick === fixed) span = edge === "start" ? snapSpanToBars(bars, fixed - 1, fixed) : snapSpanToBars(bars, fixed, fixed + 1);
-  else span = { startTick: Math.min(tick, fixed), endTick: Math.max(tick, fixed) };
+  const span = resizedSpan(bars, region, edge, tick);
   return normalizeRegions(regions.map((r, i) => (i === index ? span : r)));
+}
+
+// One selected span slid by whole bars, keeping its length and staying
+// inside the song.
+export function shiftSpan(bars, region, deltaBars) {
+  const first = barIndexAt(bars, region.startTick);
+  const last = barIndexAt(bars, region.endTick - 1);
+  const shift = Math.max(-first, Math.min(bars.length - 1 - last, deltaBars));
+  return { startTick: bars[first + shift], endTick: barEndTick(bars, last + shift) };
+}
+
+export function moveRegion(bars, regions, index, deltaBars) {
+  const region = regions[index];
+  if (!region || !bars.length) return regions;
+  const span = shiftSpan(bars, region, deltaBars);
+  return normalizeRegions(regions.map((r, i) => (i === index ? span : r)));
+}
+
+// Bars a..b painted onto the selection (merging with any area they touch),
+// or wiped out of it.
+export function paintRegions(bars, regions, a, b, erase) {
+  const span = snapSpanToBars(bars, a, b);
+  return erase ? subtractSpan(regions, span) : normalizeRegions([...regions, span]);
+}
+
+// End of the song's last bar.
+export function songEndBarTick(bars, songEndTick) {
+  return bars.length ? barEndTick(bars, barIndexAt(bars, Math.max(0, songEndTick - 1))) : songEndTick;
+}
+
+// One picked area stretched to the end of the song (swallowing any after it).
+export function extendToEnd(bars, regions, songEndTick, index) {
+  const region = regions[index];
+  if (!region || !bars.length) return regions;
+  const endTick = Math.max(songEndBarTick(bars, songEndTick), region.endTick);
+  return normalizeRegions(regions.map((r, i) => (i === index ? { startTick: r.startTick, endTick } : r)));
 }
 
 export function regionBarCount(bars, region) {
@@ -210,7 +249,7 @@ export function selectionLabel(bars, regions, sections) {
     const count = regionBarCount(bars, regions[0]);
     return `${count} bar${count === 1 ? "" : "s"}`;
   }
-  return `${regions.length} spots`;
+  return `${regions.length} areas`;
 }
 
 // A redo's name in the history list says where it is: "Chorus 2", "Bars 9–12".

@@ -2105,8 +2105,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   ]);
 
   const editorChangeCanMutate = (change) => {
-    if (change.type === "undo") return editorState.past.length > 0;
-    if (change.type === "redo") return editorState.future.length > 0;
+    // Undoing a pick alone leaves the chart as it is: nothing to save.
+    if (change.type === "undo") return editorState.past.at(-1)?.doc !== undefined && editorState.past.at(-1).doc !== editorState.doc;
+    if (change.type === "redo") return editorState.future[0]?.doc !== undefined && editorState.future[0].doc !== editorState.doc;
     if (change.type === "deleteSelection") {
       return editorState.selectedNoteIds.length > 0 || editorState.selectedRangeIds.length > 0;
     }
@@ -2165,6 +2166,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setSingleVersion(versionId);
     setPreviewMode("single");
     setDeckTab("edit");
+    setStatusMsg("");
   };
 
   const ensureEditorDraft = () => {
@@ -2287,6 +2289,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     doc: editorState.doc,
     selectedNoteIds: editorState.selectedNoteIds,
     selectedRangeIds: editorState.selectedRangeIds,
+    regions: editorState.regions,
     revision: editorState.revision,
     canUndo: editorState.past.length > 0,
     canRedo: editorState.future.length > 0,
