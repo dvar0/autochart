@@ -1,45 +1,128 @@
+import { useRef, useState } from "react";
 import {
   descriptorKnobsForGenerator,
-  generatorMarksSolos,
   DESCRIPTOR_KNOB_MAX,
   GENERATION_DIFFICULTIES,
   GENERATION_PRESETS,
-  TIMING_DETECTOR_OPTIONS,
 } from "../../data/generationSettings.js";
 import { I } from "../../icons.jsx";
-
-const FORCE_SOLO_INFO =
-  "Only acts when the model places no solo on its own. It then starts one where it came closest to " +
-  "starting one and charts the rest of the song again from there, so generation takes longer for those " +
-  "songs. The model was unsure about that spot, so a forced solo can be less convincing than one it " +
-  "found itself.";
 import GenerationProgress from "./GenerationProgress.jsx";
+import { changedSettingsSummary } from "./MoreSettings.jsx";
 
-// The slider carries one stop below bin 0 for "auto" — a fenced bay, not a
-// magnitude. Bin 7 is what the model actually calls auto; we park it on the
-// left so the 0..6 run stays a plain low-to-high scale.
-const AUTO_STOP = -1;
+// Fret colors, one per style knob, in lane order.
+const KNOB_COLORS = ["var(--fret-g)", "var(--fret-r)", "var(--fret-y)", "var(--fret-b)", "var(--fret-o)"];
 
-function sourceVariantTag(artifact) {
-  const ms = Number(artifact?.sourceTransform?.leadInSilenceMs || 0);
-  if (!Number.isFinite(ms) || ms <= 0) return "0s";
-  const seconds = ms / 1000;
-  return `+${Number.isInteger(seconds) ? seconds : seconds.toFixed(2).replace(/0+$/g, "").replace(/\.$/, "")}s`;
+// Stops from the bottom: 0 is "auto" (its own bay, not a magnitude), then the
+// model's bins 0..6 stacked above it.
+const STOPS = DESCRIPTOR_KNOB_MAX + 2;
+
+function knobStop(raw) {
+  return raw === "auto" || raw == null ? 0 : Number(raw) + 1;
 }
 
-function activeSeparationLabel(artifact) {
-  const rawName = String(artifact?.name || "Default separation").replace(/\s*\([^)]*lead-in[^)]*\)\s*$/i, "").trim();
-  const variant = sourceVariantTag(artifact);
-  const suffix = variant === "0s" ? "" : ` · ${variant}`;
-  if (/^default separation$/i.test(rawName)) return `Default${suffix}`;
-  const regenerated = rawName.match(/^regenerated separation\s*(.*)$/i);
-  if (regenerated) return `Regen${regenerated[1] ? ` ${regenerated[1].trim()}` : ""}${suffix}`;
-  return `${rawName}${suffix}`;
+function stopValue(stop) {
+  return stop <= 0 ? "auto" : String(Math.min(DESCRIPTOR_KNOB_MAX, stop - 1));
 }
 
-// The right rail is a true "channel strip": model plate, difficulty, sampling,
-// seed, advanced, GENERATE — and the live progress panel while a run is going.
-// Generations and final assembly live in the takes deck, not here.
+// One vertical mini fader. Click a segment to set the level (or drag along
+// the column); the bottom bay is auto. Hovering previews where a click lands.
+// Arrow keys step it.
+function StyleFader({ knob, color, raw, disabled, onChange }) {
+  const trackRef = useRef(null);
+  const [hoverStop, setHoverStop] = useState(null);
+  const stop = knobStop(raw);
+  const isAuto = stop === 0;
+  const previewing = hoverStop != null && !disabled;
+
+  // The stop whose segment (or the bay) sits nearest the pointer.
+  const stopAt = (clientY) => {
+    let best = 0;
+    let bestDistance = Infinity;
+    for (const el of trackRef.current.querySelectorAll("[data-stop]")) {
+      const rect = el.getBoundingClientRect();
+      const distance = Math.abs(clientY - (rect.top + rect.height / 2));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = Number(el.dataset.stop);
+      }
+    }
+    return best;
+  };
+  const set = (next) => {
+    const value = stopValue(next);
+    if (value !== (raw ?? "auto")) onChange(value);
+  };
+
+  return (
+    <div
+      className={"style-fader" + (isAuto ? " is-auto" : "")}
+      style={{ "--knob-color": color }}
+      title={`${knob.name}: ${knob.hint} (${knob.ends[0]} → ${knob.ends[1]}). Auto lets the model choose.`}
+    >
+      <span className="style-fader-value">{isAuto ? "auto" : raw}</span>
+      <div
+        ref={trackRef}
+        className="style-fader-track"
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={knob.name}
+        aria-valuemin={0}
+        aria-valuemax={STOPS - 1}
+        aria-valuenow={stop}
+        aria-valuetext={isAuto ? "auto" : String(raw)}
+        aria-disabled={disabled}
+        onPointerDown={(e) => {
+          if (disabled || e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          set(stopAt(e.clientY));
+        }}
+        onPointerMove={(e) => {
+          if (disabled) return;
+          const next = stopAt(e.clientY);
+          setHoverStop(next);
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) set(next);
+        }}
+        onPointerLeave={() => setHoverStop(null)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+          if (e.key === "Home") set(0);
+          else if (e.key === "End") set(STOPS - 1);
+          else if (step) set(Math.max(0, Math.min(STOPS - 1, stop + step)));
+          else return;
+          e.preventDefault();
+        }}
+      >
+        <div className={"style-seg-stack" + (isAuto ? " is-auto" : "") + (previewing ? " is-previewing" : "")}>
+          {Array.from({ length: STOPS - 1 }, (_, bin) => {
+            const on = bin < stop;
+            const willBeOn = previewing && bin < hoverStop;
+            return (
+              <span
+                key={bin}
+                data-stop={bin + 1}
+                className={
+                  "style-seg" +
+                  (on ? " on" : "") +
+                  (previewing && !on && willBeOn ? " is-preview-on" : "") +
+                  (previewing && on && !willBeOn ? " is-preview-off" : "")
+                }
+                aria-hidden="true"
+              />
+            );
+          }).reverse()}
+        </div>
+        <span data-stop={0} className={"style-bay" + (isAuto ? " on" : "") + (previewing && hoverStop === 0 && !isAuto ? " is-preview" : "")} aria-hidden="true">auto</span>
+      </div>
+      <span className="style-fader-name">{knob.short || knob.name}</span>
+    </div>
+  );
+}
+
+// The right rail: what to make (model, difficulty), how loose (sampling, style,
+// seed), lead-in, then a one-line summary of everything else, which lives in
+// the More settings sheet. Generations and final assembly live in the takes
+// deck, not here.
 export default function Console({ project }) {
   const {
     hasMedia,
@@ -54,27 +137,22 @@ export default function Console({ project }) {
     selectGenerator,
     supportedDifficultyIds,
     selectedPreset,
-    currentGeneration,
-    resolvedSettings,
     generationControls,
-    hasSourceChartSync,
     usesSourceChartSync,
     setGenerationControls,
     updateGenerationControl,
     updateAdvancedNumberControl,
     applyGenerationPreset,
-    resetCurrentGenerationPreset,
     advancedSettingsOpen,
     setAdvancedSettingsOpen,
+    reusedFrom,
+    reusedSettingsMatch,
     randomSeedValue,
     genRun,
     handleGenerate,
     handleStopGenerate,
     sourceAudioFile,
     generatorId,
-    activeDemucsArtifact,
-    setDeckTab,
-    deckTab,
   } = project;
 
   const generating = busyAction === "generating";
@@ -84,11 +162,11 @@ export default function Console({ project }) {
   const visibleDifficulties = GENERATION_DIFFICULTIES.filter((option) =>
     supportedDifficultyIds?.includes(option.id)
   );
-  const timingOptions = TIMING_DETECTOR_OPTIONS.filter((option) => !option.sourceChart || hasSourceChartSync);
+  const hasKnobs = Boolean(selectedGenerator?.capabilities?.descriptorKnobs);
   const styleKnobs = descriptorKnobsForGenerator(selectedGenerator);
   const allKnobsAuto = styleKnobs.every((knob) => (generationControls[knob.key] ?? "auto") === "auto");
   const generatorChoices = selectableGenerators || [];
-  const smoothingEnabled = Boolean(resolvedSettings.timingSmoothing?.enabled);
+  const changed = changedSettingsSummary(project);
   const generateDisabledReason = runActive
     ? stopping
       ? "Stopping the current generation."
@@ -118,8 +196,8 @@ export default function Console({ project }) {
             <li className="console-step">
               <span className="step-num">2</span>
               <div>
-                <b>Tune the console</b>
-                <small>Pick difficulty, sampling, and seed.</small>
+                <b>Pick settings</b>
+                <small>Model, difficulty, and style.</small>
               </div>
             </li>
             <li className="console-step">
@@ -168,42 +246,6 @@ export default function Console({ project }) {
               )}
             </div>
 
-            <button
-              type="button"
-              className="source-prep-row"
-              onClick={() => setDeckTab("demucs")}
-              disabled={busy}
-              title="Choose which audio separation new charts use"
-            >
-              <span>
-                <small>AUDIO SEPARATION</small>
-                <b title={activeDemucsArtifact?.name || "Default separation"}>{activeSeparationLabel(activeDemucsArtifact)}</b>
-              </span>
-              <em>Choose</em>
-            </button>
-
-            <div className="variant-field generation-field lead-in-field">
-              <div className="lead-in-label">
-                <label>Lead-in silence</label>
-                <small>reruns timing and separation</small>
-              </div>
-              <div className="lead-in-row">
-                <span>sec</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  max="30"
-                  step="0.5"
-                  value={generationControls.leadInSilenceSeconds ?? "0"}
-                  placeholder="0"
-                  disabled={busy || usesSourceChartSync}
-                  onChange={(e) => updateAdvancedNumberControl("leadInSilenceSeconds", e.target.value)}
-                  aria-label="Lead-in silence seconds"
-                />
-              </div>
-            </div>
-
             <div className="variant-field generation-field">
               <div className="field-line">
                 <label>Difficulty</label>
@@ -247,9 +289,46 @@ export default function Console({ project }) {
               </div>
             </div>
 
+            <div className={"variant-field generation-field style-field" + (hasKnobs ? "" : " is-off")}>
+              <div className="field-line">
+                <label>
+                  Style <span className="field-aside">auto = model picks</span>
+                </label>
+                {hasKnobs ? (
+                  <button
+                    type="button"
+                    className="field-link"
+                    onClick={() =>
+                      setGenerationControls((current) => ({
+                        ...current,
+                        ...Object.fromEntries(styleKnobs.map((knob) => [knob.key, "auto"])),
+                      }))
+                    }
+                    disabled={busy || allKnobsAuto}
+                  >
+                    All auto
+                  </button>
+                ) : (
+                  <small>not on this model</small>
+                )}
+              </div>
+              <div className="style-faders" style={{ "--knob-count": styleKnobs.length }}>
+                {styleKnobs.map((knob, index) => (
+                  <StyleFader
+                    key={knob.id}
+                    knob={knob}
+                    color={KNOB_COLORS[index % KNOB_COLORS.length]}
+                    raw={hasKnobs ? generationControls[knob.key] ?? "auto" : "auto"}
+                    disabled={busy || !hasKnobs}
+                    onChange={(value) => updateGenerationControl(knob.key, value)}
+                  />
+                ))}
+              </div>
+            </div>
+
             <div className="variant-field generation-field">
               <div className="field-line">
-                <label>Variation seed</label>
+                <label>Seed</label>
               </div>
               <div className="seed-row">
                 <div className="seed-mode">
@@ -300,254 +379,41 @@ export default function Console({ project }) {
               </div>
             </div>
 
+            <div className="variant-field generation-field lead-in-field">
+              <div className="lead-in-label">
+                <label>Lead-in silence</label>
+                <small>{usesSourceChartSync ? "fixed by the imported chart" : "silence added before the song"}</small>
+              </div>
+              <div className="lead-in-row">
+                <span>sec</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  max="30"
+                  step="0.5"
+                  value={generationControls.leadInSilenceSeconds ?? "0"}
+                  placeholder="0"
+                  disabled={busy || usesSourceChartSync}
+                  onChange={(e) => updateAdvancedNumberControl("leadInSilenceSeconds", e.target.value)}
+                  aria-label="Lead-in silence seconds"
+                />
+              </div>
+            </div>
+
             <button
               type="button"
-              className={"advanced-toggle-row" + (advancedSettingsOpen ? " open" : "")}
+              className={"more-settings-row" + (advancedSettingsOpen ? " open" : "")}
               onClick={() => setAdvancedSettingsOpen((open) => !open)}
               aria-expanded={advancedSettingsOpen}
             >
               <I.gear />
-              <span className="advanced-toggle-label">ADVANCED</span>
-              <span className="advanced-recipe">
-                {currentGeneration.modified ? "modified" : `${selectedPreset.name} recipe`}
+              <span className="more-settings-text">
+                <b>More settings</b>
+                <small title={changed.join(" · ")}>{changed.length ? changed.join(" · ") : "Separation, timing, solos, sampling"}</small>
               </span>
-              <span className="advanced-toggle-state">
-                {advancedSettingsOpen ? "Hide" : "Show"}
-                <I.chev />
-              </span>
+              <I.chevRight />
             </button>
-
-            {advancedSettingsOpen && (
-              <div className="advanced-engine-body inline">
-                <div className="advanced-inline-bar">
-                  <span className="advanced-recipe">
-                    {currentGeneration.modified ? "modified" : `${selectedPreset.name} recipe`}
-                  </span>
-                  <button className="advanced-reset" onClick={resetCurrentGenerationPreset} disabled={busy}>
-                    Reset
-                  </button>
-                </div>
-
-                {selectedGenerator?.capabilities?.descriptorKnobs && (
-                  <div className="engine-group knob-group">
-                    <div className="engine-group-title">Style</div>
-                    <p className="knob-group-note">Auto lets the model decide. Drag a knob off auto to steer it.</p>
-                    {styleKnobs.map((knob) => {
-                      const raw = generationControls[knob.key] ?? "auto";
-                      const isAuto = raw === "auto";
-                      // Auto parks in a fenced-off bay one stop left of bin 0. It is a
-                      // separate descriptor category, not a magnitude, so it must never
-                      // land on the 0..6 run — least of all at its midpoint.
-                      const value = isAuto ? AUTO_STOP : Number(raw);
-                      const stops = DESCRIPTOR_KNOB_MAX - AUTO_STOP; // 7 gaps, 8 stops
-                      return (
-                        <div className={"knob-row" + (isAuto ? " is-auto" : "")} key={knob.id}>
-                          <div className="knob-head">
-                            <span className="knob-name">{knob.name}</span>
-                            <span className="knob-hint">{knob.hint}</span>
-                            <button
-                              type="button"
-                              className={"knob-auto" + (isAuto ? " active" : "")}
-                              onClick={() => updateGenerationControl(knob.key, "auto")}
-                              disabled={busy}
-                              aria-pressed={isAuto}
-                            >
-                              Auto
-                            </button>
-                          </div>
-                          <div className="knob-slider">
-                            <div
-                              className="knob-rail"
-                              style={{
-                                "--knob-p": (value - AUTO_STOP) / stops,
-                                "--knob-p0": 1 / stops,
-                              }}
-                            >
-                              <span className="knob-bay" aria-hidden="true" />
-                              {Array.from({ length: DESCRIPTOR_KNOB_MAX + 1 }, (_, bin) => (
-                                <span
-                                  key={bin}
-                                  className="knob-tick"
-                                  style={{ "--knob-tp": (bin + 1) / stops }}
-                                  aria-hidden="true"
-                                />
-                              ))}
-                              {!isAuto && <span className="knob-fill" aria-hidden="true" />}
-                              <input
-                                type="range"
-                                min={AUTO_STOP}
-                                max={DESCRIPTOR_KNOB_MAX}
-                                step="1"
-                                value={value}
-                                disabled={busy}
-                                onChange={(e) => {
-                                  const next = Number(e.target.value);
-                                  updateGenerationControl(
-                                    knob.key,
-                                    next === AUTO_STOP ? "auto" : String(next)
-                                  );
-                                }}
-                                aria-label={knob.name}
-                                aria-valuetext={isAuto ? "auto" : String(value)}
-                              />
-                            </div>
-                            <span className={"knob-value" + (isAuto ? " is-auto" : "")}>
-                              {isAuto ? "auto" : value}
-                            </span>
-                          </div>
-                          <div className="knob-captions" aria-hidden="true">
-                            <span className="knob-cap-auto">auto</span>
-                            <span className="knob-end">{knob.ends[1]}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div className={"knob-guidance" + (allKnobsAuto ? " dim" : "")}>
-                      <span>GUIDANCE</span>
-                      <input
-                        inputMode="decimal"
-                        value={generationControls.guidanceScale}
-                        disabled={busy}
-                        onChange={(e) => updateAdvancedNumberControl("guidanceScale", e.target.value)}
-                        aria-label="Guidance scale"
-                      />
-                      <small>
-                        {allKnobsAuto
-                          ? "set a knob to enable"
-                          : "pushes set knobs harder"}
-                      </small>
-                    </div>
-                  </div>
-                )}
-
-                {generatorMarksSolos(selectedGenerator) && (
-                  <div className="engine-group structure-group">
-                    <div className="engine-group-title">Structure</div>
-                    <label className="engine-setting">
-                      <span>SOLOS</span>
-                      <button
-                        type="button"
-                        className={"engine-flag" + (generationControls.solos !== false ? " on" : "")}
-                        onClick={() => updateGenerationControl("solos", generationControls.solos === false)}
-                        disabled={busy}
-                      >
-                        {generationControls.solos !== false ? "On" : "Off"}
-                      </button>
-                      <small>
-                        {generationControls.solos !== false
-                          ? "the model marks a solo where it hears one"
-                          : "no solo sections in the chart"}
-                      </small>
-                    </label>
-                    {generationControls.solos !== false && (
-                      <label className="engine-setting">
-                        <span>
-                          FORCE A SOLO
-                          <i className="engine-info" title={FORCE_SOLO_INFO} aria-label={FORCE_SOLO_INFO} role="img">
-                            <I.info />
-                          </i>
-                        </span>
-                        <button
-                          type="button"
-                          className={"engine-flag" + (generationControls.forceSolo ? " on" : "")}
-                          onClick={() => updateGenerationControl("forceSolo", !generationControls.forceSolo)}
-                          disabled={busy}
-                        >
-                          {generationControls.forceSolo ? "On" : "Off"}
-                        </button>
-                        <small>
-                          {generationControls.forceSolo
-                            ? "adds one if the model found none"
-                            : "only solos the model hears"}
-                        </small>
-                      </label>
-                    )}
-                  </div>
-                )}
-
-                <div className="engine-group">
-                  <div className="engine-group-title">Sampling</div>
-                  <label className="engine-setting">
-                    <span>TEMPERATURE</span>
-                    <input
-                      inputMode="decimal"
-                      value={generationControls.temperature}
-                      disabled={busy}
-                      onChange={(e) => updateAdvancedNumberControl("temperature", e.target.value)}
-                    />
-                    <small>higher = more variation</small>
-                  </label>
-                </div>
-
-                <div className="engine-group">
-                  <div className="engine-group-title">Nucleus</div>
-                  <label className="engine-setting">
-                    <span>TOP_P</span>
-                    <input
-                      inputMode="decimal"
-                      value={generationControls.topP}
-                      disabled={busy}
-                      onChange={(e) => updateAdvancedNumberControl("topP", e.target.value)}
-                    />
-                    <small>lower = safer picks</small>
-                  </label>
-                </div>
-
-                <div className="engine-group timing-group">
-                  <div className="engine-group-title">Export</div>
-                  {selectedGenerator?.capabilities?.sustains === "never-strip" ? null : (
-                    <label className="engine-setting">
-                      <span>SUSTAINS</span>
-                      <button
-                        type="button"
-                        className={"engine-flag" + (generationControls.stripSustains ? "" : " on")}
-                        onClick={() =>
-                          setGenerationControls((current) => ({
-                            ...current,
-                            stripSustains: !current.stripSustains,
-                          }))
-                        }
-                        disabled={busy}
-                      >
-                        {generationControls.stripSustains ? "Stripped" : "Kept"}
-                      </button>
-                      <small>keep or strip long note tails</small>
-                    </label>
-                  )}
-                  <label className="engine-setting">
-                    <span>DETECTOR</span>
-                    <select
-                      value={generationControls.timingDetector}
-                      onChange={(e) => updateGenerationControl("timingDetector", e.target.value)}
-                      disabled={busy}
-                    >
-                      {timingOptions.map((option) => (
-                        <option key={option.id} value={option.id}>{option.name}</option>
-                      ))}
-                    </select>
-                    <small>{usesSourceChartSync ? "uses imported notes.chart SyncTrack" : resolvedSettings.timingRaw ? "raw Beat-This detections" : "refined detector grid"}</small>
-                  </label>
-                  <label className="engine-setting">
-                    <span>SMOOTHING</span>
-                    <button
-                      type="button"
-                      className={"engine-flag" + (smoothingEnabled ? " on" : "")}
-                      onClick={() => updateGenerationControl("timingSmoothing", !smoothingEnabled)}
-                      disabled={busy || usesSourceChartSync}
-                    >
-                      {smoothingEnabled ? "On" : "Off"}
-                    </button>
-                    <small>
-                      {usesSourceChartSync
-                        ? "source chart timing is already fixed"
-                        : smoothingEnabled
-                          ? "cleans gaps and steadies beat spacing"
-                          : "uses the raw detected beat grid"}
-                    </small>
-                  </label>
-                </div>
-              </div>
-            )}
 
             <div className="generation-actions">
               <button
@@ -582,6 +448,17 @@ export default function Console({ project }) {
                 )}
               </button>
               <span id="generate-cta-reason" className="sr-only">{generateDisabledReason}</span>
+              <div className={"reused-line" + (reusedFrom ? "" : " is-empty")} aria-live="polite">
+                {reusedFrom && (
+                  <>
+                    <span className="version-badge">{reusedFrom.badge}</span>
+                    <span className="reused-name" title={reusedFrom.name}>
+                      {reusedSettingsMatch ? "Same settings as " : "Based on "}
+                      {reusedFrom.name}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           </>
         )}

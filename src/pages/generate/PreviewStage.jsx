@@ -873,6 +873,17 @@ export default function PreviewStage({ project }) {
               </span>
             </div>
           )}
+          {!showingDemucsStage && track && previewMode === "single" && selectedSingleVersion && (
+            <button
+              type="button"
+              className="stage-edit-btn"
+              onClick={() => project.startEditingVersion(selectedSingleVersion.id)}
+              disabled={project.busy || !selectedSingleVersion.chart?.text}
+              title="Edit notes or redo parts of this take"
+            >
+              <I.pencil /> Edit
+            </button>
+          )}
           {!showingDemucsStage && track && previewMode === "compare" && (
             <>
               <div className="compare-layout-tabs" aria-label="Compare layout">

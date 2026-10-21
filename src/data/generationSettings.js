@@ -22,9 +22,9 @@ export const DEFAULT_GENERATOR_ID = "autochart.fretformer.v1-onnx";
 export const DESCRIPTOR_KNOBS = [
   { id: "speed", key: "knobSpeed", name: "Speed", hint: "notes per second", compact: "Sp", ends: ["sparse", "dense"] },
   { id: "chords", key: "knobChords", name: "Chords", hint: "chord share", compact: "Ch", ends: ["singles", "chords"] },
-  { id: "technique", key: "knobTechnique", name: "Technique", hint: "hopos and taps", compact: "Tq", ends: ["plain", "taps"] },
-  { id: "movement", key: "knobMovement", name: "Movement", hint: "fret travel", compact: "Mv", ends: ["narrow", "wide"] },
-  { id: "repetition", key: "knobRepetition", name: "Repetition", hint: "riff reuse", compact: "Rp", ends: ["varied", "repeats"] },
+  { id: "technique", key: "knobTechnique", name: "Technique", short: "Tech", hint: "hopos and taps", compact: "Tq", ends: ["plain", "taps"] },
+  { id: "movement", key: "knobMovement", name: "Movement", short: "Move", hint: "fret travel", compact: "Mv", ends: ["narrow", "wide"] },
+  { id: "repetition", key: "knobRepetition", name: "Repetition", short: "Repeat", hint: "riff reuse", compact: "Rp", ends: ["varied", "repeats"] },
 ];
 
 // Knobs only Fretformer v1.2 has: v1's Technique split into HOPOs and taps.
@@ -105,21 +105,21 @@ export const GENERATION_PRESETS = [
   {
     id: "tight",
     name: "Tight",
-    summary: "Cooler sampling, plays it safe",
+    summary: "Plays it safe",
     temperature: 0.9,
     topP: 0.95,
   },
   {
     id: "standard",
     name: "Standard",
-    summary: "The current eval recipe",
+    summary: "A bit of variety",
     temperature: 0.95,
     topP: 0.98,
   },
   {
     id: "wild",
     name: "Wild",
-    summary: "Hotter sampling, riskier picks",
+    summary: "Riskier, more surprising",
     temperature: 1,
     topP: 1,
   },

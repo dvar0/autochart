@@ -123,7 +123,7 @@ function modelTag(version) {
 }
 
 // At-a-glance run recipe: difficulty it was generated with, model, preset,
-// sampling overrides (only when they differ from the preset), sustains, seed.
+// sampling overrides (only when they differ from the preset), seed.
 function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
   const difficulty = getVersionDifficulty(version, fallbackDifficulty);
   const tags = [
@@ -138,7 +138,7 @@ function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
   const model = modelTag(version);
   const takeGeneratorId = version.meta?.generatorId || generation.generatorId || "";
   // Takes from a badged model (the v1.2 test model) wear its NEW amber.
-  if (model) tags.push({ ...model, primary: true, ...(badgedGeneratorIds.has(takeGeneratorId) ? { tone: "amber" } : {}) });
+  if (model) tags.push({ ...model, primary: true, keep: true, ...(badgedGeneratorIds.has(takeGeneratorId) ? { tone: "amber" } : {}) });
 
   const controls = generation.controls || {};
   const resolved = generation.resolved || {};
@@ -186,8 +186,6 @@ function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
   if (knobsActiveHere && knobGuidance != null && knobGuidance > 1) {
     tags.push({ text: `CFG ${knobGuidance}`, title: `Guidance ${knobGuidance}`, mod: true });
   }
-  const stripSustains = controls.stripSustains ?? resolved.stripSustains;
-  tags.push({ text: stripSustains ? "no sus" : "sustains", secondary: true });
   const seed = resolved.seed ?? (controls.seedMode === "fixed" ? controls.seed : null);
   tags.push({ text: seed != null ? `seed ${seed}` : "seed rnd", secondary: true });
   const demucsName = version.meta?.demucsName || version.provenance?.sourceSeparation?.name || "";
@@ -466,6 +464,8 @@ export default function TakesDeck({ project }) {
     demucsAuditionMode,
     setDemucsAuditionMode,
     startEditingVersion,
+    reuseVersionSettings,
+    reusedFrom,
     justGeneratedId,
   } = project;
   const badgedGeneratorIds = new Set((project.generators || []).filter((generator) => generator.badge).map((generator) => generator.id));
@@ -490,6 +490,17 @@ export default function TakesDeck({ project }) {
   const fallbackDuration = importedSong?.meta?.durationSec || 0;
   const showingDemucs = deckTab === "demucs";
   const takesNewestFirst = [...candidateVersions].reverse();
+  const tagsById = new Map(takesNewestFirst.map((v) => [v.id, takeTags(v, project.diff, badgedGeneratorIds)]));
+  // With two or more generated takes, a card only lists the settings that set
+  // it apart. Difficulty and model always stay; the full recipe is the tooltip.
+  const generatedTakes = takesNewestFirst.filter((v) => v.source === "generated" && v.settings?.generation);
+  const sharedTagTexts = new Set(
+    generatedTakes.length >= 2
+      ? (tagsById.get(generatedTakes[0].id) || [])
+        .map((tag) => tag.text)
+        .filter((text) => generatedTakes.every((v) => tagsById.get(v.id).some((tag) => tag.text === text)))
+      : []
+  );
 
   return (
     <section className="takes-deck">
@@ -648,7 +659,10 @@ export default function TakesDeck({ project }) {
               const isSelected = !showingLiveStage && previewMode === "single" && selectedSingleVersion?.id === v.id;
               const sparkNotes = v.track?.notes || [];
               const sparkDuration = v.meta?.durationSec || fallbackDuration;
-              const tags = takeTags(v, project.diff, badgedGeneratorIds);
+              const tags = (tagsById.get(v.id) || []).filter(
+                (tag, index) => index === 0 || tag.keep || !sharedTagTexts.has(tag.text)
+              );
+              const reusable = v.source === "generated" && Boolean(v.settings?.generation);
               const finalTone = assignedSlotTone(cleanedFinalSlots, v.id);
               return (
                 <div
@@ -679,21 +693,6 @@ export default function TakesDeck({ project }) {
                     <span className="version-badge">{v.badge}</span>
                     <span className="take-name" title={v.name}>{v.name}</span>
                     <div className="take-card-actions">
-                      {assignable && (
-                        <button
-                          className="take-edit"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startEditingVersion(v.id);
-                          }}
-                          disabled={busy}
-                          title="Edit this take"
-                          aria-label={`Edit ${v.name}`}
-                          tabIndex={showingDemucs ? -1 : 0}
-                        >
-                          <I.pencil />
-                        </button>
-                      )}
                       {removable && (
                         <button
                           className="take-delete"
@@ -750,6 +749,28 @@ export default function TakesDeck({ project }) {
                         {tag.text}
                       </span>
                     ))}
+                  </div>
+                  <div className="take-actions-row" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="take-action edit"
+                      onClick={() => startEditingVersion(v.id)}
+                      disabled={busy || !assignable}
+                      title={assignable ? "Edit notes or redo parts of this take" : "This take has no chart to edit"}
+                      tabIndex={showingDemucs ? -1 : 0}
+                    >
+                      <I.pencil /> Edit
+                    </button>
+                    <button
+                      type="button"
+                      className={"take-action" + (reusedFrom?.id === v.id ? " is-current" : "")}
+                      onClick={() => reuseVersionSettings(v.id)}
+                      disabled={busy || !reusable}
+                      title={reusable ? "Load this take's settings, seed included, into the console" : "This take wasn't generated here"}
+                      tabIndex={showingDemucs ? -1 : 0}
+                    >
+                      <I.reuse /> Use settings
+                    </button>
                   </div>
                   <div className="take-pips" onClick={(e) => e.stopPropagation()}>
                     {FINAL_SLOT_ORDER.map((difficulty) => {

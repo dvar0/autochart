@@ -510,6 +510,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [justGeneratedId, setJustGeneratedId] = useState("");
   const justGeneratedTimer = useRef(null);
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
+  // The take whose settings were last loaded with "Use settings", plus the
+  // controls it loaded, so the console can say whether they still match.
+  const [reusedFrom, setReusedFrom] = useState(null);
   const [generators, setGenerators] = useState([]);
   const [generatorId, setGeneratorId] = useState(DEFAULT_GENERATOR_ID);
   const [setupStatus, setSetupStatus] = useState(null);
@@ -790,6 +793,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setPendingBgFromAudio(false);
       setGenerationControls(DEFAULT_GENERATION_CONTROLS);
       setAdvancedSettingsOpen(false);
+      setReusedFrom(null);
       setStatusMsg("");
       setDeckTab("takes");
       resetEditorSession();
@@ -836,6 +840,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       )
     );
     setAdvancedSettingsOpen(false);
+    setReusedFrom(null);
     setPendingBgFile(null);
     setStatusMsg("");
     const importedVersion = versions.find((v) => v.source === "imported-chart") || versions[0];
@@ -1300,7 +1305,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     return { source: null, persisted: false };
   };
 
-  const selectDemucsSeparation = async (id) => {
+  const selectDemucsSeparation = async (id, { quiet = false } = {}) => {
     const nextId = id || defaultDemucsIdForSourceVariant(currentSourceTransform.key);
     const artifact = demucsArtifacts.find((item) => item.id === nextId) || null;
     const sourceVariantKey = artifact?.sourceVariantKey || currentSourceTransform.key;
@@ -1317,6 +1322,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     };
     setSourceArtifacts(nextArtifacts);
     await persistSourceArtifacts(nextArtifacts);
+    if (quiet) return;
     setStatusMsg(`${artifact?.name || "Selected separation"} ${compactSourceVariantLabel(artifact?.sourceTransform || currentSourceTransform)} is active for matching charts.`);
   };
 
@@ -1903,6 +1909,50 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     if (!selectableGenerators.some((generator) => generator.id === id)) return;
     setGeneratorId(id);
   };
+
+  // "Use settings": load a generated take's whole recipe back into the console
+  // (model, difficulty, sampling, knobs, structure, timing, lead-in, separation)
+  // with its exact seed, so the next run differs only in what gets changed.
+  const reuseVersionSettings = (versionId) => {
+    const version = localVersions.find((v) => v.id === versionId);
+    const generation = version?.settings?.generation;
+    if (!generation) {
+      setStatusMsg("This take has no saved generation settings.");
+      return;
+    }
+    const controls = controlsFromSavedGeneration(
+      generation,
+      generation.controls?.difficulty || version.settings?.difficulty || version.difficulty || "expert",
+      { fallbackTimingDetector: projectDefaultTimingDetector }
+    );
+    const seed = generation.resolved?.seed;
+    if (seed != null) {
+      controls.seedMode = "fixed";
+      controls.seed = String(seed);
+    }
+    const takeGeneratorId = version.meta?.generatorId || generation.generatorId || "";
+    const generatorAvailable = selectableGenerators.some((generator) => generator.id === takeGeneratorId);
+    if (generatorAvailable) setGeneratorId(takeGeneratorId);
+    setGenerationControls(controls);
+    const demucsId = version.meta?.demucsId || version.provenance?.sourceSeparation?.id || version.settings?.demucsSeparation?.id || "";
+    if (demucsId && demucsArtifacts.some((artifact) => artifact.id === demucsId) && demucsId !== activeDemucsArtifact?.id) {
+      void selectDemucsSeparation(demucsId, { quiet: true });
+    }
+    const decorated = decoratedVersions.find((v) => v.id === version.id);
+    setReusedFrom({
+      id: version.id,
+      name: decorated?.name || version.name,
+      badge: decorated?.badge || version.badge,
+      controls: JSON.stringify(controls),
+      generatorId: generatorAvailable ? takeGeneratorId : generatorId,
+    });
+    setStatusMsg(generatorAvailable || !takeGeneratorId ? "" : "That take's model isn't installed. Its other settings are loaded.");
+  };
+  const reusedSettingsMatch = Boolean(
+    reusedFrom
+      && reusedFrom.generatorId === generatorId
+      && reusedFrom.controls === JSON.stringify(generationControls)
+  );
   const currentRunSettings = buildRunSettings();
   const currentGeneration = currentRunSettings.generation;
   const resolvedSettings = currentGeneration.resolved;
@@ -2297,6 +2347,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     generationControls,
     hasSourceChartSync,
     usesSourceChartSync,
+    projectDefaultTimingDetector,
     setGenerationControls,
     updateGenerationControl,
     updateAdvancedNumberControl,
@@ -2304,6 +2355,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     resetCurrentGenerationPreset,
     advancedSettingsOpen,
     setAdvancedSettingsOpen,
+    reuseVersionSettings,
+    reusedFrom,
+    reusedSettingsMatch,
     randomSeedValue,
     // run & actions
     genRun,

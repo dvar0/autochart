@@ -5,6 +5,7 @@ import PreviewStage from "./PreviewStage.jsx";
 import TakesDeck from "./TakesDeck.jsx";
 import Console from "./Console.jsx";
 import LibraryFolderPrompt from "../../components/LibraryFolderPrompt.jsx";
+import MoreSettings from "./MoreSettings.jsx";
 import EditScreen from "./edit/EditScreen.jsx";
 
 import UnsupportedGenerationState from "./UnsupportedGenerationState.jsx";
@@ -74,6 +75,7 @@ export default function GeneratePage({ importedSong, onSaved, onGeneratedSong, o
           <PreviewStage project={project} />
           {project.hasMedia && <TakesDeck project={project} />}
           <Console project={project} />
+          {project.hasMedia && project.advancedSettingsOpen && <MoreSettings project={project} />}
         </div>
         <LibraryFolderPrompt gate={project.libraryFolderGate} onOpenSettings={onOpenSettings} />
       </div>
