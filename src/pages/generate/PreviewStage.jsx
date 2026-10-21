@@ -7,6 +7,7 @@ import { activeLyricPhrase, resolveLyricPhrases } from "../../highway/noteFlags.
 import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
 import { I } from "../../icons.jsx";
 import { GenerationPreviewStage } from "./LiveGeneration.jsx";
+import EditHelp from "./edit/EditHelp.jsx";
 import { StemSeparationStage } from "./StageAnimations.jsx";
 import {
   COMPARE_LANE_COLORS,
@@ -663,7 +664,7 @@ function DemucsAuditionStage({ project }) {
   );
 }
 
-export default function PreviewStage({ project }) {
+export default function PreviewStage({ project, ws, highwayRef }) {
   const {
     importedSong,
     background,
@@ -686,7 +687,11 @@ export default function PreviewStage({ project }) {
     deckTab,
     demucsAudition,
     activeDemucsArtifact,
+    workTab,
   } = project;
+  // Regenerate and Edit keep this stage, and its highway, mounted: the take
+  // swaps for its editable draft in place, so the playhead never moves.
+  const editing = workTab !== "generate";
 
   const [dropHot, setDropHot] = useState(false);
   const [compareLayout, setCompareLayout] = useState("joined");
@@ -885,17 +890,7 @@ export default function PreviewStage({ project }) {
               </span>
             </div>
           )}
-          {!showingDemucsStage && track && previewMode === "single" && selectedSingleVersion && (
-            <button
-              type="button"
-              className="stage-edit-btn"
-              onClick={() => project.startEditingVersion(selectedSingleVersion.id)}
-              disabled={project.busy || !selectedSingleVersion.chart?.text}
-              title="Edit notes or redo parts of this take"
-            >
-              <I.pencil /> Edit
-            </button>
-          )}
+          {editing && <EditStageActions project={project} ws={ws} />}
           {!showingDemucsStage && track && previewMode === "compare" && (
             <>
               <div className="compare-layout-tabs" aria-label="Compare layout">
@@ -925,7 +920,12 @@ export default function PreviewStage({ project }) {
       ) : showingDemucsStage ? (
         <DemucsAuditionStage project={project} />
       ) : showingLiveStage || (track && previewMode === "single") ? (
-        <GenerationPreviewStage project={project} />
+        <GenerationPreviewStage
+          project={project}
+          highwayRef={highwayRef}
+          editTrack={editing ? project.editor.previewTrack : null}
+          onProgress={editing ? ws.onProgress : undefined}
+        />
       ) : !track ? (
         <label
           className={"dropzone" + (!sourceAudioFile ? " is-empty" : "") + (dropHot ? " hot" : "")}
@@ -1119,5 +1119,34 @@ export default function PreviewStage({ project }) {
         </div>
       )}
     </section>
+  );
+}
+
+function EditStageActions({ project, ws }) {
+  const { editor, undoEditorChange, redoEditorChange } = project;
+  const saveLabel = editor.dirty ? "Saving…" : editor.savedAt ? "Saved" : "";
+  return (
+    <>
+      <span className="stage-edit-meta">
+        {editor.draftVersion && editor.sourceVersion && <span>from {editor.sourceVersion.name}</span>}
+        {saveLabel && <span className={editor.dirty ? "busy" : ""}>{saveLabel}</span>}
+      </span>
+      <div className="edit-history">
+        <button onClick={undoEditorChange} disabled={!editor.canUndo} title="Undo (Ctrl+Z)"><I.undo /> Undo</button>
+        <button onClick={redoEditorChange} disabled={!editor.canRedo} title="Redo (Ctrl+Shift+Z)"><I.redo /> Redo</button>
+      </div>
+      <div className="edit-menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
+        <button
+          className="edit-icon-btn"
+          onClick={() => ws.setHelpOpen((v) => !v)}
+          aria-expanded={ws.helpOpen}
+          aria-label="Mouse and keys"
+          title="Mouse and keys"
+        >
+          <I.info />
+        </button>
+        {ws.helpOpen && <EditHelp tab={ws.tab} />}
+      </div>
+    </>
   );
 }

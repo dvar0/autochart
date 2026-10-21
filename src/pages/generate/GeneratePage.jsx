@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import useGenerateProject from "./useGenerateProject.js";
 import ProjectBar from "./ProjectBar.jsx";
 import PreviewStage from "./PreviewStage.jsx";
@@ -6,15 +6,24 @@ import TakesDeck from "./TakesDeck.jsx";
 import Console from "./Console.jsx";
 import LibraryFolderPrompt from "../../components/LibraryFolderPrompt.jsx";
 import MoreSettings from "./MoreSettings.jsx";
-import EditScreen from "./edit/EditScreen.jsx";
+import EditTimeline from "./edit/EditTimeline.jsx";
+import EditInspector from "./edit/EditInspector.jsx";
+import useEditWorkspace from "./edit/useEditWorkspace.js";
 
 import UnsupportedGenerationState from "./UnsupportedGenerationState.jsx";
 import { targetLabel } from "../../data/supportedTargets.js";
 // Generate screen v3 — "Studio Deck". DAW mental model: monitor (stage) in the
 // middle, channel strip (console) on the right, takes at the bottom. This file
 // owns only the grid skeleton and hands the project state hook to each region.
+//
+// The rail's tabs pick the job. Generate shows the console and the takes
+// deck; Regenerate and Edit swap them for the editor panel and the song map +
+// piano roll. The stage stays put through every switch: one highway, one
+// playhead.
 export default function GeneratePage({ importedSong, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange }) {
   const project = useGenerateProject({ importedSong, onSaved, onGeneratedSong, onProjectIdentified, visible: active });
+  const highwayRef = useRef(null);
+  const ws = useEditWorkspace(project, highwayRef, active);
 
   useEffect(() => {
     onBusyChange?.(workspaceKey, project.busy);
@@ -57,25 +66,25 @@ export default function GeneratePage({ importedSong, onSaved, onGeneratedSong, o
     );
   }
 
-  if (project.deckTab === "edit" && project.editor.hasSession) {
-    return (
-      <div className="ac-body">
-        <div className="main" style={{ padding: 0 }}>
-          <EditScreen project={project} />
-        </div>
-      </div>
-    );
-  }
-
+  const editing = project.workTab !== "generate";
   return (
     <div className="ac-body">
       <div className="main" style={{ padding: 0 }}>
-        <div className="gen-screen">
+        <div className={"gen-screen" + (editing ? " is-editing" : "")} data-tab={project.workTab}>
           <ProjectBar project={project} />
-          <PreviewStage project={project} />
-          {project.hasMedia && <TakesDeck project={project} />}
-          <Console project={project} />
-          {project.hasMedia && project.advancedSettingsOpen && <MoreSettings project={project} />}
+          <PreviewStage project={project} ws={ws} highwayRef={highwayRef} />
+          {editing ? (
+            <>
+              <EditTimeline project={project} ws={ws} />
+              <EditInspector project={project} ws={ws} />
+            </>
+          ) : (
+            <>
+              {project.hasMedia && <TakesDeck project={project} />}
+              <Console project={project} />
+              {project.hasMedia && project.advancedSettingsOpen && <MoreSettings project={project} />}
+            </>
+          )}
         </div>
         <LibraryFolderPrompt gate={project.libraryFolderGate} onOpenSettings={onOpenSettings} />
       </div>

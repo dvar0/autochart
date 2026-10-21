@@ -8,6 +8,7 @@ import {
 import { I } from "../../icons.jsx";
 import GenerationProgress from "./GenerationProgress.jsx";
 import { changedSettingsSummary } from "./MoreSettings.jsx";
+import WorkTabs from "./WorkTabs.jsx";
 
 // Fret colors, one per style knob, in lane order.
 const KNOB_COLORS = ["var(--fret-g)", "var(--fret-r)", "var(--fret-y)", "var(--fret-b)", "var(--fret-o)"];
@@ -183,6 +184,7 @@ export default function Console({ project }) {
 
   return (
     <aside className="console-rail">
+      <WorkTabs project={project} />
       <section className="rail-sec">
         {!hasMedia ? (
           <ol className="console-steps">

@@ -570,6 +570,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   }, [previewMode]);
   const pendingSeedSongIdRef = useRef(null);
   const [deckTab, setDeckTab] = useState("takes");
+  // Which tab the right rail shows: "generate" (console + takes deck),
+  // "regen" (regenerate bars) or "edit" (edit notes). The last two work on
+  // the selected take through the editor session below.
+  const [workTab, setWorkTab] = useState("generate");
   const [editorState, dispatchEditor] = useReducer(editorReducer, undefined, () => createEditorState(null));
   const [editorSourceVersionId, setEditorSourceVersionId] = useState("");
   const [editorDraftVersionId, setEditorDraftVersionId] = useState("");
@@ -797,6 +801,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setStatusMsg("");
       setDeckTab("takes");
       resetEditorSession();
+      setWorkTab("generate");
       setPreviewMode("single");
       setLocalVersions([]);
       setFinalSlots(emptyFinalSlots());
@@ -857,6 +862,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setCompareSelection([]);
     setDeckTab("takes");
     resetEditorSession();
+    setWorkTab("generate");
     revokeObjectUrlRef(demucsAuditionUrlRef);
     setDemucsAudition(null);
     setDemucsAuditionLoadingKey("");
@@ -976,6 +982,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setCompareSelection([]);
       setSourceArtifacts(emptySourceArtifacts());
       resetEditorSession();
+      setWorkTab("generate");
       setPreviewMode("single");
       setDeckTab("takes");
       revokeObjectUrlRef(demucsAuditionUrlRef);
@@ -1193,7 +1200,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       // Removing the take that is being edited closes the editor cleanly.
       if (version.id === editorDraftVersionId || version.id === editorSourceVersionId) {
         resetEditorSession();
-        setDeckTab("takes");
+        setWorkTab("generate");
       }
       setStatusMsg(`Removed ${version.name}.`);
       onSaved?.();
@@ -2165,7 +2172,6 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setEditorSeekRequest(null);
     setSingleVersion(versionId);
     setPreviewMode("single");
-    setDeckTab("edit");
     setStatusMsg("");
   };
 
@@ -2223,13 +2229,16 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           versions: nextVersions.map(versionForSave).filter(Boolean),
           settings: { ...(importedSong?.settings || {}), activeVersionId: draftId },
         });
-        await refreshImportedSong(draftId);
+        await refreshImportedSong();
       } else {
         setLocalVersions(nextVersions);
       }
       setEditorDraftVersionId(draftId);
-      setSingleVersion(draftId);
-      setDeckTab("edit");
+      // The draft takes over the selection only while the edited take is
+      // still the one selected; a save that lands after the user picked
+      // another card leaves their pick alone.
+      const editedIds = [editorSourceVersionId, editorDraftVersionId, draftId];
+      setSingleVersion((current) => (editedIds.includes(current) ? draftId : current));
       // Changes made while this save was in flight stay dirty for the next one.
       if (editorRevisionRef.current === savedRevision) setEditorDirty(false);
       setEditorSavedAt(Date.now());
@@ -2253,33 +2262,50 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorDirty, editorState.revision, busyAction]);
 
-  // Deletes the edited take. A draft that never reached the library only
-  // lives in local state.
-  const discardEditorDraft = async () => {
-    const saved = editorDraftVersionId ? versionOptions.find((v) => v.id === editorDraftVersionId) : null;
-    if (saved && songId) {
-      await removeCandidate(saved);
-      return;
-    }
-    if (editorDraftVersionId) {
-      setLocalVersions((prev) => prev.filter((v) => v.id !== editorDraftVersionId));
-    }
-    resetEditorSession();
-    setDeckTab("takes");
-  };
-
-  const finishEditing = async () => {
-    if (editorDirty) {
-      const ok = await saveEditorDraft();
-      if (!ok) return;
-    }
-    resetEditorSession();
-    setDeckTab("takes");
-  };
-
   const editorSourceVersion = decoratedVersions.find((v) => v.id === editorSourceVersionId) || null;
   const editorDraftVersion = decoratedVersions.find((v) => v.id === editorDraftVersionId) || null;
   const hasEditorSession = Boolean(editorSourceVersionId && editorState.doc);
+
+  // Regenerate and Edit work on the selected take. They are closed while a
+  // generation or separation runs (its result takes over the stage), and for
+  // takes without a chart.
+  const editBlockedReason =
+    !hasMedia || !selectedSingleVersion
+      ? "Generate a take first"
+      : busyAction === "generating" || busyAction === "separating"
+        ? "Wait for the generation to finish"
+        : !selectedSingleVersion.chart?.text
+          ? "This take has no chart to edit"
+          : "";
+
+  // Switching tabs keeps the editor session: picks, selections, undo
+  // history and the playhead all survive a trip to Generate and back. The
+  // session is only replaced when a different take is selected.
+  const openWorkTab = async (tab) => {
+    if (tab === workTab) return;
+    if (tab === "generate") {
+      setWorkTab("generate");
+      if (editorDirty) void saveEditorDraft({ quiet: true });
+      return;
+    }
+    if (workTab !== "generate") {
+      setWorkTab(tab);
+      return;
+    }
+    if (editBlockedReason) return;
+    const editingId = editorDraftVersionId || editorSourceVersionId;
+    if (!hasEditorSession || selectedSingleVersion.id !== editingId) {
+      if (editorDirty && !(await saveEditorDraft({ quiet: true }))) return;
+      startEditingVersion(selectedSingleVersion.id);
+    }
+    setAdvancedSettingsOpen(false);
+    setDeckTab("takes");
+    setPreviewMode("single");
+    setLiveStageFocused(false);
+    setWorkTab(tab);
+  };
+  const activeWorkTab = workTab !== "generate" && hasEditorSession ? workTab : "generate";
+
   const editorPreviewTrack = useMemo(
     () => (editorState.doc ? buildEditorPreviewTrack(editorState.doc) : null),
     [editorState.doc]
@@ -2385,11 +2411,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setDeckTab,
     // editor
     editor,
-    startEditingVersion,
     applyEditorChange,
     saveEditorDraft,
-    discardEditorDraft,
-    finishEditing,
+    workTab: activeWorkTab,
+    openWorkTab,
+    editBlockedReason,
     requestEditorSeek,
     requestEditorPlayToggle,
     setEditorPlaying,

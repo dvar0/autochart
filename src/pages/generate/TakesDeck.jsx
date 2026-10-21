@@ -510,7 +510,6 @@ export default function TakesDeck({ project }) {
     activeDemucsArtifact,
     demucsAuditionMode,
     setDemucsAuditionMode,
-    startEditingVersion,
     reuseVersionSettings,
     reusedFrom,
     justGeneratedId,
@@ -819,16 +818,6 @@ export default function TakesDeck({ project }) {
                   )}
                   <div className="take-foot">
                     <div className="take-actions-row" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        className="take-action edit"
-                        onClick={() => startEditingVersion(v.id)}
-                        disabled={busy || !assignable}
-                        title={assignable ? "Edit notes or redo parts of this take" : "This take has no chart to edit"}
-                        tabIndex={showingDemucs ? -1 : 0}
-                      >
-                        <I.pencil /> Edit
-                      </button>
                       <button
                         type="button"
                         className={"take-action" + (reusedFrom?.id === v.id ? " is-current" : "")}

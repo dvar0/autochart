@@ -62,7 +62,10 @@ function liveCompareOffset(project, liveAudioLead) {
 }
 
 // Live and saved charts share one mounted transport, including fullscreen ownership.
-export function GenerationPreviewStage({ project }) {
+// On the Regenerate and Edit tabs it shows the editable draft (`editTrack`)
+// with the song map as its transport; the highway itself stays mounted, so
+// switching tabs never moves the playhead or stops playback.
+export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, editTrack = null, onProgress }) {
   const isLive = project.showingLiveStage;
   const live = project.liveGeneration;
   const phase = liveBoardPhase(project);
@@ -79,7 +82,9 @@ export function GenerationPreviewStage({ project }) {
   // visible, partial chart updates preserve the playhead. The "Live" button
   // drops back into chase-cam follow mode without forcing a stop on pause.
   const [livePlaying, setLivePlaying] = useState(false);
-  const highwayRef = useRef(null);
+  const ownHighwayRef = useRef(null);
+  const highwayRef = sharedHighwayRef || ownHighwayRef;
+  const editing = Boolean(editTrack);
 
   // The board plays the run's own analysis audio when it's available. For a
   // lead-in run that is the PADDED source, so live playback shares the final
@@ -98,6 +103,7 @@ export function GenerationPreviewStage({ project }) {
     : Number(project.audioLeadInSeconds) || 0;
   const handlePlayingChange = (playing) => {
     project.reportPreviewPlaying?.(!isLive && playing);
+    project.setEditorPlaying?.(!isLive && playing);
   };
 
   useEffect(() => {
@@ -126,7 +132,8 @@ export function GenerationPreviewStage({ project }) {
   };
   // Space: on the live board it does what its Play button does; otherwise it
   // plays or pauses the highway.
-  useSpaceToPlay(!project.previewAudioError && (!isLive || phase === "notes"), () => {
+  // The edit tabs bind Space themselves.
+  useSpaceToPlay(!editing && !project.previewAudioError && (!isLive || phase === "notes"), () => {
     const h = highwayRef.current;
     if (isLive && !livePlaying) enterInteractive();
     else if (h?.isPlaying?.()) h.pause?.();
@@ -169,7 +176,7 @@ export function GenerationPreviewStage({ project }) {
           <>
             <HighwayPreview
               ref={highwayRef}
-              track={isLive ? live.track : project.track}
+              track={isLive ? live.track : editTrack || project.track}
               audioBuffer={isLive ? liveAudioBuffer : project.audioBuffer}
               audioLeadInSeconds={isLive ? liveAudioLead : project.audioLeadInSeconds}
               videoOffset={isLive ? liveAudioLead : project.activeVideoOffset}
@@ -184,7 +191,8 @@ export function GenerationPreviewStage({ project }) {
               // committed-seconds chase position exactly as before.
               compareOffset={isLive && livePlaying ? liveCompareOffset(project, liveAudioLead) : 0}
               onPlayingChange={handlePlayingChange}
-              hideTransport={isLive && !livePlaying}
+              onProgress={onProgress}
+              hideTransport={editing || (isLive && !livePlaying)}
               hideControls={isLive}
               visualOnly={isLive && !livePlaying}
             />

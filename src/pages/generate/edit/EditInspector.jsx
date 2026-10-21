@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { I } from "../../../icons.jsx";
+import WorkTabs from "../WorkTabs.jsx";
 import { barNumberLabel } from "./editRegions.js";
 
-// Panel beside the preview, with a tab per job: Regenerate (pick bars, make
-// new takes of them) and Edit (change single notes). The tab also sets what
-// the piano roll does. Inside a tab the layout never changes, and its buttons
-// keep their colors whether or not anything is selected: pressing one with
-// nothing to act on shakes the selection box instead. A running regenerate
-// shows its progress in place of its button.
+// The right rail on the Regenerate (pick bars, make new takes of them) and
+// Edit (change single notes) tabs. The tab also sets what the piano roll
+// does. Inside a tab the layout never changes, and its buttons keep their
+// colors whether or not anything is selected: pressing one with nothing to
+// act on shakes the selection box instead. A running regenerate shows its
+// progress in place of its button.
 
 const KNOBS = [
   { key: "density", name: "Notes", options: ["less", "auto", "more"], labels: ["Fewer", "Auto", "More"] },
@@ -26,36 +27,74 @@ const NOTE_ACTIONS = [
 
 const SNAP_OPTIONS = ["off", "1/4", "1/8", "1/12", "1/16", "1/24", "1/32"];
 
-export const EDIT_TABS = [
-  { id: "regen", label: "Regenerate", icon: I.spark },
-  { id: "edit", label: "Edit notes", icon: I.pencil },
-];
-
 function fmtTime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function EditInspector({ tab, onTab, ...props }) {
+export default function EditInspector({ project, ws }) {
+  const { editor, setEditorSnap, statusMsg, busyAction } = project;
+  // statusMsg stays put on the Generate rail; here it clears itself.
+  const [toast, setToast] = useState("");
+  useEffect(() => {
+    setToast(statusMsg || "");
+    if (!statusMsg) return undefined;
+    const timer = setTimeout(() => setToast(""), 4000);
+    return () => clearTimeout(timer);
+  }, [statusMsg]);
   return (
-    <aside className="edit-inspector">
-      <div className="insp-tabs" role="tablist" aria-label="Mode">
-        {EDIT_TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            className={tab === id ? "active" : ""}
-            data-tab={id}
-            onClick={() => onTab(id)}
-            title={`${label} (Tab)`}
-          >
-            <Icon /> {label}
-          </button>
-        ))}
-      </div>
-      {tab === "regen" ? <RegenTab {...props} /> : <NotesTab {...props} />}
+    <aside className="console-rail edit-inspector">
+      <WorkTabs project={project} />
+      {ws.tab === "regen" ? (
+        <RegenTab
+          doc={ws.doc}
+          bars={ws.bars}
+          regions={ws.regions}
+          selectionName={ws.selectionName}
+          selectedRedo={ws.selectedRedo}
+          pending={ws.pending}
+          knobs={ws.knobs}
+          confirm={ws.confirm}
+          onConfirm={ws.confirmOverwrite}
+          onCancelConfirm={ws.cancelOverwrite}
+          onKnob={ws.setKnob}
+          onRedo={ws.redoSelection}
+          onRemoveArea={ws.removeArea}
+          onClearAreas={() => ws.setRegions([])}
+          onCancelRedo={ws.cancelRedo}
+          onFocusRedo={ws.focusRedo}
+          onFocusRegion={(region) => ws.focusTick(region.startTick)}
+          onPickRedo={ws.pickRedoTake}
+        />
+      ) : (
+        <NotesTab
+          bars={ws.bars}
+          selectedNotes={ws.selectedNotes}
+          snap={editor.snap}
+          onSnap={setEditorSnap}
+          onNoteAction={ws.noteAction}
+        />
+      )}
+      {toast && busyAction !== "generating" && <div className="rail-toast">{toast}</div>}
     </aside>
+  );
+}
+
+// Asks before a regenerate or a take switch writes over notes changed by
+// hand. It sits over the Regenerate card's buttons, so nothing moves.
+function OverwriteConfirm({ confirm, bars, onConfirm, onCancel }) {
+  const where = confirm.regions.map((region) => barNumberLabel(bars, region).toLowerCase()).join(", ");
+  return (
+    <div className="insp-confirm" role="alertdialog" aria-labelledby="insp-confirm-title" aria-describedby="insp-confirm-body">
+      <b id="insp-confirm-title">Replace your edits?</b>
+      <p id="insp-confirm-body">You changed notes in {where}.</p>
+      <div className="insp-confirm-actions">
+        <button className="settings-secondary" onClick={onCancel} title="Esc">Cancel</button>
+        <button className="btn-primary" onClick={onConfirm} title="Enter" autoFocus>
+          {confirm.kind === "take" ? "Switch take" : <><I.spark /> Regenerate</>}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -73,6 +112,9 @@ function RegenTab({
   selectedRedo,
   pending,
   knobs,
+  confirm,
+  onConfirm,
+  onCancelConfirm,
   onKnob,
   onRedo,
   onRemoveArea,
@@ -93,7 +135,8 @@ function RegenTab({
 
   return (
     <>
-      <section className="insp-card">
+      <section className="insp-card insp-regen-card">
+        {confirm && <OverwriteConfirm confirm={confirm} bars={bars} onConfirm={onConfirm} onCancel={onCancelConfirm} />}
         <div key={nudge} className={"insp-target" + (hasSelection ? "" : " empty") + (nudge ? " nudge" : "")}>
           <div className="insp-target-head">
             <b>{hasSelection ? selectionName : "Nothing selected"}</b>

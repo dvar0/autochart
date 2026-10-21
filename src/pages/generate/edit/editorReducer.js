@@ -6,6 +6,9 @@
 // The Regenerate tab's picked bars (`regions`) share that history: building a
 // custom pick takes work, so picking is undoable like an edit. A history entry
 // is { doc, regions }; a pick-only entry keeps the same doc.
+//
+// `doc.touched` lists the ticks changed by hand (sorted). Regenerating bars
+// that hold any asks before replacing them; a regenerate clears its bars.
 
 import { cloneEditorDoc, quantizeTick, snapTicks } from "./chartEditor.js";
 
@@ -339,7 +342,7 @@ function applyOperation(state, action) {
       const others = redos.filter(
         (redo) => redo.id !== record.id && !redo.regions.some((a) => regions.some((b) => a.startTick < b.endTick && b.startTick < a.endTick))
       );
-      const nextDoc = withNotes({ ...doc, redos: [...others, record] }, [...kept, ...action.notes]);
+      const nextDoc = untouchRegions(withNotes({ ...doc, redos: [...others, record] }, [...kept, ...action.notes]), regions);
       return { ...commit(state, nextDoc), selectedNoteIds: [] };
     }
     case "pickRedoTake": {
@@ -350,11 +353,58 @@ function applyOperation(state, action) {
       const inRegions = (note) => redo.regions.some((r) => note.tick >= r.startTick && note.tick < r.endTick);
       const kept = doc.notes.filter((note) => !inRegions(note));
       const redos = doc.redos.map((r) => (r.id === redo.id ? { ...r, active: action.index } : r));
-      return { ...commit(state, withNotes({ ...doc, redos }, [...kept, ...notesFor])), selectedNoteIds: [] };
+      return { ...commit(state, untouchRegions(withNotes({ ...doc, redos }, [...kept, ...notesFor]), redo.regions)), selectedNoteIds: [] };
     }
     default:
       return state;
   }
+}
+
+// Note changes made by hand. Star power and solo ranges are left out: a
+// regenerate never replaces them.
+const HAND_EDITS = new Set([
+  "moveNotes", "deleteNotes", "eraseGesture", "addNote", "toggleTap", "toggleForce",
+  "paintNoteFlag", "setSustain", "quantizeSelection", "splitChords",
+]);
+
+function noteSignature(note) {
+  const sustains = Object.entries(note.sustainsByLane).sort().map(([lane, len]) => `${lane}:${len}`).join(",");
+  return `${note.tick}|${note.lanes.join("")}|${note.open ? 1 : 0}${note.tap ? 1 : 0}${note.force ? 1 : 0}|${sustains}`;
+}
+
+// Adds the ticks whose notes differ between two docs to `touched`.
+function withTouched(before, after) {
+  const counts = new Map();
+  for (const note of before.notes) {
+    const key = noteSignature(note);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const ticks = new Set(before.touched || []);
+  for (const note of after.notes) {
+    const key = noteSignature(note);
+    const left = counts.get(key) || 0;
+    if (left) counts.set(key, left - 1);
+    else ticks.add(note.tick);
+  }
+  for (const [key, left] of counts) if (left) ticks.add(Number(key.slice(0, key.indexOf("|"))));
+  return { ...after, touched: [...ticks].sort((a, b) => a - b) };
+}
+
+function untouchRegions(doc, regions) {
+  if (!doc.touched?.length) return doc;
+  return { ...doc, touched: doc.touched.filter((tick) => !regions.some((r) => tick >= r.startTick && tick < r.endTick)) };
+}
+
+// The bars among `regions` that hold hand edits.
+export function handEditedRegions(doc, regions) {
+  const touched = doc?.touched || [];
+  if (!touched.length) return [];
+  return regions.filter((r) => touched.some((tick) => tick >= r.startTick && tick < r.endTick));
+}
+
+function trackHandEdits(state, next, action) {
+  if (next === state || !HAND_EDITS.has(action.type) || next.doc === state.doc) return next;
+  return { ...next, doc: withTouched(state.doc, next.doc) };
 }
 
 export function editorReducer(state, action) {
@@ -385,7 +435,7 @@ export function editorReducer(state, action) {
         next = applyOperation(next, { type: "deleteRanges", ids: state.selectedRangeIds });
       }
       if (state.selectedNoteIds.length) {
-        next = applyOperation(next, { type: "deleteNotes", ids: state.selectedNoteIds });
+        next = trackHandEdits(next, applyOperation(next, { type: "deleteNotes", ids: state.selectedNoteIds }), { type: "deleteNotes" });
       }
       return next;
     }
@@ -419,7 +469,7 @@ export function editorReducer(state, action) {
       };
     }
     default:
-      return applyOperation(state, action);
+      return trackHandEdits(state, applyOperation(state, action), action);
   }
 }
 

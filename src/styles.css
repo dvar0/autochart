@@ -3526,6 +3526,44 @@ video.bg-layer {
   background: var(--purple-bg);
 }
 
+/* ---------- rail tabs: Generate · Regenerate · Edit ---------- */
+/* Pinned to the top of the rail on every tab, in the same spot, so the
+   switch reads as one panel changing pages. */
+.work-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin: var(--sp-4) var(--sp-5) 0;
+  padding: 3px;
+  border-radius: var(--r-box);
+  background: var(--surface-2);
+  /* the page colour around it hides rail content scrolling underneath */
+  box-shadow: 0 0 0 var(--sp-5) var(--window);
+  clip-path: inset(calc(-1 * var(--sp-4)) calc(-1 * var(--sp-5)) -6px);
+}
+.work-tabs button {
+  min-width: 0;
+  min-height: 40px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 6px;
+  border: none;
+  border-radius: calc(var(--r-box) - 2px);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-md); font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.work-tabs button svg { width: 15px; height: 15px; flex: none; }
+.work-tabs button:hover:not(.active):not(:disabled) { color: var(--purple); }
+.work-tabs button.active { background: var(--purple); color: var(--purple-fg); box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+.work-tabs button:disabled { color: var(--text-faint); opacity: .55; cursor: not-allowed; }
+
 /* ---------- console rail: settings + run only (channel strip) ---------- */
 .console-rail {
   grid-area: console;
@@ -5253,81 +5291,27 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 }
 
 /* ============================ TAKE EDITOR ============================ */
-/* Non-destructive note editor that lives inside the Generate deck. */
-
-/* ============== EDIT SCREEN ============== */
-/* Preview stage + redo panel on top; the timeline (song map, toolbar,
-   piano roll) runs the full width underneath, since width is what shows more
-   of the chart. Regions separate with hairlines; no container borders. */
-.edit-screen {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(280px, 22vw, 360px);
-  grid-template-rows: auto minmax(220px, 1fr) auto auto;
+/* The Regenerate and Edit tabs of the Generate screen. The stage stays where
+   it is; the editor panel takes the rail and the timeline (toolbar, song map,
+   piano roll) takes the deck's place, running the full width underneath,
+   since width is what shows more of the chart. */
+.gen-screen.is-editing {
+  grid-template-rows: auto minmax(220px, 1fr) auto;
   grid-template-areas:
-    "head    head"
-    "stage   insp"
-    "toolbar toolbar"
-    "roll    roll";
-  overflow: hidden;
-  position: relative;
+    "bar      bar"
+    "stage    console"
+    "timeline timeline";
 }
-
-.edit-head {
-  grid-area: head;
+.edit-timeline {
+  grid-area: timeline;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-4);
-  padding: 10px var(--sp-5);
-  border-bottom: 1px solid var(--border-soft);
-  min-width: 0;
+  flex-direction: column;
+  border-top: 1px solid var(--border-soft);
 }
-.edit-back {
-  flex: none;
-  display: inline-flex; align-items: center; gap: 6px;
-  min-height: 36px; padding: 0 14px 0 10px;
-  border: none; border-radius: var(--r-pill);
-  background: var(--surface-2); color: var(--text);
-  font-size: var(--fs-sm); font-weight: 700;
-  cursor: pointer; transition: .12s;
-}
-.edit-back svg { width: 16px; height: 16px; }
-.edit-back:hover { background: var(--purple-bg); color: var(--purple); }
-.edit-title { display: flex; align-items: center; gap: 10px; min-width: 0; margin-right: auto; }
-.edit-badge {
-  flex: none;
-  width: 26px; height: 26px;
-  display: grid; place-items: center;
-  border-radius: var(--r-pill);
-  background: var(--purple); color: var(--purple-fg);
-  font: 800 var(--fs-sm) var(--font-mono);
-}
-.edit-title b {
-  font: 700 var(--fs-xl) var(--font-display);
-  color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  min-width: 0;
-  line-height: 1.1;
-}
-.edit-diff {
-  flex: none;
-  padding: 3px 9px;
-  border-radius: var(--r-pill);
-  font-size: var(--fs-xs); font-weight: 800;
-  color: #fff;
-  background: var(--purple);
-}
-.edit-diff.tone-green { background: var(--green-solid); }
-.edit-diff.tone-amber { background: var(--amber-solid); }
-.edit-diff.tone-peach { background: var(--peach-solid); }
-.edit-diff.tone-red { background: var(--red-solid); }
-.edit-from { flex: none; font-size: var(--fs-sm); color: var(--text-faint); white-space: nowrap; }
-.edit-save { flex: none; font-size: var(--fs-xs); color: var(--text-faint); }
-.edit-save.busy { color: var(--purple-bri); }
-.edit-head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.stage-edit-meta { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: var(--fs-sm); color: var(--text-faint); white-space: nowrap; }
+.stage-edit-meta .busy { color: var(--purple-bri); }
+
 .edit-icon-btn {
   width: 36px; height: 36px;
   display: grid; place-items: center;
@@ -5351,7 +5335,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-history button svg { width: 16px; height: 16px; }
 .edit-history button:hover:not(:disabled) { background: var(--purple); color: var(--purple-fg); }
 .edit-history button:disabled { background: transparent; color: var(--text-faint); box-shadow: none; cursor: default; }
-.edit-head-actions > .edit-history { margin-right: 6px; }
 .edit-menu-wrap { position: relative; }
 .edit-menu {
   position: absolute; right: 0; top: calc(100% + 6px);
@@ -5374,15 +5357,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-menu button svg { width: 15px; height: 15px; }
 .edit-menu button:hover { background: var(--red-bg); }
 
-.edit-stage {
-  grid-area: stage;
-  min-height: 0; min-width: 0;
-  display: flex;
-  padding: var(--sp-4) var(--sp-4) 0;
-}
-.edit-stage .edit-preview { flex: 1; min-height: 0; border-radius: var(--r-card); overflow: hidden; }
-.edit-stage .preview-stage,
-.edit-stage .highway-wrap { min-height: 0; }
 
 /* Whole-song map in the toolbar: a section band on top (click picks) and a
    timeline below (click or drag moves the playhead), one playhead through
@@ -5603,32 +5577,30 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .piano-roll-empty { grid-area: 1 / 1; display: grid; place-items: center; color: var(--text-dim); font-size: var(--fs-md); }
 
 /* ---- inspector ---- */
-.edit-inspector {
-  grid-area: insp;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex; flex-direction: column;
-}
-.insp-tabs {
-  flex: none;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
-  margin: var(--sp-4) var(--sp-5) 0;
-  padding: 3px;
+/* The rail on the edit tabs: same column as the console, but it ends where
+   the timeline starts. */
+.edit-inspector { border-left: 1px solid var(--border-soft); }
+.insp-regen-card { position: relative; }
+/* Asks before replacing hand edits. Covers the Regenerate card instead of
+   pushing anything down. */
+.insp-confirm {
+  position: absolute;
+  inset: 10px var(--sp-4);
+  z-index: 6;
+  display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  padding: 14px 16px;
   border-radius: var(--r-box);
-  background: var(--surface-2);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop), inset 0 0 0 var(--bw) var(--orange);
+  animation: insp-confirm-in .18s cubic-bezier(.34, 1.56, .64, 1);
 }
-.insp-tabs button {
-  display: flex; align-items: center; justify-content: center; gap: 7px;
-  min-height: 40px;
-  border: none; border-radius: calc(var(--r-box) - 2px);
-  background: transparent; color: var(--text-dim);
-  font-size: var(--fs-base); font-weight: 700;
-  cursor: pointer;
-  transition: .12s;
-}
-.insp-tabs button svg { width: 16px; height: 16px; }
-.insp-tabs button:hover:not(.active) { color: var(--purple); }
-.insp-tabs button.active { background: var(--purple); color: var(--purple-fg); box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+@keyframes insp-confirm-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+.insp-confirm b { font: 700 var(--fs-lg) var(--font-display); color: var(--text); }
+.insp-confirm p { margin: 0 0 6px; font-size: var(--fs-sm); color: var(--text-dim); }
+.insp-confirm-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 6px; }
+.insp-confirm-actions button { justify-content: center; min-height: 40px; }
+.insp-confirm-actions svg { width: 15px; height: 15px; }
+@media (prefers-reduced-motion: reduce) { .insp-confirm { animation: none; } }
 .insp-card { padding: 18px var(--sp-5); display: flex; flex-direction: column; gap: 10px; }
 .insp-card + .insp-card { border-top: 1px solid var(--border-soft); }
 .insp-eyebrow { display: flex; align-items: center; gap: 8px; font: 800 var(--fs-xs) var(--font-mono); letter-spacing: .06em; color: var(--text-faint); }
@@ -5782,16 +5754,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-takes button:hover:not(:disabled) { background: color-mix(in srgb, var(--orange) 30%, transparent); }
 .insp-takes button:disabled { opacity: .3; cursor: default; }
 
-.edit-toast {
-  position: absolute; left: 50%; bottom: 18px;
-  transform: translateX(-50%);
-  z-index: 30;
-  padding: 9px 14px;
-  border-radius: var(--r-box);
-  background: var(--surface);
-  box-shadow: var(--shadow-pop);
-  font-size: var(--fs-sm); color: var(--text);
-}
 
 @media (max-width: 1180px) {
   .edit-toolbar { flex-wrap: wrap; }
@@ -6267,30 +6229,11 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 }
 .take-action svg { width: 13px; height: 13px; flex: none; }
 .take-action:hover:not(:disabled) { background: var(--purple-bg); color: var(--purple); }
-.take-action.edit { background: var(--purple); color: var(--purple-fg); }
-.take-action.edit:hover:not(:disabled) { background: var(--purple-bri); color: var(--purple-fg); }
 .take-action.is-current { background: var(--purple-bg); color: var(--purple); }
 .take-action:disabled { opacity: .45; cursor: not-allowed; }
 .take-actions-row + .take-pips { margin-top: 0; }
-.take-card.is-final .take-action:not(.edit):not(:hover) { background: color-mix(in srgb, var(--slot) 18%, transparent); }
+.take-card.is-final .take-action:not(:hover) { background: color-mix(in srgb, var(--slot) 18%, transparent); }
 
-.stage-edit-btn {
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--r-box);
-  background: var(--purple);
-  color: var(--purple-fg);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  cursor: pointer;
-}
-.stage-edit-btn svg { width: 14px; height: 14px; }
-.stage-edit-btn:hover:not(:disabled) { background: var(--purple-bri); }
-.stage-edit-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* take card recipe: every setting a take was made with, as label/value pairs
    in two columns. Values that differ between takes are the bright ones. */
