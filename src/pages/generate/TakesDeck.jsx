@@ -778,52 +778,54 @@ export default function TakesDeck({ project }) {
                       {v.source === "imported-chart" ? "From the imported chart" : "Made outside Autochart"}
                     </p>
                   )}
-                  <div className="take-actions-row" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="take-action edit"
-                      onClick={() => startEditingVersion(v.id)}
-                      disabled={busy || !assignable}
-                      title={assignable ? "Edit notes or redo parts of this take" : "This take has no chart to edit"}
-                      tabIndex={showingDemucs ? -1 : 0}
-                    >
-                      <I.pencil /> Edit
-                    </button>
-                    <button
-                      type="button"
-                      className={"take-action" + (reusedFrom?.id === v.id ? " is-current" : "")}
-                      onClick={() => reuseVersionSettings(v.id)}
-                      disabled={busy || !reusable}
-                      title={reusable ? "Load this take's settings, seed included, into the console" : "This take wasn't generated here"}
-                      tabIndex={showingDemucs ? -1 : 0}
-                    >
-                      <I.reuse /> Use settings
-                    </button>
-                  </div>
-                  <div className="take-pips" onClick={(e) => e.stopPropagation()}>
-                    {FINAL_SLOT_ORDER.map((difficulty) => {
-                      const tone = slotTone(difficulty);
-                      const on = cleanedFinalSlots[difficulty] === v.id;
-                      return (
-                        <button
-                          key={difficulty}
-                          className={`take-pip tone-${tone}` + (on ? " on" : "")}
-                          onClick={() => updateFinalSlot(difficulty, on ? "" : v.id)}
-                          disabled={busy || !assignable}
-                          title={
-                            !assignable
-                              ? "This take has no exportable chart"
-                              : on
-                                ? `Clear final ${DIFF[difficulty]?.name || difficulty}`
-                                : `Use for final ${DIFF[difficulty]?.name || difficulty}`
-                          }
-                          aria-pressed={on}
-                          tabIndex={showingDemucs ? -1 : 0}
-                        >
-                          {SLOT_LETTERS[difficulty]}
-                        </button>
-                      );
-                    })}
+                  <div className="take-foot">
+                    <div className="take-actions-row" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="take-action edit"
+                        onClick={() => startEditingVersion(v.id)}
+                        disabled={busy || !assignable}
+                        title={assignable ? "Edit notes or redo parts of this take" : "This take has no chart to edit"}
+                        tabIndex={showingDemucs ? -1 : 0}
+                      >
+                        <I.pencil /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={"take-action" + (reusedFrom?.id === v.id ? " is-current" : "")}
+                        onClick={() => reuseVersionSettings(v.id)}
+                        disabled={busy || !reusable}
+                        title={reusable ? "Load this take's settings, seed included, into the console" : "This take wasn't generated here"}
+                        tabIndex={showingDemucs ? -1 : 0}
+                      >
+                        <I.reuse /> Use settings
+                      </button>
+                    </div>
+                    <div className="take-pips" onClick={(e) => e.stopPropagation()}>
+                      {FINAL_SLOT_ORDER.map((difficulty) => {
+                        const tone = slotTone(difficulty);
+                        const on = cleanedFinalSlots[difficulty] === v.id;
+                        return (
+                          <button
+                            key={difficulty}
+                            className={`take-pip tone-${tone}` + (on ? " on" : "")}
+                            onClick={() => updateFinalSlot(difficulty, on ? "" : v.id)}
+                            disabled={busy || !assignable}
+                            title={
+                              !assignable
+                                ? "This take has no exportable chart"
+                                : on
+                                  ? `Clear final ${DIFF[difficulty]?.name || difficulty}`
+                                  : `Use for final ${DIFF[difficulty]?.name || difficulty}`
+                            }
+                            aria-pressed={on}
+                            tabIndex={showingDemucs ? -1 : 0}
+                          >
+                            {SLOT_LETTERS[difficulty]}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               );

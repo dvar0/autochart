@@ -4512,7 +4512,7 @@ video.bg-layer {
 .deck-compare-btn:disabled { opacity: .5; cursor: not-allowed; }
 .deck-body {
   min-width: 0;
-  height: var(--generate-deck-body-height, 284px);
+  height: var(--generate-deck-body-height, 250px);
   min-height: 0;
   display: grid;
 }
@@ -5109,7 +5109,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
     grid-column: 1 / -1;
   }
   .project-id { flex-basis: 300px; }
-  .take-card { flex-basis: 268px; }
 }
 
 @media (max-width: 1000px) {
@@ -6228,3 +6227,19 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   color: var(--text-faint);
 }
 
+/* Edit, Use settings and the final-slot pips share the card's last line */
+.take-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+.take-foot .take-actions-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  margin-top: 0;
+}
+.take-foot .take-action { flex: none; padding: 0 9px; }
+.take-foot .take-pips { flex: none; gap: 3px; margin-top: 0; }
+.take-foot .take-pip { min-width: 20px; }
