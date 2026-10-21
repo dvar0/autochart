@@ -4512,7 +4512,7 @@ video.bg-layer {
 .deck-compare-btn:disabled { opacity: .5; cursor: not-allowed; }
 .deck-body {
   min-width: 0;
-  height: var(--generate-deck-body-height, 262px);
+  height: var(--generate-deck-body-height, 284px);
   min-height: 0;
   display: grid;
 }
@@ -4545,7 +4545,7 @@ video.bg-layer {
 .takes-row::-webkit-scrollbar { height: 8px; }
 .takes-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 .take-card {
-  flex: 0 0 212px;
+  flex: 0 0 288px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -4881,7 +4881,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   align-content: flex-start;
   gap: 4px;
   min-width: 0;
-  max-height: 90px; /* four rows of 20px chips + 4px gaps; the full recipe is the tooltip */
+  max-height: 70px; /* three rows of chips */
   overflow: hidden;
 }
 .take-tag {
@@ -5109,7 +5109,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
     grid-column: 1 / -1;
   }
   .project-id { flex-basis: 300px; }
-  .take-card { flex-basis: 192px; }
+  .take-card { flex-basis: 268px; }
 }
 
 @media (max-width: 1000px) {
@@ -6169,3 +6169,62 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .stage-edit-btn svg { width: 14px; height: 14px; }
 .stage-edit-btn:hover:not(:disabled) { background: var(--purple-bri); }
 .stage-edit-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* take card recipe: every setting a take was made with, as label/value pairs
+   in two columns. Values that differ between takes are the bright ones. */
+.take-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.take-meta-line .take-notes { padding: 0; }
+.take-recipe {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 3px 6px;
+  align-items: baseline;
+  font-size: var(--fs-xs);
+  line-height: 16px;
+}
+.recipe-row { display: contents; }
+.recipe-row dt {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.recipe-row dd {
+  margin: 0 6px 0 0;
+  min-width: 0;
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recipe-row.full dd { grid-column: 2 / -1; }
+.recipe-row.recipe-seed dd { font-family: var(--font-mono); }
+.recipe-row.is-diff dd { color: var(--text); font-weight: 700; }
+.recipe-row.mod dd { color: var(--purple); }
+.recipe-row.tone-amber dd { color: var(--amber-fg); }
+.take-card.is-final .recipe-row.mod dd { color: var(--text); }
+.recipe-knobs {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  vertical-align: -1px;
+}
+.recipe-knob {
+  width: 6px;
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(to top, var(--knob) calc(var(--level) * 100%), color-mix(in srgb, var(--knob) 18%, transparent) 0);
+}
+.recipe-knob.is-auto { background: color-mix(in srgb, var(--knob) 30%, transparent); }
+.take-recipe-none {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+

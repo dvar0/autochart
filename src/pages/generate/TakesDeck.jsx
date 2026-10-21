@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import DensityStrip from "../../highway/DensityStrip.jsx";
 import { DIFF } from "../../data/difficultyMetadata.js";
+import { GENERATOR_LABELS } from "../../data/humanLabels.js";
 import {
   GAME_LIBRARY_NAME,
   GAME_LIBRARY_SAVE_LABEL,
@@ -11,10 +12,9 @@ import {
   ALL_DESCRIPTOR_KNOBS,
   DEFAULT_GENERATOR_ID,
   DEFAULT_TIMING_DETECTOR_ID,
+  DESCRIPTOR_KNOB_MAX,
   GENERATION_DIFFICULTIES,
-  generationSummary,
   getGenerationPreset,
-  SOURCE_CHART_TIMING_DETECTOR_ID,
   timingDetectorLabel,
   timingDetectorOptionFromResolved,
   timingSmoothingEnabledFromGeneration,
@@ -110,89 +110,103 @@ function separationCardName(artifact) {
   return `${base}${suffix}`;
 }
 
-// Compact model identity for generated take tags.
-function modelTag(version) {
+const KNOB_COLORS = ["var(--fret-g)", "var(--fret-r)", "var(--fret-y)", "var(--fret-b)", "var(--fret-o)"];
+
+// The model a take came from. Edited drafts carry "Edited" as their model
+// label, so they fall back to the generator they were made with.
+function modelName(version, generators = []) {
   const label = String(version.settings?.model || "").trim();
-  if (label) {
-    return { text: label, title: label };
-  }
+  if (label && label !== "Edited") return label;
   const generatorId = version.meta?.generatorId || version.settings?.generation?.generatorId || "";
-  if (generatorId === DEFAULT_GENERATOR_ID) return { text: "Fretformer", title: generatorId };
-  const tail = generatorId.split(".").pop();
-  return tail ? { text: tail.toUpperCase(), title: generatorId } : null;
+  const generator = generators.find((item) => item.id === generatorId);
+  if (generator?.label) return generator.label;
+  if (GENERATOR_LABELS[generatorId]) return GENERATOR_LABELS[generatorId];
+  if (generatorId === DEFAULT_GENERATOR_ID) return "Fretformer";
+  return generatorId.split(".").pop()?.toUpperCase() || "";
 }
 
-// At-a-glance run recipe: difficulty it was generated with, model, seed, timing,
-// preset, sampling overrides (only when they differ from the preset).
-function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
-  const difficulty = getVersionDifficulty(version, fallbackDifficulty);
-  const tags = [
-    {
-      text: DIFF[difficulty]?.name || difficulty,
-      tone: slotTone(difficulty),
-    },
-  ];
+// A generated take's full recipe as labelled rows. `compare` is what the deck
+// checks across takes to highlight the values that set a take apart.
+function takeRecipe(version, generators, badgedGeneratorIds) {
   const generation = version.settings?.generation;
-  if (version.source !== "generated" || !generation) return tags;
-
-  const model = modelTag(version);
-  const takeGeneratorId = version.meta?.generatorId || generation.generatorId || "";
-  // Takes from a badged model (the v1.2 test model) wear its NEW amber.
-  if (model) tags.push({ ...model, primary: true, keep: true, ...(badgedGeneratorIds.has(takeGeneratorId) ? { tone: "amber" } : {}) });
-
+  if (version.source !== "generated" || !generation) return null;
   const controls = generation.controls || {};
   const resolved = generation.resolved || {};
-  const preset = getGenerationPreset(generation.presetId || controls.presetId);
-  // Seed sits right after the model: it's what tells two runs of one recipe apart.
+  const generatorId = version.meta?.generatorId || generation.generatorId || "";
+  const model = modelName(version, generators);
+
   const seed = resolved.seed ?? (controls.seedMode === "fixed" ? controls.seed : null);
-  tags.push({ text: seed != null ? `seed ${seed}` : "seed rnd", secondary: true });
-  const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
-  if (timingDetector !== DEFAULT_TIMING_DETECTOR_ID) {
-    tags.push({
-      text: timingDetectorLabel(timingDetector, { short: true }),
-      title: `Timing: ${timingDetectorLabel(timingDetector)}`,
-      primary: true,
-    });
-  }
-  if (timingDetector !== SOURCE_CHART_TIMING_DETECTOR_ID) {
-    const smoothing = timingSmoothingEnabledFromGeneration(generation);
-    const older = usesOlderTimingSmoother(generation);
-    tags.push({
-      text: smoothing ? (older ? "old smooth" : "smooth") : "raw grid",
-      title: smoothing
-        ? (older ? "Beat map from the previous smoother" : "Timing smoothing enabled")
-        : "Timing smoothing disabled",
-      secondary: smoothing,
-      mod: !smoothing,
-    });
-  }
-  const leadIn = leadInTag(version);
-  if (leadIn) tags.push(leadIn);
-  tags.push({ text: generation.presetName || preset.name, secondary: true });
+  const leadIn = leadInTag(version)?.text || "0s";
+
+  const preset = getGenerationPreset(generation.presetId || controls.presetId);
+  const presetName = generation.presetName || preset.name;
   const temperature = settingNumber(resolved.temperature ?? controls.temperature);
-  if (temperature != null && Math.abs(temperature - preset.temperature) > 0.000001) {
-    tags.push({ text: `T ${temperature}`, mod: true });
-  }
   const topP = settingNumber(resolved.topP ?? controls.topP);
-  if (topP != null && Math.abs(topP - preset.topP) > 0.000001) {
-    tags.push({ text: `P ${topP}`, mod: true });
+  const tempOff = temperature != null && Math.abs(temperature - preset.temperature) > 0.000001;
+  const topPOff = topP != null && Math.abs(topP - preset.topP) > 0.000001;
+  const samplingTitle = `Temperature ${temperature ?? preset.temperature} · Top-p ${topP ?? preset.topP}`;
+
+  const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
+  let timing;
+  if (timingDetector !== DEFAULT_TIMING_DETECTOR_ID) {
+    timing = { value: timingDetectorLabel(timingDetector, { short: true }), title: timingDetectorLabel(timingDetector) };
+  } else if (timingSmoothingEnabledFromGeneration(generation)) {
+    timing = usesOlderTimingSmoother(generation)
+      ? { value: "old smooth", title: "Beat map from the previous smoother" }
+      : { value: "smooth", title: "Smoothed beat map" };
+  } else {
+    timing = { value: "raw", title: "Beat map without smoothing", mod: true };
   }
+
   const knobValues = controls.knobs ?? resolved.knobs ?? {};
-  let knobsActiveHere = false;
-  for (const knob of ALL_DESCRIPTOR_KNOBS) {
-    const value = knobValues[knob.id];
-    if (value == null) continue;
-    knobsActiveHere = true;
-    tags.push({ text: `${knob.compact}${value}`, title: `${knob.name} ${value}`, mod: true });
-  }
-  const knobGuidance = settingNumber(resolved.guidanceScale ?? controls.guidanceScale);
-  if (knobsActiveHere && knobGuidance != null && knobGuidance > 1) {
-    tags.push({ text: `CFG ${knobGuidance}`, title: `Guidance ${knobGuidance}`, mod: true });
-  }
+  const knobs = Object.keys(knobValues).map((id, index) => {
+    const knob = ALL_DESCRIPTOR_KNOBS.find((item) => item.id === id);
+    return { id, name: knob?.name || id, value: knobValues[id], color: KNOB_COLORS[index % KNOB_COLORS.length] };
+  });
+  const knobsSet = knobs.some((knob) => knob.value != null);
+  const guidance = settingNumber(resolved.guidanceScale ?? controls.guidanceScale);
+  const styleTitle = knobs.length
+    ? knobs.map((knob) => `${knob.name} ${knob.value ?? "auto"}`).join(" · ") + (knobsSet && guidance != null ? ` · strength ${guidance}` : "")
+    : "This model has no style controls";
+
   const demucsName = version.meta?.demucsName || version.provenance?.sourceSeparation?.name || "";
-  const demucsVariant = leadIn?.text || "0s";
-  if (demucsName) tags.push({ text: compactSeparationName(demucsName, demucsVariant), title: `Demucs: ${demucsName}`, secondary: true });
-  return tags;
+
+  return [
+    {
+      key: "model", label: "Model", value: model, title: generatorId || model, full: true,
+      tone: badgedGeneratorIds.has(generatorId) ? "amber" : null,
+    },
+    { key: "seed", label: "Seed", value: seed != null ? String(seed) : "random" },
+    { key: "lead", label: "Lead-in", value: leadIn, title: `Lead-in silence: ${leadIn}` },
+    {
+      key: "sampling", label: "Sampling", value: tempOff || topPOff ? "Custom" : presetName, title: samplingTitle,
+      mod: tempOff || topPOff, compare: `${presetName}|${temperature}|${topP}`,
+    },
+    { key: "timing", label: "Timing", ...timing },
+    {
+      key: "style", label: "Style", value: knobs.length ? (knobsSet ? "" : "auto") : "none", title: styleTitle,
+      knobs: knobsSet ? knobs : null, compare: styleTitle,
+    },
+    {
+      key: "audio", label: "Audio", value: demucsName ? compactSeparationName(demucsName) : "Default",
+      title: `Separation: ${demucsName || "Default separation"}`,
+    },
+  ];
+}
+
+function RecipeValue({ row }) {
+  if (!row.knobs) return row.value;
+  return (
+    <span className="recipe-knobs" aria-label={row.title}>
+      {row.knobs.map((knob) => (
+        <span
+          key={knob.id}
+          className={"recipe-knob" + (knob.value == null ? " is-auto" : "")}
+          style={{ "--knob": knob.color, "--level": knob.value == null ? 1 : (Number(knob.value) + 1) / (DESCRIPTOR_KNOB_MAX + 1) }}
+        />
+      ))}
+    </span>
+  );
 }
 
 function versionDemucsId(version) {
@@ -491,15 +505,20 @@ export default function TakesDeck({ project }) {
   const fallbackDuration = importedSong?.meta?.durationSec || 0;
   const showingDemucs = deckTab === "demucs";
   const takesNewestFirst = [...candidateVersions].reverse();
-  const tagsById = new Map(takesNewestFirst.map((v) => [v.id, takeTags(v, project.diff, badgedGeneratorIds)]));
-  // With two or more generated takes, a card only lists the settings that set
-  // it apart. Difficulty and model always stay; the full recipe is the tooltip.
-  const generatedTakes = takesNewestFirst.filter((v) => v.source === "generated" && v.settings?.generation);
-  const sharedTagTexts = new Set(
-    generatedTakes.length >= 2
-      ? (tagsById.get(generatedTakes[0].id) || [])
-        .map((tag) => tag.text)
-        .filter((text) => generatedTakes.every((v) => tagsById.get(v.id).some((tag) => tag.text === text)))
+  const recipesById = new Map(
+    takesNewestFirst.map((v) => [v.id, takeRecipe(v, project.generators || [], badgedGeneratorIds)])
+  );
+  // Every card shows its whole recipe; with two or more generated takes, the
+  // values that differ between them are the bright ones.
+  const recipes = [...recipesById.values()].filter(Boolean);
+  const differingKeys = new Set(
+    recipes.length >= 2
+      ? recipes[0]
+        .filter((row) => recipes.some((rows) => {
+          const other = rows.find((item) => item.key === row.key);
+          return (other?.compare ?? other?.value) !== (row.compare ?? row.value);
+        }))
+        .map((row) => row.key)
       : []
   );
 
@@ -659,10 +678,11 @@ export default function TakesDeck({ project }) {
               const inCompare = compareSelection.includes(v.id);
               const isSelected = !showingLiveStage && previewMode === "single" && selectedSingleVersion?.id === v.id;
               const sparkNotes = v.track?.notes || [];
-              const sparkDuration = v.meta?.durationSec || fallbackDuration;
-              const tags = (tagsById.get(v.id) || []).filter(
-                (tag, index) => index === 0 || tag.keep || !sharedTagTexts.has(tag.text)
-              );
+              // Older takes saved a zero duration; their last note stands in.
+              const sparkDuration = v.meta?.durationSec || fallbackDuration
+                || (sparkNotes.length ? sparkNotes[sparkNotes.length - 1].endTime || sparkNotes[sparkNotes.length - 1].time : 0);
+              const recipe = recipesById.get(v.id);
+              const difficulty = getVersionDifficulty(v, project.diff);
               const reusable = v.source === "generated" && Boolean(v.settings?.generation);
               const finalTone = assignedSlotTone(cleanedFinalSlots, v.id);
               return (
@@ -729,28 +749,35 @@ export default function TakesDeck({ project }) {
                       <DensityStrip lanes={[{ notes: sparkNotes, solos: v.track?.solos }]} duration={sparkDuration} />
                     </div>
                   )}
-                  <div
-                    className="take-tags"
-                    title={v.source === "generated" ? generationSummary(v.settings) : undefined}
-                  >
+                  <div className="take-meta-line">
+                    <span className={`take-tag tone-${slotTone(difficulty)}`}>{DIFF[difficulty]?.name || difficulty}</span>
                     <span className="take-notes">{v.noteCount || "--"} notes</span>
                     {v.meta?.edited && <span className="take-tag mod" title="Edited draft">edited</span>}
-                    {tags.map((tag) => (
-                      <span
-                        key={tag.text}
-                        className={
-                          "take-tag" +
-                          (tag.mod ? " mod" : "") +
-                          (tag.tone ? ` tone-${tag.tone}` : "") +
-                          (tag.primary ? " primary" : "") +
-                          (tag.secondary ? " secondary" : "")
-                        }
-                        title={tag.title}
-                      >
-                        {tag.text}
-                      </span>
-                    ))}
                   </div>
+                  {recipe ? (
+                    <dl className="take-recipe">
+                      {recipe.map((row) => (
+                        <div
+                          key={row.key}
+                          className={
+                            `recipe-row recipe-${row.key}` +
+                            (row.full ? " full" : "") +
+                            (differingKeys.has(row.key) ? " is-diff" : "") +
+                            (row.mod ? " mod" : "") +
+                            (row.tone ? ` tone-${row.tone}` : "")
+                          }
+                          title={row.title}
+                        >
+                          <dt>{row.label}</dt>
+                          <dd><RecipeValue row={row} /></dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p className="take-recipe-none">
+                      {v.source === "imported-chart" ? "From the imported chart" : "Made outside Autochart"}
+                    </p>
+                  )}
                   <div className="take-actions-row" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
