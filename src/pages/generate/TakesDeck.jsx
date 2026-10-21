@@ -12,8 +12,8 @@ import {
   ALL_DESCRIPTOR_KNOBS,
   DEFAULT_GENERATOR_ID,
   DEFAULT_TIMING_DETECTOR_ID,
-  DESCRIPTOR_KNOB_MAX,
   GENERATION_DIFFICULTIES,
+  GENERATION_PRESETS,
   getGenerationPreset,
   timingDetectorLabel,
   timingDetectorOptionFromResolved,
@@ -125,26 +125,55 @@ function modelName(version, generators = []) {
   return generatorId.split(".").pop()?.toUpperCase() || "";
 }
 
+// Sampling presets wear a temperature colour: safe is green, the default is
+// neutral, wild is peach. Values off any preset are purple, like every
+// other hand-set value.
+const PRESET_TONES = { tight: "green", wild: "peach" };
+
+function formatSetting(value) {
+  return String(Number(value.toFixed(2)));
+}
+
+// The model a take came from, as the chip beside its difficulty.
+function takeModel(version, generators, badgedGeneratorIds) {
+  const generation = version.settings?.generation;
+  if (version.source !== "generated" || !generation) return null;
+  const generatorId = version.meta?.generatorId || generation.generatorId || "";
+  const name = modelName(version, generators);
+  return name ? { text: name, title: generatorId || name, tone: badgedGeneratorIds.has(generatorId) ? "amber" : null } : null;
+}
+
 // A generated take's full recipe as labelled rows. `compare` is what the deck
-// checks across takes to highlight the values that set a take apart.
-function takeRecipe(version, generators, badgedGeneratorIds) {
+// checks across takes to highlight the values that set a take apart; `chips`
+// replace the plain value where colour carries meaning.
+function takeRecipe(version) {
   const generation = version.settings?.generation;
   if (version.source !== "generated" || !generation) return null;
   const controls = generation.controls || {};
   const resolved = generation.resolved || {};
-  const generatorId = version.meta?.generatorId || generation.generatorId || "";
-  const model = modelName(version, generators);
 
   const seed = resolved.seed ?? (controls.seedMode === "fixed" ? controls.seed : null);
   const leadIn = leadInTag(version)?.text || "0s";
 
-  const preset = getGenerationPreset(generation.presetId || controls.presetId);
-  const presetName = generation.presetName || preset.name;
-  const temperature = settingNumber(resolved.temperature ?? controls.temperature);
-  const topP = settingNumber(resolved.topP ?? controls.topP);
-  const tempOff = temperature != null && Math.abs(temperature - preset.temperature) > 0.000001;
-  const topPOff = topP != null && Math.abs(topP - preset.topP) > 0.000001;
-  const samplingTitle = `Temperature ${temperature ?? preset.temperature} · Top-p ${topP ?? preset.topP}`;
+  const savedPreset = getGenerationPreset(generation.presetId || controls.presetId);
+  const temperature = settingNumber(resolved.temperature ?? controls.temperature) ?? savedPreset.temperature;
+  const topP = settingNumber(resolved.topP ?? controls.topP) ?? savedPreset.topP;
+  // Hand-typed values that land exactly on a preset read as that preset.
+  const matches = (item) => Math.abs(temperature - item.temperature) < 0.000001 && Math.abs(topP - item.topP) < 0.000001;
+  const preset = matches(savedPreset) ? savedPreset : GENERATION_PRESETS.find(matches);
+  const presetName = preset?.name || generation.presetName || savedPreset.name;
+  const sampling = !preset
+    ? {
+      value: `T ${formatSetting(temperature)} · P ${formatSetting(topP)}`,
+      chips: [{ text: "Custom", tone: "purple" }],
+      title: `Temperature ${temperature} · Top-p ${topP}`,
+      mod: true,
+    }
+    : {
+      value: "",
+      chips: [{ text: presetName, tone: PRESET_TONES[preset.id] || "neutral" }],
+      title: `${presetName}: temperature ${temperature} · top-p ${topP}`,
+    };
 
   const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
   let timing;
@@ -152,7 +181,7 @@ function takeRecipe(version, generators, badgedGeneratorIds) {
     timing = { value: timingDetectorLabel(timingDetector, { short: true }), title: timingDetectorLabel(timingDetector) };
   } else if (timingSmoothingEnabledFromGeneration(generation)) {
     timing = usesOlderTimingSmoother(generation)
-      ? { value: "old smooth", title: "Beat map from the previous smoother" }
+      ? { value: "old smooth", title: "Beat map from the previous smoother", tone: "amber" }
       : { value: "smooth", title: "Smoothed beat map" };
   } else {
     timing = { value: "raw", title: "Beat map without smoothing", mod: true };
@@ -161,51 +190,54 @@ function takeRecipe(version, generators, badgedGeneratorIds) {
   const knobValues = controls.knobs ?? resolved.knobs ?? {};
   const knobs = Object.keys(knobValues).map((id, index) => {
     const knob = ALL_DESCRIPTOR_KNOBS.find((item) => item.id === id);
-    return { id, name: knob?.name || id, value: knobValues[id], color: KNOB_COLORS[index % KNOB_COLORS.length] };
+    return {
+      name: knob?.name || id,
+      compact: knob?.compact || id.slice(0, 2),
+      value: knobValues[id],
+      color: KNOB_COLORS[index % KNOB_COLORS.length],
+    };
   });
-  const knobsSet = knobs.some((knob) => knob.value != null);
+  const setKnobs = knobs.filter((knob) => knob.value != null);
   const guidance = settingNumber(resolved.guidanceScale ?? controls.guidanceScale);
   const styleTitle = knobs.length
-    ? knobs.map((knob) => `${knob.name} ${knob.value ?? "auto"}`).join(" · ") + (knobsSet && guidance != null ? ` · strength ${guidance}` : "")
+    ? knobs.map((knob) => `${knob.name} ${knob.value ?? "auto"}`).join(" · ") + (setKnobs.length && guidance != null ? ` · strength ${guidance}` : "")
     : "This model has no style controls";
 
   const demucsName = version.meta?.demucsName || version.provenance?.sourceSeparation?.name || "";
 
   return [
-    {
-      key: "model", label: "Model", value: model, title: generatorId || model, full: true,
-      tone: badgedGeneratorIds.has(generatorId) ? "amber" : null,
-    },
     { key: "seed", label: "Seed", value: seed != null ? String(seed) : "random" },
-    { key: "lead", label: "Lead-in", value: leadIn, title: `Lead-in silence: ${leadIn}` },
-    {
-      key: "sampling", label: "Sampling", value: tempOff || topPOff ? "Custom" : presetName, title: samplingTitle,
-      mod: tempOff || topPOff, compare: `${presetName}|${temperature}|${topP}`,
-    },
+    { key: "lead", label: "Lead-in", value: leadIn, title: `Lead-in silence: ${leadIn}`, faint: leadIn === "0s" },
     { key: "timing", label: "Timing", ...timing },
-    {
-      key: "style", label: "Style", value: knobs.length ? (knobsSet ? "" : "auto") : "none", title: styleTitle,
-      knobs: knobsSet ? knobs : null, compare: styleTitle,
-    },
     {
       key: "audio", label: "Audio", value: demucsName ? compactSeparationName(demucsName) : "Default",
       title: `Separation: ${demucsName || "Default separation"}`,
+    },
+    { key: "sampling", label: "Sampling", full: true, compare: `${presetName}|${temperature}|${topP}`, ...sampling },
+    {
+      key: "style", label: "Style", full: true, title: styleTitle, compare: styleTitle,
+      value: setKnobs.length ? "" : knobs.length ? "auto" : "none",
+      faint: !setKnobs.length,
+      chips: setKnobs.map((knob) => ({ text: `${knob.compact} ${knob.value}`, color: knob.color })),
     },
   ];
 }
 
 function RecipeValue({ row }) {
-  if (!row.knobs) return row.value;
+  if (!row.chips?.length) return row.value;
   return (
-    <span className="recipe-knobs" aria-label={row.title}>
-      {row.knobs.map((knob) => (
+    <>
+      {row.chips.map((chip) => (
         <span
-          key={knob.id}
-          className={"recipe-knob" + (knob.value == null ? " is-auto" : "")}
-          style={{ "--knob": knob.color, "--level": knob.value == null ? 1 : (Number(knob.value) + 1) / (DESCRIPTOR_KNOB_MAX + 1) }}
-        />
+          key={chip.text}
+          className={"recipe-chip" + (chip.tone ? ` tone-${chip.tone}` : "")}
+          style={chip.color ? { "--chip": chip.color } : undefined}
+        >
+          {chip.text}
+        </span>
       ))}
-    </span>
+      {row.value && <span className="recipe-chip-note">{row.value}</span>}
+    </>
   );
 }
 
@@ -506,7 +538,7 @@ export default function TakesDeck({ project }) {
   const showingDemucs = deckTab === "demucs";
   const takesNewestFirst = [...candidateVersions].reverse();
   const recipesById = new Map(
-    takesNewestFirst.map((v) => [v.id, takeRecipe(v, project.generators || [], badgedGeneratorIds)])
+    takesNewestFirst.map((v) => [v.id, takeRecipe(v)])
   );
   // Every card shows its whole recipe; with two or more generated takes, the
   // values that differ between them are the bright ones.
@@ -682,6 +714,7 @@ export default function TakesDeck({ project }) {
               const sparkDuration = v.meta?.durationSec || fallbackDuration
                 || (sparkNotes.length ? sparkNotes[sparkNotes.length - 1].endTime || sparkNotes[sparkNotes.length - 1].time : 0);
               const recipe = recipesById.get(v.id);
+              const model = takeModel(v, project.generators || [], badgedGeneratorIds);
               const difficulty = getVersionDifficulty(v, project.diff);
               const reusable = v.source === "generated" && Boolean(v.settings?.generation);
               const finalTone = assignedSlotTone(cleanedFinalSlots, v.id);
@@ -751,8 +784,12 @@ export default function TakesDeck({ project }) {
                   )}
                   <div className="take-meta-line">
                     <span className={`take-tag tone-${slotTone(difficulty)}`}>{DIFF[difficulty]?.name || difficulty}</span>
+                    {model && (
+                      <span className={"take-model" + (model.tone ? ` tone-${model.tone}` : "")} title={model.title}>
+                        {model.text}
+                      </span>
+                    )}
                     <span className="take-notes">{v.noteCount || "--"} notes</span>
-                    {v.meta?.edited && <span className="take-tag mod" title="Edited draft">edited</span>}
                   </div>
                   {recipe ? (
                     <dl className="take-recipe">
@@ -764,6 +801,8 @@ export default function TakesDeck({ project }) {
                             (row.full ? " full" : "") +
                             (differingKeys.has(row.key) ? " is-diff" : "") +
                             (row.mod ? " mod" : "") +
+                            (row.faint ? " faint" : "") +
+                            (row.chips?.length ? " has-chips" : "") +
                             (row.tone ? ` tone-${row.tone}` : "")
                           }
                           title={row.title}

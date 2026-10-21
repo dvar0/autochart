@@ -6207,20 +6207,53 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .recipe-row.mod dd { color: var(--purple); }
 .recipe-row.tone-amber dd { color: var(--amber-fg); }
 .take-card.is-final .recipe-row.mod dd { color: var(--text); }
-.recipe-knobs {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 12px;
-  vertical-align: -1px;
+.recipe-row.faint dd { color: var(--text-faint); font-weight: 500; }
+.recipe-row.has-chips dd { display: flex; align-items: center; gap: 4px; }
+.recipe-chip {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  line-height: 16px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  background: var(--surface-2);
+  color: var(--text);
 }
-.recipe-knob {
-  width: 6px;
-  height: 12px;
-  border-radius: 2px;
-  background: linear-gradient(to top, var(--knob) calc(var(--level) * 100%), color-mix(in srgb, var(--knob) 18%, transparent) 0);
+/* style knobs wear their fader's fret colour */
+.recipe-chip[style] {
+  background: color-mix(in srgb, var(--chip) 22%, transparent);
+  color: color-mix(in srgb, var(--chip) 70%, var(--text));
 }
-.recipe-knob.is-auto { background: color-mix(in srgb, var(--knob) 30%, transparent); }
+.recipe-chip.tone-green  { background: var(--green-bg);  color: var(--green-fg); }
+.recipe-chip.tone-peach  { background: var(--peach-bg);  color: var(--peach-fg); }
+.recipe-chip.tone-purple { background: var(--purple-bg); color: var(--purple); }
+.recipe-chip-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+.take-card.is-final .recipe-chip { background: color-mix(in srgb, var(--slot) 26%, transparent); color: var(--text); }
+.take-model {
+  min-width: 0;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.take-model.tone-amber {
+  border-color: color-mix(in srgb, var(--amber-fg) 45%, transparent);
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+}
+.take-meta-line .take-tag { flex: none; }
+.take-meta-line .take-notes { flex: none; margin-left: auto; }
 .take-recipe-none {
   margin: 0;
   font-size: var(--fs-xs);
