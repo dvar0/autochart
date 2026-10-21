@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import HighwayPreview from "../../highway/HighwayPreview.jsx";
+import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import LiveNoteStrip from "./LiveNoteStrip.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
 import { describeRunStage, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
@@ -123,6 +124,15 @@ export function GenerationPreviewStage({ project }) {
     highwayRef.current?.pause?.();
     setLivePlaying(false);
   };
+  // Space: on the live board it does what its Play button does; otherwise it
+  // plays or pauses the highway.
+  useSpaceToPlay(!project.previewAudioError && (!isLive || phase === "notes"), () => {
+    const h = highwayRef.current;
+    if (isLive && !livePlaying) enterInteractive();
+    else if (h?.isPlaying?.()) h.pause?.();
+    else h?.play?.();
+  });
+
   // Dismissing the live board is a deliberate stop.
   const dismissToChart = () => {
     highwayRef.current?.pause?.();

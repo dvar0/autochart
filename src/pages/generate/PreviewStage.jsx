@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import HighwayPreview from "../../highway/HighwayPreview.jsx";
+import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import JoinedHighwayCompare from "../../highway/JoinedHighwayCompare.jsx";
 import DensityStrip from "../../highway/DensityStrip.jsx";
 import { activeLyricPhrase, resolveLyricPhrases } from "../../highway/noteFlags.js";
@@ -835,6 +836,17 @@ export default function PreviewStage({ project }) {
     !showingLiveStage &&
     Boolean(track) &&
     previewMode === "single";
+
+  // Space plays or pauses the compared charts together, as the Play button
+  // does. (The single preview handles Space itself.)
+  const showingCompare =
+    busyAction !== "separating" &&
+    !showingDemucsStage &&
+    !showingLiveStage &&
+    Boolean(track) &&
+    previewMode === "compare" &&
+    !previewAudioError;
+  useSpaceToPlay(showingCompare, handleComparePlay);
 
   // The generate flow reads this to avoid yanking the stage away from an
   // active listen. Whenever the single preview isn't on stage its engine is
