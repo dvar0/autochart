@@ -194,7 +194,7 @@ async function runDecoderStep(sess, tokenId, stepId, beatIdx, ctx, prefixBias, p
   const logitsArr = await out.logits.getData(true);
   const presentK = out.present_self_k;
   const presentV = out.present_self_v;
-  // The model's vocab: 150 for v1/v1.2, 167 with solo/section markers.
+  // The model's vocab: 150 for v1, 167 with solo/section markers.
   const logits = Float32Array.from(logitsArr.subarray(0, logitsArr.length));
   return { logits, presentK, presentV };
 }
@@ -590,7 +590,7 @@ function makeRng(seed) {
 }
 
 // beat_mel is [1, n_beats, channels, 80, 32]; the channel count is the
-// model's (5 for v1, 6 for v1.2) and follows from the buffer size.
+// model's (5 for v1, 6 for the six-stem models) and follows from the buffer size.
 function beatMelDims(beatMel, nBeats) {
   const perChannel = nBeats * 80 * 32;
   const channels = perChannel > 0 ? beatMel.length / perChannel : 0;

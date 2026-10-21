@@ -9,8 +9,8 @@
 //
 // Fretformer exposes five optional style controls — speed, chords, technique,
 // movement, and repetition — plus guidance for controls set away from auto.
-// Fretformer v1.2 was trained on a second knob set (speed, chords, HOPOs, taps,
-// movement); each generator lists its knobs in capabilities.descriptorKnobs.
+// The six-stem models were trained on a second knob set (speed, chords, HOPOs,
+// taps, movement); each generator lists its knobs in capabilities.descriptorKnobs.
 
 import { GENERATOR_LABELS } from "./humanLabels.js";
 
@@ -27,7 +27,7 @@ export const DESCRIPTOR_KNOBS = [
   { id: "repetition", key: "knobRepetition", name: "Repetition", short: "Repeat", hint: "riff reuse", compact: "Rp", ends: ["varied", "repeats"] },
 ];
 
-// Knobs only Fretformer v1.2 has: v1's Technique split into HOPOs and taps.
+// Knobs the six-stem models have: v1's Technique split into HOPOs and taps.
 const V2_ONLY_DESCRIPTOR_KNOBS = [
   { id: "hopos", key: "knobHopos", name: "HOPOs", hint: "hammer-on share", compact: "Ho", ends: ["strums", "hopos"] },
   { id: "taps", key: "knobTaps", name: "Taps", hint: "tap share", compact: "Ta", ends: ["none", "taps"] },

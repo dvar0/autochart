@@ -1,15 +1,14 @@
 // Run with: npx electron scripts/test-generator-picker-electron.cjs [--screenshots <dir>]
 // Real React UI and preload IPC with the shipped engine/manifest.json:
-// - an installed-only generator (Fretformer v1.2) stays hidden until its setup
-//   is ready, and v1 keeps the plain model plate;
+// - installed-only generators stay hidden until their setup is ready, and
+//   Fretformer keeps the plain model plate;
 // - once installed, the plate is a model picker with a NEW badge;
-// - picking v1.2 swaps the Style knobs to its set and the generate payload
-//   carries its generator id and knob names;
+// - picking the six-stem model swaps the Style faders to its set and the
+//   generate payload carries its generator id and knob names;
 // - separation cards list each model's stems only where that separation has
-//   them (three lead-in separations, only one separated for v1.2);
-// - Fretformer v2 (installed-only too) shows the Solos switch, with "Force a
-//   solo" (and its info tooltip) under it only while Solos is on; the payload
-//   carries both.
+//   them (three lead-in separations, only one separated for the six-stem set);
+// - a model that marks solos shows Mark solos and Force a solo in More
+//   settings, and the payload carries both.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -22,11 +21,28 @@ const chartWriter = require("../shared/chartWriter.cjs");
 const engineManifest = require("../engine/manifest.json");
 const ROOT = path.resolve(__dirname, "..");
 const V1_ID = "autochart.fretformer.v1-onnx";
-const V12_ID = "autochart.fretformer.v1-2-onnx";
-const V2_ID = "autochart.fretformer.v2-onnx";
-// Every installed-only generator in the manifest (v1.2, v2 and any later test
-// models) is hidden until its folder exists, and shows up in the picker after.
+const REMOVED_IDS = [
+  "autochart.fretformer.v1-2-onnx",
+  "autochart.fretformer.v2-onnx",
+  "autochart.fretformer.v2-dpo3-onnx",
+];
+const KEPT_IDS = [
+  "autochart.fretformer.v2-dpo-onnx",
+  "autochart.fretformer.v2-dpo-fim-onnx",
+];
+// The first six-stem generator is the one separation cards name, and the one
+// this test selects. It also marks solos.
+const SIX_STEM = engineManifest.generators.find((generator) => generator.separation?.stemSet === "htdemucs_6s");
+if (!SIX_STEM?.capabilities?.structureMarkers?.includes("solos")) {
+  throw new Error("expected the first six-stem generator to mark solos");
+}
+// Every installed-only generator in the manifest is hidden until its folder
+// exists, and shows up in the picker after.
 const INSTALLED_ONLY = new Set(engineManifest.generators.filter((g) => g.availability === "installed").map((g) => g.id));
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 async function main() {
   const screenshotIndex = process.argv.indexOf("--screenshots");
@@ -34,9 +50,15 @@ async function main() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "autochart-picker-"));
   const context = { userDataPath: temp, projectsFolder: path.join(temp, "projects") };
   const payloads = [];
-  let v12Ready = false;
+  let installedReady = false;
   let win;
   try {
+    for (const id of REMOVED_IDS) {
+      assert.equal(engineManifest.generators.some((generator) => generator.id === id), false, `${id} is still a generator`);
+    }
+    for (const id of KEPT_IDS) {
+      assert.equal(engineManifest.generators.some((generator) => generator.id === id), true, `${id} should stay`);
+    }
     const chartText = chartWriter.writeChartText([[0, 0, 0], [192, 1, 0]], {
       title: "Picker fixture", difficulty: "expert", resolution: 192, syncLines: ["0 = B 120000"],
     }).text;
@@ -96,7 +118,7 @@ async function main() {
       setup: { ready: true },
       generators: engineManifest.generators.map((generator) => ({
         ...generator,
-        setup: INSTALLED_ONLY.has(generator.id) && !v12Ready
+        setup: INSTALLED_ONLY.has(generator.id) && !installedReady
           ? { ready: false, status: "missing", message: `${generator.models.onnxFolder} is not installed.` }
           : { ready: true, status: "ready" },
       })),
@@ -140,7 +162,13 @@ async function main() {
       await waitFor(() => evaluate(`Boolean(${selector})`), `button ${text}`);
       await evaluate(`(() => { ${selector}.click(); return true; })()`);
     };
-    const knobNames = () => evaluate('[...document.querySelectorAll(".knob-name")].map(n => n.textContent.trim())');
+    const faderNames = () => evaluate('[...document.querySelectorAll(".style-fader-name")].map(n => n.textContent.trim())');
+    const openMoreSettings = async () => {
+      if (await evaluate('Boolean(document.querySelector(".more-settings"))')) return;
+      await evaluate('document.querySelector(".more-settings-row").click()');
+      await waitFor(() => evaluate('Boolean(document.querySelector(".more-settings"))'), "more settings");
+    };
+    const settingButton = (label) => `[...document.querySelectorAll(".ms-row")].find((row) => row.querySelector("b")?.textContent.trim().startsWith(${JSON.stringify(label)}))?.querySelector("button")`;
     const screenshotDeck = async (name) => {
       if (!screenshotDir) return;
       await fs.mkdir(screenshotDir, { recursive: true });
@@ -149,52 +177,54 @@ async function main() {
       const image = await win.webContents.capturePage(rect);
       await fs.writeFile(path.join(screenshotDir, `${name}.png`), image.toPNG());
     };
-    const screenshot = async (name) => {
+    const screenshot = async (name, selector = ".console-rail") => {
       if (!screenshotDir) return;
       await fs.mkdir(screenshotDir, { recursive: true });
       await new Promise((resolve) => setTimeout(resolve, 250));
-      const rect = await evaluate('(() => { const r = document.querySelector(".console-rail").getBoundingClientRect(); return { x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height) }; })()');
+      const rect = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height) }; })()`);
       const image = await win.webContents.capturePage(rect);
       await fs.writeFile(path.join(screenshotDir, `${name}.png`), image.toPNG());
     };
 
-    // Not installed: v1 only, plain plate, v1 knobs.
+    // Not installed: v1 only, plain plate, v1 faders, solos disabled.
     await click("OPEN PROJECT");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-name"))'), "model plate");
-    assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-picker"))'), false, "no picker while v1.2 is missing");
+    assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-picker"))'), false, "no picker while test models are missing");
     assert.equal(await evaluate('document.querySelector(".model-plate-name").textContent.trim()'), "Fretformer");
-    await evaluate('document.querySelector(".advanced-toggle-row").click()');
-    await waitFor(async () => (await knobNames()).length > 0, "style knobs");
-    assert.deepEqual(await knobNames(), ["Speed", "Chords", "Technique", "Movement", "Repetition"]);
+    await waitFor(async () => (await faderNames()).length > 0, "style faders");
+    assert.deepEqual(await faderNames(), ["Speed", "Chords", "Tech", "Move", "Repeat"]);
+    await openMoreSettings();
+    const v1Solos = settingButton("Mark solos");
+    await waitFor(() => evaluate(`Boolean(${v1Solos})`), "Mark solos row");
+    assert.equal(await evaluate(`${v1Solos}.disabled`), true, "v1 cannot mark solos");
+    assert.equal(await evaluate('document.body.innerText.includes("this model doesn\'t mark solos")'), true, "v1 explains that it has no solos");
     await screenshot("1-v1-only");
 
     // Installed: reload the manifest (navigate away and back).
-    v12Ready = true;
+    installedReady = true;
     await click("Library");
     await click("OPEN PROJECT");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
     const options = await evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
     assert.deepEqual(options, engineManifest.generators.map((g) => [g.id, g.label]));
-    assert.deepEqual(options.slice(0, 3), [[V1_ID, "Fretformer"], [V12_ID, "Fretformer v1.2"], [V2_ID, "Fretformer v2"]]);
     assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), V1_ID, "v1 stays the default");
     assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge"))'), false, "no badge on v1");
-    if (!(await evaluate('Boolean(document.querySelector(".knob-name"))'))) await evaluate('document.querySelector(".advanced-toggle-row").click()');
-    await waitFor(async () => (await knobNames()).length > 0, "style knobs");
+    await waitFor(async () => (await faderNames()).length > 0, "style faders");
     await screenshot("2-v1-selected");
 
     await evaluate(`(() => {
       const select = document.querySelector(".model-plate-picker select");
       const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
-      setter.call(select, ${JSON.stringify(V12_ID)});
+      setter.call(select, ${JSON.stringify(SIX_STEM.id)});
       select.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     })()`);
     await waitFor(() => evaluate('document.querySelector(".model-plate-badge")?.textContent.trim() === "New"'), "NEW badge");
-    assert.deepEqual(await knobNames(), ["Speed", "Chords", "HOPOs", "Taps", "Movement"]);
-    assert.equal(await evaluate('document.body.innerText.includes("Its takes are tagged Fretformer v1.2")'), true, "test-model note");
-    await screenshot("3-v12-selected");
+    assert.deepEqual(await faderNames(), ["Speed", "Chords", "HOPOs", "Taps", "Move"]);
+    assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(`Its takes are tagged ${SIX_STEM.label}`)})`), true, "test-model note");
+    await screenshot("3-six-stem-selected");
 
-    // Separation cards: only the +0.5s separation has v1.2 stems.
+    // Separation cards: only the +0.5s separation has six-stem stems.
     const cards = () => evaluate(`[...document.querySelectorAll(".demucs-card")].map((card) => ({
       name: card.querySelector(".take-name").textContent.trim(),
       labels: [...card.querySelectorAll(".demucs-set-label")].map((n) => n.textContent.trim()),
@@ -203,65 +233,55 @@ async function main() {
     }))`);
     await evaluate('[...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("SEPARATION")).click()');
     await waitFor(async () => (await cards()).length === 3, "three separation cards");
-    const v12Cards = Object.fromEntries((await cards()).map((card) => [card.name, card]));
-    assert.deepEqual(v12Cards["Default · +0.5s"].labels, ["Fretformer · 4 stems", "Fretformer v1.2 · 5 stems"]);
-    assert.deepEqual(v12Cards["Default · +0.5s"].buttons, ["Other", "Drums", "Bass", "Vocals", "Guitar", "Other", "Drums", "Bass", "Vocals"]);
+    const sixStemCards = Object.fromEntries((await cards()).map((card) => [card.name, card]));
+    assert.deepEqual(sixStemCards["Default · +0.5s"].labels, ["Fretformer · 4 stems", `${SIX_STEM.label} · 5 stems`]);
+    assert.deepEqual(sixStemCards["Default · +0.5s"].buttons, ["Other", "Drums", "Bass", "Vocals", "Guitar", "Other", "Drums", "Bass", "Vocals"]);
     for (const name of ["Default", "Default · +1s"]) {
-      assert.equal(v12Cards[name].missing, 1, `${name} says it has no v1.2 stems yet`);
-      assert.deepEqual(v12Cards[name].buttons, ["Other", "Drums", "Bass", "Vocals"], `${name} plays only its v1 stems`);
+      assert.equal(sixStemCards[name].missing, 1, `${name} says it has no six-stem stems yet`);
+      assert.deepEqual(sixStemCards[name].buttons, ["Other", "Drums", "Bass", "Vocals"], `${name} plays only its v1 stems`);
     }
-    await screenshotDeck("4-separations-v12");
+    await screenshotDeck("4-separations-six-stem");
+
+    await openMoreSettings();
+    const solosButton = settingButton("Mark solos");
+    const forceButton = settingButton("Force a solo");
+    await waitFor(() => evaluate(`Boolean(${solosButton})`), "Mark solos switch");
+    assert.equal(await evaluate(`${solosButton}.disabled`), false, "the six-stem model can mark solos");
+    assert.equal(await evaluate(`${solosButton}.textContent.trim()`), "On", "Mark solos defaults to on");
+    assert.equal(await evaluate(`${forceButton}.textContent.trim()`), "Off", "Force a solo defaults to off");
+    assert.equal(await evaluate(`${forceButton}.disabled`), false, "Force a solo is available while Mark solos is on");
+    const tooltip = await evaluate('document.querySelector(".ms-info")?.getAttribute("title") || ""');
+    assert.match(tooltip, /takes longer/, "Force a solo has its info tooltip");
 
     await click("GENERATE CHART");
     await waitFor(() => payloads.length === 1, "generate payload");
     const payload = payloads[0];
-    assert.equal(payload.generatorId, V12_ID);
-    assert.deepEqual(Object.keys(payload.generation.controls.knobs), ["speed", "chords", "hopos", "taps", "movement"]);
-    assert.match(payload.versionName, /^Fretformer v1\.2 /);
-    assert.equal("solos" in payload.generation.controls, false, "v1.2 sends no solos flag");
-    assert.equal(await evaluate('document.body.innerText.includes("SOLOS")'), false, "no Solos switch for v1.2");
+    assert.equal(payload.generatorId, SIX_STEM.id);
+    assert.deepEqual(Object.keys(payload.generation.controls.knobs), SIX_STEM.capabilities.descriptorKnobs);
+    assert.match(payload.versionName, new RegExp(`^${escapeRegExp(SIX_STEM.label)} `));
+    assert.equal(payload.generation.controls.solos, true, "solos default on");
+    assert.equal(payload.generation.resolved.forceSolo, false, "Force a solo defaults off in the payload");
 
-    // v2: same knobs as v1.2 plus the Solos switch, on by default.
-    await evaluate(`(() => {
-      const select = document.querySelector(".model-plate-picker select");
-      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
-      setter.call(select, ${JSON.stringify(V2_ID)});
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-      return true;
-    })()`);
-    await waitFor(async () => (await evaluate('document.querySelector(".model-plate-picker select").value')) === V2_ID, "v2 selected");
-    if (!(await evaluate('Boolean(document.querySelector(".knob-name"))'))) await evaluate('document.querySelector(".advanced-toggle-row").click()');
-    await waitFor(async () => (await knobNames()).length > 0, "v2 style knobs");
-    assert.deepEqual(await knobNames(), ["Speed", "Chords", "HOPOs", "Taps", "Movement"]);
-    const settingButton = (label) => `[...document.querySelectorAll(".engine-setting")].find((row) => row.textContent.startsWith(${JSON.stringify(label)}))?.querySelector("button")`;
-    const solosButton = settingButton("SOLOS");
-    const forceButton = settingButton("FORCE A SOLO");
-    await waitFor(() => evaluate(`Boolean(${solosButton})`), "Solos switch");
-    assert.equal(await evaluate(`${solosButton}.textContent.trim()`), "On", "Solos defaults to on");
-    assert.equal(await evaluate(`${forceButton}.textContent.trim()`), "Off", "Force a solo defaults to off");
-    const tooltip = await evaluate('document.querySelector(".engine-info")?.getAttribute("title") || ""');
-    assert.match(tooltip, /takes longer/, "Force a solo has its info tooltip");
     await evaluate(`(() => { ${forceButton}.click(); return true; })()`);
     await waitFor(async () => (await evaluate(`${forceButton}.textContent.trim()`)) === "On", "Force a solo on");
-    await evaluate('document.querySelector(".console-rail")?.scrollTo?.(0, 1e6)');
-    await screenshot("6-v2-force-solo");
+    await screenshot("6-force-solo", ".more-settings");
     await click("GENERATE CHART");
-    await waitFor(() => payloads.length === 2, "v2 generate payload");
-    assert.equal(payloads[1].generatorId, V2_ID);
-    assert.equal(payloads[1].generation.controls.forceSolo, true, "v2 payload carries forceSolo=true");
+    await waitFor(() => payloads.length === 2, "force-solo generate payload");
+    assert.equal(payloads[1].generatorId, SIX_STEM.id);
+    assert.equal(payloads[1].generation.controls.forceSolo, true, "payload carries forceSolo=true");
     assert.equal(payloads[1].generation.resolved.forceSolo, true);
-    assert.match(payloads[1].versionName, /^Fretformer v2 /);
 
-    // Solos off hides Force a solo and turns it off in the payload.
+    // Mark solos off disables Force a solo and turns it off in the payload.
+    await openMoreSettings();
     await evaluate(`(() => { ${solosButton}.click(); return true; })()`);
-    await waitFor(async () => (await evaluate(`${solosButton}.textContent.trim()`)) === "Off", "Solos off");
-    assert.equal(await evaluate(`Boolean(${forceButton})`), false, "Force a solo is hidden while Solos is off");
+    await waitFor(async () => (await evaluate(`${solosButton}.textContent.trim()`)) === "Off", "Mark solos off");
+    assert.equal(await evaluate(`${forceButton}.disabled`), true, "Force a solo is disabled while Mark solos is off");
     await click("GENERATE CHART");
-    await waitFor(() => payloads.length === 3, "v2 solos-off payload");
-    assert.equal(payloads[2].generation.controls.solos, false, "v2 payload carries solos=false");
-    assert.equal(payloads[2].generation.resolved.forceSolo, false, "Force a solo is off while Solos is off");
+    await waitFor(() => payloads.length === 3, "solos-off payload");
+    assert.equal(payloads[2].generation.controls.solos, false, "payload carries solos=false");
+    assert.equal(payloads[2].generation.resolved.forceSolo, false, "Force a solo is off while Mark solos is off");
 
-    // Back on v1, cards without v1.2 stems look exactly as before.
+    // Back on v1, cards without six-stem stems look exactly as before.
     await evaluate(`(() => {
       const select = document.querySelector(".model-plate-picker select");
       const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
@@ -272,9 +292,9 @@ async function main() {
     await waitFor(async () => (await cards()).every((card) => card.missing === 0), "v1 cards");
     const v1Cards = Object.fromEntries((await cards()).map((card) => [card.name, card]));
     assert.deepEqual(v1Cards.Default.labels, [], "plain v1 card has no model rows");
-    assert.equal(v1Cards["Default · +0.5s"].labels.length, 2, "existing v1.2 stems stay listed");
+    assert.equal(v1Cards["Default · +0.5s"].labels.length, 2, "existing six-stem stems stay listed");
     await screenshotDeck("5-separations-v1");
-    console.log("generator picker: hidden until installed, v1 default, v1.2 knobs and payload, v2 Solos and Force a solo switches passed");
+    console.log("generator picker: hidden until installed, v1 default, six-stem knobs and payload, Mark solos and Force a solo passed");
   } finally {
     win?.destroy();
     await fs.rm(temp, { recursive: true, force: true });

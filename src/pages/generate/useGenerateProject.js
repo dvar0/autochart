@@ -250,7 +250,7 @@ function effectiveGenerator(generators = [], generatorId = "") {
 }
 
 // The stem set a generator separates with: v1's htdemucs stems unless the
-// generator names its own (Fretformer v1.2: htdemucs_6s).
+// generator names its own (the six-stem models: htdemucs_6s).
 export function generatorStemSetId(generator = null) {
   const separation = generator?.separation || {};
   return separation.cacheSubdir ? String(separation.stemSet || separation.cacheSubdir) : "htdemucs";

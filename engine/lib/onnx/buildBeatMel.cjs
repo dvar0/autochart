@@ -4,7 +4,7 @@
 // v1: mel on six monos (full + four stems + non_drums = bass+vocals+other); non_drums
 // only supplies shared ref_db and is dropped before the stack. Output stacks
 // CHANNEL_ORDER -> [n_beats, 5, 80, 32]. Other models pass their own
-// channelOrder/refOnlyMixes from the models manifest (v1.2: six input channels,
+// channelOrder/refOnlyMixes from the models manifest (six-stem models: six input channels,
 // no reference-only mix -> [n_beats, 6, 80, 32]). Beat windows: 32 points at
 // t_i + (j+0.5)/32*(t_{i+1}-t_i), fractional frame + linear interp (Python parity).
 
@@ -80,7 +80,7 @@ function beatMelWindowsForChannel(mel, nMels, nFrames, beatTimes) {
 }
 
 // v1 adds a bass+vocals+other mix that only feeds the shared dB reference.
-// Models whose manifest sets stages.transcriber.refOnlyMixes ({} for v1.2)
+// Models whose manifest sets stages.transcriber.refOnlyMixes ({} for the six-stem models)
 // take the reference from their input channels alone.
 const DEFAULT_REF_ONLY_MIXES = Object.freeze({ non_drums: ["bass", "vocals", "other"] });
 

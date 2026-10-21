@@ -26,7 +26,7 @@ const DEMUCS_STEMS = [
   { id: "vocals", label: "Vocals" },
 ];
 
-// Fretformer v1.2 separates with htdemucs_6s: guitar gets its own stem and
+// The six-stem models separate with htdemucs_6s: guitar gets its own stem and
 // other holds the rest (piano included).
 const SIX_STEM_DEMUCS_STEMS = [
   { id: "guitar", label: "Guitar" },

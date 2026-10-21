@@ -51,7 +51,7 @@ const DEFAULT_TRANSCRIBER_SETTINGS = {
 const DEFAULT_DEMUCS_ID = "demucs_default";
 const DEMUCS_STEMS = ["other", "drums", "bass", "vocals"];
 // v1 keeps its stems in <separation workspace>/stems. A generator with its own
-// separation model (v1.2: htdemucs_6s) names a sibling directory in
+// separation model (six-stem models: htdemucs_6s) names a sibling directory in
 // generator.separation.cacheSubdir, so both stem sets live side by side.
 const DEFAULT_STEM_CACHE_SUBDIR = "stems";
 const STEM_CACHE_SUBDIR_RE = /^stems_[a-z0-9_]{1,48}$/;
@@ -1185,7 +1185,7 @@ function prefixBiasMaker(onnxLib, manifest) {
   const dModel = Number((transcriberStage.modelConfig && transcriberStage.modelConfig.dModel) || 512);
   const descPrefixScan = Number(conditioning.descPrefixScan || 8);
   // v1's manifest has no descriptorTokenBase, which keeps its original knob
-  // lookup (see computePrefixBias); v1.2 declares the model's DESC_BASE.
+  // lookup (see computePrefixBias); six-stem models declare the model's DESC_BASE.
   const descriptorTokenBase = Number(conditioning.descriptorTokenBase || 0);
   const prefixBiasOf = (prefixTokens) => onnxLib.computePrefixBias(prefixTokens, {
     descPrefixScan,
@@ -1337,7 +1337,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     for (let knex = 0; knex < descNames.length; knex += 1) {
       prefixTokens.push(onnxLib.descriptorToken(knex, bins[knex]));
     }
-    // Structure-marker models (v2) take solo/section flags after the knobs.
+    // Structure-marker models take solo/section flags after the knobs.
     const structure = transcriberStage.structure || null;
     const structurePrefix = onnxLib.structurePrefixTokens(structure, { solos: settings.solos });
     prefixTokens.push(...structurePrefix);

@@ -50,26 +50,31 @@ installed bytes at that location, and the engine receives it as
 `job.engine.modelsFolder`; both use the same folder before falling back to
 development symlinks.
 
-## Fretformer v1.2 (test generator)
+## Installed-only Fretformer models
 
-`autochart.fretformer.v1-2-onnx` ("Fretformer v1.2") is a candidate model for
-local testing. Its manifest entry has `"availability": "installed"`: the
-Generate screen lists it only once `<settings.modelsFolder>/fretformer-v1-2/`
-is complete, so installs without it see v1 exactly as before. There is no
-catalog component or download for it yet. When it is installed, the model
-plate becomes a picker with a NEW badge, its takes are named and tagged
-"Fretformer v1.2", and a project reopens on the model it last generated with.
+`autochart.fretformer.v2-dpo-onnx` ("Fretformer v2 DPO") and
+`autochart.fretformer.v2-dpo-fim-onnx` ("Fretformer v2 DPO+FIM") are local
+test generators. Each manifest entry has `"availability": "installed"`: the
+Generate screen lists one only once its folder under
+`<settings.modelsFolder>/` is complete (`fretformer-v2-dpo/` or
+`fretformer-v2-dpo-fim/`), so installs without them see Fretformer exactly as
+before. There is no catalog component or download for them yet. When one is
+installed, the model plate becomes a picker with a NEW badge, its takes are
+named and tagged with its label, and a project reopens on the model it last
+generated with. Regenerate rewrites picked bars with Fretformer v2 DPO+FIM
+(`capabilities.inpaint`); Generate stays on whichever model is selected.
 
-It uses the same pipeline code as v1, with every difference read from its
-model folder's `manifest.json`:
+They use the same pipeline code as Fretformer, with every difference read
+from the model folder's `manifest.json`:
 
-- Separation: `htdemucs_6s` (STFT/ISTFT graphs identical to v1's) with piano
-  summed into other (`stages.demucs.stems` / `stemFold`). Its stems live in
-  `<separation workspace>/stems_htdemucs_6s/` (`generator.separation`), next
-  to v1's `stems/`, and results report every stem set under
+- Separation: `htdemucs_6s` (STFT/ISTFT graphs identical to Fretformer's) with
+  piano summed into other (`stages.demucs.stems` / `stemFold`). Their stems
+  live in `<separation workspace>/stems_htdemucs_6s/` (`generator.separation`),
+  next to Fretformer's `stems/`, and results report every stem set under
   `sourceSeparation.stemSets`. Separation cards list one row per stem set:
-  v1's always, v1.2's once it exists or while v1.2 is selected (with
-  "Not separated yet" and a Separate now button where it is missing).
+  Fretformer's always, the six-stem set once it exists or while a six-stem
+  model is selected (with "Not separated yet" and a Separate now button where
+  it is missing).
 - Features: six mel channels (full, drums, bass, vocals, guitar, other), dB
   reference over those six (`stages.transcriber.channelOrder`, `refOnlyMixes`).
 - Knobs: speed, chords, HOPOs, taps, movement (`capabilities.descriptorKnobs`;
@@ -77,16 +82,22 @@ model folder's `manifest.json`:
   (`prefixConditioning.cfgOnlyWithSetKnobs`).
 - Decoding matches `ChartTranscriber.generate`: knob tokens are looked up at
   `DESC_BASE + 8k` (`prefixConditioning.descriptorTokenBase`), and sampling
-  starts only after the whole prefix (`decode.sampleOnlyAfterPrefix`). v1's
-  manifest has neither, so v1 keeps its original lookup and sampling and its
-  seeds reproduce.
+  starts only after the whole prefix (`decode.sampleOnlyAfterPrefix`).
+  Fretformer's manifest has neither, so it keeps its original lookup and
+  sampling and its seeds reproduce.
+- Solo and section markers (`capabilities.structureMarkers`). More settings
+  shows Mark solos and Force a solo for these generators. Fretformer does not
+  mark solos, so those rows stay disabled.
 
-Gates: `engine/test/generator-switch-e2e.cjs` (v1 + v1.2 on one song through
-`engineManager.generateChart`: shared beat map, stem sets, CFG gating, legacy
-beat-map adoption; `--only v1 --app-root <checkout>` is the v1 regression
-check), `engine/test/fretformer-v1-2-parity.cjs` (app features + greedy ONNX
-decode, compared with the training recipe and PyTorch checkpoint by the
-training repo's `scripts/check_fretformer_v1_2_app_parity.py`), and
+Gates: `engine/test/generator-switch-e2e.cjs` (Fretformer and Fretformer v2
+DPO on one song through `engineManager.generateChart`: shared beat map, stem
+sets, CFG gating, solo and section markers, legacy beat-map adoption;
+`--only v1 --app-root <checkout>` is the v1 regression check;
+`AUTOCHART_E2E_V2_ID` runs the marker steps against another generator),
+`engine/test/fretformer-v1-2-parity.cjs` (app features + greedy ONNX decode,
+default profile `fretformer-v2-dpo`, compared with the training recipe and
+PyTorch checkpoint by the training repo's
+`scripts/check_fretformer_v1_2_app_parity.py`), and
 `scripts/test-generator-picker-electron.cjs` (picker, knob swap, payload).
 
 ## Beat maps
@@ -95,7 +106,7 @@ Beat maps belong to the analysis audio, not to a separation. Every generator
 and separation of the same audio (same file, same lead-in) shares one map per
 timing setting at
 `<cache>/features/fretformer_timing_v1/<audio sha256>/<timing key>/beats.json`
-(`job.timingWorkspace`), so takes from v1, v1.2, or a regenerated separation
+(`job.timingWorkspace`), so takes from Fretformer, a six-stem model, or a regenerated separation
 carry the same `[SyncTrack]` and can share a final chart. Maps written by older
 versions under `<separation workspace>/timing/` are adopted on first use: the
 active separation's first, then the default separation's, then any other.

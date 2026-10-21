@@ -38,7 +38,7 @@ const STEM_OPTIONS = [
   { id: "vocals", label: "Vocals" },
 ];
 
-// Fretformer v1.2's htdemucs_6s stems (piano is folded into other).
+// htdemucs_6s stems (piano is folded into other). The six-stem models use these.
 const SIX_STEM_OPTIONS = [
   { id: "guitar", label: "Guitar" },
   ...STEM_OPTIONS,
