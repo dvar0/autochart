@@ -122,8 +122,8 @@ function modelTag(version) {
   return tail ? { text: tail.toUpperCase(), title: generatorId } : null;
 }
 
-// At-a-glance run recipe: difficulty it was generated with, model, preset,
-// sampling overrides (only when they differ from the preset), seed.
+// At-a-glance run recipe: difficulty it was generated with, model, seed, timing,
+// preset, sampling overrides (only when they differ from the preset).
 function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
   const difficulty = getVersionDifficulty(version, fallbackDifficulty);
   const tags = [
@@ -143,6 +143,9 @@ function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
   const controls = generation.controls || {};
   const resolved = generation.resolved || {};
   const preset = getGenerationPreset(generation.presetId || controls.presetId);
+  // Seed sits right after the model: it's what tells two runs of one recipe apart.
+  const seed = resolved.seed ?? (controls.seedMode === "fixed" ? controls.seed : null);
+  tags.push({ text: seed != null ? `seed ${seed}` : "seed rnd", secondary: true });
   const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
   if (timingDetector !== DEFAULT_TIMING_DETECTOR_ID) {
     tags.push({
@@ -186,8 +189,6 @@ function takeTags(version, fallbackDifficulty, badgedGeneratorIds = new Set()) {
   if (knobsActiveHere && knobGuidance != null && knobGuidance > 1) {
     tags.push({ text: `CFG ${knobGuidance}`, title: `Guidance ${knobGuidance}`, mod: true });
   }
-  const seed = resolved.seed ?? (controls.seedMode === "fixed" ? controls.seed : null);
-  tags.push({ text: seed != null ? `seed ${seed}` : "seed rnd", secondary: true });
   const demucsName = version.meta?.demucsName || version.provenance?.sourceSeparation?.name || "";
   const demucsVariant = leadIn?.text || "0s";
   if (demucsName) tags.push({ text: compactSeparationName(demucsName, demucsVariant), title: `Demucs: ${demucsName}`, secondary: true });
@@ -728,11 +729,11 @@ export default function TakesDeck({ project }) {
                       <DensityStrip lanes={[{ notes: sparkNotes, solos: v.track?.solos }]} duration={sparkDuration} />
                     </div>
                   )}
-                  <div className="take-meta">{v.noteCount || "--"} notes</div>
                   <div
                     className="take-tags"
                     title={v.source === "generated" ? generationSummary(v.settings) : undefined}
                   >
+                    <span className="take-notes">{v.noteCount || "--"} notes</span>
                     {v.meta?.edited && <span className="take-tag mod" title="Edited draft">edited</span>}
                     {tags.map((tag) => (
                       <span

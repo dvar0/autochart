@@ -4868,13 +4868,20 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.take-notes {
+  padding: 2px 4px 2px 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
 .take-tags {
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
   gap: 4px;
   min-width: 0;
-  max-height: 70px; /* three rows; the full recipe is the tooltip */
+  max-height: 90px; /* four rows of 20px chips + 4px gaps; the full recipe is the tooltip */
   overflow: hidden;
 }
 .take-tag {
