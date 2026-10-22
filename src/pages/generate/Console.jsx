@@ -8,6 +8,7 @@ import GenerationProgress from "./GenerationProgress.jsx";
 import StyleFader, { KNOB_COLORS } from "./StyleFader.jsx";
 import { changedSettingsSummary } from "./MoreSettings.jsx";
 import WorkTabs from "./WorkTabs.jsx";
+import { isBetaGenerator } from "../../data/modelFamilies.js";
 
 // The right rail: what to make (model, difficulty), how loose (sampling, style,
 // seed), lead-in, then a one-line summary of everything else, which lives in
@@ -114,7 +115,7 @@ export default function Console({ project }) {
                     >
                       {generatorChoices.map((generator) => (
                         <option key={generator.id} value={generator.id}>
-                          {generator.label}
+                          {generator.label}{isBetaGenerator(generator.id) ? " · Beta" : ""}
                         </option>
                       ))}
                     </select>

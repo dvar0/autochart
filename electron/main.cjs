@@ -250,6 +250,11 @@ const settingsWithDefaults = hostContext.settingsWithDefaults;
 const baseLibraryContext = hostContext.libraryContext;
 function settingsForRenderer(settings) {
   const visible = settingsWithDefaults(settings);
+  // Read-only: lets Settings disable Reset at the default and shorten paths.
+  visible.pathDefaults = Object.fromEntries(
+    [...settingsStore.PATH_KEYS].map((key) => [key, visible.defaults?.[key] || ""])
+  );
+  visible.homeFolder = app.getPath("home");
   for (const key of settingsStore.INTERNAL_SETTINGS_KEYS) delete visible[key];
   return visible;
 }
@@ -717,7 +722,12 @@ function registerIpcHandlers() {
     if (!loaded.available) return loaded;
     const manifest = loaded;
     const scan = await scanModelSetup(settings, manifest);
-    return modelManager.decorateManifest(manifest, scan);
+    return {
+      ...modelManager.decorateManifest(manifest, scan),
+      preferences: {
+        defaultGeneratorId: settings.defaultGeneratorId || "",
+      },
+    };
   });
 
   ipcMain.handle("engine:generateChart", async (event, payload) => {

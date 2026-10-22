@@ -8,7 +8,8 @@
 // - separation cards list each model's stems only where that separation has
 //   them (three lead-in separations, only one separated for the six-stem set);
 // - a model that marks solos shows Mark solos and Force a solo in More
-//   settings, and the payload carries both.
+//   settings, and the payload carries both;
+// - the fill-in model is listed as Beta.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -30,9 +31,10 @@ const KEPT_IDS = [
   "autochart.fretformer.v2-dpo-onnx",
   "autochart.fretformer.v2-dpo-fim-onnx",
 ];
-// The first six-stem generator is the one separation cards name, and the one
-// this test selects. It also marks solos.
-const SIX_STEM = engineManifest.generators.find((generator) => generator.separation?.stemSet === "htdemucs_6s");
+const BETA_ID = "autochart.fretformer.v2-dpo-fim-onnx";
+// The first six-stem generator outside beta is the one separation cards name,
+// and the one this test selects. It also marks solos.
+const SIX_STEM = engineManifest.generators.find((generator) => generator.separation?.stemSet === "htdemucs_6s" && generator.id !== BETA_ID);
 if (!SIX_STEM?.capabilities?.structureMarkers?.includes("solos")) {
   throw new Error("expected the first six-stem generator to mark solos");
 }
@@ -116,6 +118,7 @@ async function main() {
     ipcMain.handle("engine:getManifest", () => ({
       available: true,
       setup: { ready: true },
+      preferences: { defaultGeneratorId: "" },
       generators: engineManifest.generators.map((generator) => ({
         ...generator,
         setup: INSTALLED_ONLY.has(generator.id) && !installedReady
@@ -206,7 +209,7 @@ async function main() {
     await click("OPEN PROJECT");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
     const options = await evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
-    assert.deepEqual(options, engineManifest.generators.map((g) => [g.id, g.label]));
+    assert.deepEqual(options, engineManifest.generators.map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]));
     assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), V1_ID, "v1 stays the default");
     assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge"))'), false, "no badge on v1");
     await waitFor(async () => (await faderNames()).length > 0, "style faders");
@@ -262,6 +265,8 @@ async function main() {
     assert.equal(payload.generation.controls.solos, true, "solos default on");
     assert.equal(payload.generation.resolved.forceSolo, false, "Force a solo defaults off in the payload");
 
+    // Generating briefly disables the console; click once it is back.
+    await waitFor(() => evaluate(`${forceButton}.disabled === false`), "Force a solo enabled");
     await evaluate(`(() => { ${forceButton}.click(); return true; })()`);
     await waitFor(async () => (await evaluate(`${forceButton}.textContent.trim()`)) === "On", "Force a solo on");
     await screenshot("6-force-solo", ".more-settings");
@@ -273,6 +278,7 @@ async function main() {
 
     // Mark solos off disables Force a solo and turns it off in the payload.
     await openMoreSettings();
+    await waitFor(() => evaluate(`${solosButton}.disabled === false`), "Mark solos enabled");
     await evaluate(`(() => { ${solosButton}.click(); return true; })()`);
     await waitFor(async () => (await evaluate(`${solosButton}.textContent.trim()`)) === "Off", "Mark solos off");
     assert.equal(await evaluate(`${forceButton}.disabled`), true, "Force a solo is disabled while Mark solos is off");
@@ -294,13 +300,16 @@ async function main() {
     assert.deepEqual(v1Cards.Default.labels, [], "plain v1 card has no model rows");
     assert.equal(v1Cards["Default · +0.5s"].labels.length, 2, "existing six-stem stems stay listed");
     await screenshotDeck("5-separations-v1");
-    console.log("generator picker: hidden until installed, v1 default, six-stem knobs and payload, Mark solos and Force a solo passed");
+    console.log("generator picker: hidden until installed, v1 default, six-stem knobs and payload, Mark solos and Force a solo, Beta label passed");
   } finally {
     win?.destroy();
     await fs.rm(temp, { recursive: true, force: true });
   }
 }
 
+// Keep the app alive after the test window closes so a failure is printed
+// before exiting.
+app.on("window-all-closed", () => {});
 app.whenReady().then(main).then(() => app.exit(0), (error) => {
   console.error(error.stack || error);
   app.exit(1);

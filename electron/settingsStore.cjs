@@ -19,7 +19,7 @@ const INTERNAL_SETTINGS_KEYS = new Set([
   "cacheMigrationTarget",
   "defaults",
 ]);
-const READ_ONLY_SETTINGS_KEYS = new Set(["settingsRecovery"]);
+const READ_ONLY_SETTINGS_KEYS = new Set(["settingsRecovery", "pathDefaults", "homeFolder"]);
 
 const DEFAULT_SETTINGS = {
   setupComplete: false,
@@ -34,6 +34,9 @@ const DEFAULT_SETTINGS = {
   updateChannel: "stable",
   theme: "system",
   assetBaseUrl: "",
+  // Generator new projects start on; empty follows the catalog default.
+  defaultGeneratorId: "",
+  // Lists beta generators (drafting with the fill-in model) in the model picker.
 };
 
 function settingsPath(userDataPath) {
@@ -83,6 +86,7 @@ function normalizeSettings(settings = {}, defaults = {}) {
     : DEFAULT_SETTINGS.updateChannel;
   next.theme = ["system", "light", "dark"].includes(next.theme) ? next.theme : DEFAULT_SETTINGS.theme;
   next.assetBaseUrl = String(next.assetBaseUrl || "").trim();
+  next.defaultGeneratorId = String(next.defaultGeneratorId || "").trim();
 
   const storedVersion = Number(settings.cachePathVersion) || 0;
   const legacyCacheFolder = normalizePathSetting(settings.cacheFolder, "cacheFolder");

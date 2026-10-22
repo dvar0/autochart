@@ -21,6 +21,7 @@ import {
   buildSourceReplacementRecord,
 } from "./sourceReplacement.js";
 import { createEditorState, editorReducer } from "./edit/editorReducer.js";
+import { defaultGeneratorIdFrom, selectableGeneratorsFrom } from "../../data/modelFamilies.js";
 import {
   DEFAULT_GENERATION_CONTROLS,
   DEFAULT_GENERATOR_ID,
@@ -241,12 +242,6 @@ const EMPTY_PREVIEW_AUDIO = Object.freeze({ path: "", buffer: null });
 // Padded lead-in audio files kept in memory while switching between takes.
 const PREVIEW_AUDIO_CACHE_SIZE = 3;
 
-// Generators marked availability "installed" (test models) are offered only
-// once their model folder is present; every other generator is always listed.
-function selectableGeneratorsFrom(generators = []) {
-  return generators.filter((generator) => generator.availability !== "installed" || generator.setup?.ready);
-}
-
 function effectiveGenerator(generators = [], generatorId = "") {
   const selectable = selectableGeneratorsFrom(generators);
   return selectable.find((generator) => generator.id === generatorId) || selectable[0] || generators[0] || null;
@@ -379,13 +374,14 @@ function generatorStateFromManifest(manifest) {
           }
         : null,
     engineError: manifest?.available === false ? manifest.error || "Generator engine is unavailable." : "",
+    preferences: manifest?.preferences || {},
   };
 }
 
-function pickGeneratorId(generators, current) {
-  return generators.some((generator) => generator.id === current)
+function pickGeneratorId(generators, current, preferences = {}) {
+  return selectableGeneratorsFrom(generators).some((generator) => generator.id === current)
     ? current
-    : generators[0]?.id || DEFAULT_GENERATOR_ID;
+    : defaultGeneratorIdFrom(generators, preferences);
 }
 
 function initialCompareVersionIds(versions, importedVersion, generatedVersion) {
@@ -553,10 +549,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [reusedFrom, setReusedFrom] = useState(null);
   const [cachedGeneratorState] = useState(() => generatorStateFromManifest(lastGeneratorManifest));
   const [generators, setGenerators] = useState(cachedGeneratorState.generators);
-  const [generatorId, setGeneratorId] = useState(() => pickGeneratorId(
-    cachedGeneratorState.generators,
-    importedSong?.settings?.generation?.generatorId || DEFAULT_GENERATOR_ID
-  ));
+  const [generatorId, setGeneratorId] = useState(() => {
+    const { generators: cached, preferences } = cachedGeneratorState;
+    const saved = importedSong?.settings?.generation?.generatorId;
+    return saved ? pickGeneratorId(cached, saved, preferences) : defaultGeneratorIdFrom(cached, preferences);
+  });
+  // True once the model comes from the project or the user. Until then the
+  // workspace follows the default model from Settings as the manifest loads.
+  const generatorChosenRef = useRef(Boolean(importedSong?.settings?.generation?.generatorId));
   const [setupStatus, setSetupStatus] = useState(cachedGeneratorState.setupStatus);
   const [engineError, setEngineError] = useState(cachedGeneratorState.engineError);
   const [busyAction, setBusyAction] = useState("");
@@ -677,9 +677,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         setGenerators(next.generators);
         setSetupStatus(next.setupStatus);
         setEngineError(next.engineError);
-        // Keep the user's pick across manifest reloads; effectiveGenerator()
-        // falls back to the first listed model if it isn't selectable.
-        setGeneratorId((current) => pickGeneratorId(next.generators, current));
+        // Keep a chosen model across manifest reloads; falls back to the
+        // default model when it isn't selectable.
+        setGeneratorId((current) => generatorChosenRef.current
+          ? pickGeneratorId(next.generators, current, next.preferences)
+          : defaultGeneratorIdFrom(next.generators, next.preferences));
       })
       .catch((err) => {
         if (!active) return;
@@ -870,7 +872,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     const versions = importedSong.versions || [];
     // Reopen a project on the model it last generated with (when installed).
     const savedGeneratorId = importedSong.settings?.generation?.generatorId;
-    if (savedGeneratorId) setGeneratorId(savedGeneratorId);
+    if (savedGeneratorId) {
+      generatorChosenRef.current = true;
+      setGeneratorId(savedGeneratorId);
+    }
     setGenerationControls(
       controlsFromSavedGeneration(
         importedSong.settings?.generation,
@@ -1942,6 +1947,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     selectableGenerators.find((generator) => generatorStemSetId(generator) === stemSetId) || null;
   const selectGenerator = (id) => {
     if (!selectableGenerators.some((generator) => generator.id === id)) return;
+    generatorChosenRef.current = true;
     setGeneratorId(id);
   };
 
@@ -1967,7 +1973,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     }
     const takeGeneratorId = version.meta?.generatorId || generation.generatorId || "";
     const generatorAvailable = selectableGenerators.some((generator) => generator.id === takeGeneratorId);
-    if (generatorAvailable) setGeneratorId(takeGeneratorId);
+    if (generatorAvailable) {
+      generatorChosenRef.current = true;
+      setGeneratorId(takeGeneratorId);
+    }
     setGenerationControls(controls);
     const demucsId = version.meta?.demucsId || version.provenance?.sourceSeparation?.id || version.settings?.demucsSeparation?.id || "";
     if (demucsId && demucsArtifacts.some((artifact) => artifact.id === demucsId) && demucsId !== activeDemucsArtifact?.id) {
@@ -2346,7 +2355,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const inpaintBlockedReason = !canInpaint()
     ? ""
     : !inpaintGenerator || (inpaintGenerator.setup && !inpaintGenerator.setup.ready)
-      ? "Regenerate needs Fretformer v2 DPO+FIM installed"
+      ? "Regenerate needs Fretformer 2"
       : !importedSong?.audioSource
         ? "Save the song first"
         : "";

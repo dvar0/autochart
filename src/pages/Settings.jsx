@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { I } from "../icons.jsx";
-import { GAME_LIBRARY_NAME } from "../data/gameLibrary.js";
-import GenerationPipeline, { generationDownloadSize } from "../components/GenerationPipeline.jsx";
+import { generationDownloadSize } from "../components/GenerationPipeline.jsx";
 import InstallProgress from "../components/InstallProgress.jsx";
 import {
   friendlyTarget,
@@ -13,20 +12,20 @@ import {
   humanizeSupportLabel,
   normalizeHardwareMode,
 } from "../data/hardwareModes.js";
-import { SUPPORTED_TARGETS } from "../data/supportedTargets.js";
+import { BETA_MODELS, MODEL_FAMILIES, defaultGeneratorIdFrom } from "../data/modelFamilies.js";
 import {
   chooseCacheFolder,
   chooseCloneHeroLibraryFolder,
   chooseModelsFolder,
   chooseProjectsFolder,
   clearCacheFolder,
-  clearCloneHeroLibraryFolder,
   dismissSettingsRecoveryNotice,
   getAppSettings,
   openSettingsPath,
   resetSettingsPath,
   updateAppSettings,
 } from "../services/appSettings.js";
+import { listGenerators } from "../services/generation.js";
 import { installAssets, probeHardware, scanModelSetup, subscribeModelInstallEvents } from "../services/modelSetup.js";
 import { NOTICE_LINKS, openNotice } from "../services/notices.js";
 import { electronPlatform } from "../services/runtimeBridge.js";
@@ -39,50 +38,65 @@ const EMPTY_SETTINGS = {
   cacheParentFolder: "",
   cacheFolder: "",
   hardwareMode: "auto",
-  updateChannel: "stable",
-  assetBaseUrl: "",
-  defaults: {},
+  defaultGeneratorId: "",
+  pathDefaults: null,
+  homeFolder: "",
   settingsRecovery: null,
 };
 
-const STORAGE_ROWS = [
-  {
-    key: "projectsFolder",
-    title: "Projects",
-    copy: "Your projects and generated chart takes.",
-    empty: "No projects folder selected",
-    choose: chooseProjectsFolder,
-  },
-  {
-    key: "modelsFolder",
-    title: "Chart generation files folder",
-    copy: "Downloaded Demucs, Beat This, and Fretformer files plus their license notices.",
-    empty: "No chart generation files folder selected",
-    choose: chooseModelsFolder,
-  },
-  {
-    key: "cacheFolder",
-    title: "Cache",
-    copy: "Reusable audio analysis and separated stems in an app-owned cache directory.",
-    empty: "No cache folder selected",
-    choose: chooseCacheFolder,
-  },
-  {
-    key: "cloneHeroLibraryFolder",
-    title: "Clone Hero / YARG library",
-    copy: `Where Autochart saves playable song copies for ${GAME_LIBRARY_NAME}.`,
-    empty: "No library folder selected",
-    choose: chooseCloneHeroLibraryFolder,
-  },
+const FOLDER_ROWS = [
+  { key: "cloneHeroLibraryFolder", title: "Clone Hero / YARG songs", choose: chooseCloneHeroLibraryFolder },
+  { key: "projectsFolder", title: "Projects", choose: chooseProjectsFolder },
+  { key: "cacheFolder", title: "Cache", choose: chooseCacheFolder },
+  { key: "modelsFolder", title: "Model files", choose: chooseModelsFolder },
 ];
 
-function packComponentIds(pack) {
-  return new Set((pack?.components || []).map((component) => component.id || component).filter(Boolean));
+const NOTICE_BUTTONS = [
+  { key: "releaseNotes", label: "Release notes" },
+  { key: "thirdParty", label: "Licenses" },
+  { key: "ffmpegLicense", label: "FFmpeg license" },
+  { key: "privacy", label: "Privacy" },
+];
+
+// Last values the page saw. Revisits render these immediately and refresh them
+// in the background instead of waiting on the model scan again.
+const lastLoaded = { settings: null, setup: null, hardware: null, manifest: null };
+
+function shortPath(value, home) {
+  if (!value) return "";
+  if (home && (value === home || value.startsWith(home + "/") || value.startsWith(home + "\\"))) {
+    return "~" + value.slice(home.length);
+  }
+  return value;
 }
 
+function gpuName(hardware) {
+  const name = hardware?.nvidia?.detected ? hardware.nvidia.gpus?.[0]?.name || "" : "";
+  return name.replace(/^NVIDIA\s+(GeForce\s+)?/i, "");
+}
 
-function PathBox({ value, empty }) {
-  return <div className={"settings-path" + (!value ? " empty" : "")}>{value || empty}</div>;
+function performanceSummary(hardware, unsupported) {
+  if (unsupported) return `${friendlyTarget(hardware)} is unsupported.`;
+  if (!hardware) return "Checking hardware…";
+  const device = hardware.selectedMode === "cpu"
+    ? hardware.cpu
+    : hardware.selectedMode === "coreml"
+      ? "Apple Silicon"
+      : gpuName(hardware);
+  return `Using ${hardware.selectedModeLabel}${device ? ` · ${device}` : ""}`;
+}
+
+// One status for a family's generators: ready, missing, partial (some files),
+// or repair (a file failed verification).
+function familyStatus(family, generatorsById, manifestLoaded) {
+  if (!manifestLoaded) return "checking";
+  const statuses = [family.generatorId, family.inpaintGeneratorId]
+    .filter(Boolean)
+    .map((id) => generatorsById.get(id)?.setup?.status || "missing");
+  if (statuses.includes("unsupported")) return "unsupported";
+  if (statuses.some((status) => status === "corrupt" || status === "partial")) return "repair";
+  if (statuses.every((status) => status === "ready")) return "ready";
+  return statuses.some((status) => status === "ready") ? "partial" : "missing";
 }
 
 function StatusPill({ status }) {
@@ -92,8 +106,6 @@ function StatusPill({ status }) {
 
 function ComponentCard({ component }) {
   const files = Array.isArray(component.files) ? component.files : [];
-  const difficulties = component.capabilities?.difficulties || [];
-  const bestFor = component.capabilities?.bestFor || [];
   return (
     <div className="setup-component">
       <div className="setup-component-main">
@@ -107,12 +119,6 @@ function ComponentCard({ component }) {
         <span>{component.kind}</span>
         {component.version && <span>{component.version}</span>}
         {component.license && <span>{component.license}</span>}
-        {difficulties.map((difficulty) => (
-          <span key={difficulty}>{difficulty}</span>
-        ))}
-        {bestFor.map((tag) => (
-          <span key={tag}>{tag}</span>
-        ))}
       </div>
       {files.length > 0 && (
         <details className="setup-details">
@@ -131,14 +137,82 @@ function ComponentCard({ component }) {
   );
 }
 
-// Last values the page saw. Revisits render these immediately and refresh them
-// in the background instead of waiting on the model scan again.
-const lastLoaded = { settings: null, setup: null, hardware: null };
+// Model file checks, hardware, and the folders the scan looked in. Opens over
+// the page so the main cards keep their layout.
+function DiagnosticsSheet({ setup, hardware, busy, onCheck, onClose }) {
+  const components = setup?.components || [];
+  const chartComponents = components.filter((component) => component.kind === "chart-model");
+  const runtimeComponents = components.filter((component) => component.kind === "runtime");
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <>
+      <div className="settings-sheet-scrim" onClick={onClose} aria-hidden="true" />
+      <section className="settings-sheet" role="dialog" aria-label="Diagnostics">
+        <header className="ms-head">
+          <h2>Diagnostics</h2>
+          <button type="button" className="ms-close" onClick={onClose} aria-label="Close diagnostics" title="Close (Esc)">
+            <I.plus />
+          </button>
+        </header>
+        <div className="settings-sheet-body">
+          <div className="advanced-row">
+            <div>
+              <b>Model files</b>
+              <small>Checks every installed file against its checksum.</small>
+            </div>
+            <div className="advanced-row-actions">
+              <StatusPill status={setup ? setup.combinedStatus || setup.standardPack?.status || "missing" : "checking"} />
+              <button
+                className="settings-secondary"
+                onClick={onCheck}
+                disabled={Boolean(busy)}
+                title={busy ? "Wait for the current settings operation to finish." : "Check the model files again"}
+              >
+                <I.spark /> {busy === "loading" ? "Checking…" : "Check files"}
+              </button>
+            </div>
+          </div>
+          {[...chartComponents, ...runtimeComponents].map((component) => (
+            <ComponentCard key={component.id} component={component} />
+          ))}
+          {hardware && (
+            <div className="hardware-details">
+              <div><span>Platform</span><b>{friendlyTarget(hardware)}</b></div>
+              {hardware.supportLabel && <div><span>Support</span><b>{humanizeSupportLabel(hardware.supportLabel)}</b></div>}
+              <div><span>CPU</span><b>{hardware.cpu || "Unknown"}</b></div>
+              <div><span>GPU</span><b>{hardware.nvidia?.detected ? hardware.nvidia.gpus.map((gpu) => gpu.name).join(", ") : "Not detected"}</b></div>
+              <div><span>Runtime</span><b>{humanizeRuntime(hardware.selectedRuntimePack)}</b></div>
+              <div><span>Provider</span><b>{humanizeStatus(hardware.providerStatus)}</b></div>
+            </div>
+          )}
+          {setup?.sourceRoots?.length > 0 && (
+            <div className="setup-file-list">
+              <b className="settings-sheet-label">Folders checked</b>
+              {setup.sourceRoots.map((root) => (
+                <div className="setup-file-row" key={root}>
+                  <span>{root}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
 
 export default function Settings() {
   const [settings, setSettingsState] = useState(() => lastLoaded.settings || EMPTY_SETTINGS);
   const [setup, setSetupState] = useState(() => lastLoaded.setup);
   const [hardware, setHardwareState] = useState(() => lastLoaded.hardware);
+  const [manifest, setManifestState] = useState(() => lastLoaded.manifest);
   const setSettings = (next) => setSettingsState((current) => {
     const value = typeof next === "function" ? next(current) : next;
     lastLoaded.settings = value;
@@ -152,9 +226,14 @@ export default function Settings() {
     lastLoaded.hardware = value;
     setHardwareState(value);
   };
+  const setManifest = (value) => {
+    lastLoaded.manifest = value;
+    setManifestState(value);
+  };
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [installProgress, setInstallProgress] = useState(null);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
 
   // Each source fills in as soon as it answers; settings are instant, the
   // model scan is the slow one. Only an explicit rescan blocks the controls.
@@ -167,6 +246,8 @@ export default function Settings() {
         scanModelSetup({ fresh }).then(setSetup),
         probeHardware().then(setHardware),
       ]);
+      // After the scan so a fresh check's digests are reused here.
+      setManifest(await listGenerators());
     } catch (err) {
       setMessage({ text: err.message || "Could not load settings.", tone: "error" });
     } finally {
@@ -180,6 +261,13 @@ export default function Settings() {
 
   useEffect(() => subscribeModelInstallEvents(setInstallProgress), []);
 
+  const refreshModels = async () => {
+    const [nextSetup, nextHardware] = await Promise.all([scanModelSetup(), probeHardware()]);
+    setSetup(nextSetup);
+    setHardware(nextHardware);
+    setManifest(await listGenerators());
+  };
+
   const runAction = async (label, action) => {
     setBusy(label);
     setMessage("");
@@ -189,19 +277,13 @@ export default function Settings() {
       else if (result && ("projectsFolder" in result || "setupComplete" in result)) {
         setSettings({ ...EMPTY_SETTINGS, ...result });
       }
-      if (label !== "opening") {
-        const [nextSetup, nextHardware] = await Promise.all([scanModelSetup(), probeHardware()]);
-        setSetup(nextSetup);
-        setHardware(nextHardware);
-      }
+      if (label !== "opening") await refreshModels();
       setMessage(
-        result?.canceled
+        result?.canceled || label === "opening"
           ? ""
-          : label === "opening"
-            ? "Opened folder."
-            : label === "clear-cache"
-              ? `Cleared Autochart cache at ${result.path}.`
-              : "Settings updated."
+          : label === "clear-cache"
+            ? "Cache cleared."
+            : "Settings updated."
       );
     } catch (err) {
       setMessage({ text: err.message || "Settings action failed.", tone: "error" });
@@ -227,9 +309,7 @@ export default function Settings() {
     try {
       const next = await updateAppSettings({ hardwareMode: normalizeHardwareMode(mode) });
       setSettings({ ...EMPTY_SETTINGS, ...next });
-      const [nextSetup, nextHardware] = await Promise.all([scanModelSetup(), probeHardware()]);
-      setSetup(nextSetup);
-      setHardware(nextHardware);
+      await refreshModels();
     } catch (err) {
       setMessage({ text: err.message || "Could not update hardware mode.", tone: "error" });
     } finally {
@@ -237,34 +317,33 @@ export default function Settings() {
     }
   };
 
-  const saveAssetBaseUrl = async () => {
-    setBusy("asset-source");
-    setMessage("");
+  // Model preferences save quietly: the radio and switch show the result.
+  const updateModelPreference = async (patch) => {
+    const previous = settings;
+    setSettings((current) => ({ ...current, ...patch }));
     try {
-      const next = await updateAppSettings({ assetBaseUrl: settings.assetBaseUrl || "" });
+      const next = await updateAppSettings(patch);
       setSettings({ ...EMPTY_SETTINGS, ...next });
-      setMessage("Download source updated.");
     } catch (err) {
-      setMessage({ text: err.message || "Could not update download source.", tone: "error" });
-    } finally {
-      setBusy("");
+      setSettings(previous);
+      setMessage({ text: err.message || "Could not save the model setting.", tone: "error" });
     }
   };
 
   const installModels = async () => {
     setBusy("installing-models");
-    setMessage(`Downloading the chart generation package (about ${generationDownloadSize(setup?.standardPack)}). This can take a while.`);
+    setMessage("");
     setInstallProgress({ phase: "starting", percent: 0, message: "Preparing download." });
     try {
       const result = await installAssets();
       if (result?.settings) setSettings({ ...EMPTY_SETTINGS, ...result.settings });
       if (result?.setup) setSetup(result.setup);
-      else setSetup(await scanModelSetup());
+      await refreshModels();
       setInstallProgress((current) => ({ ...(current || {}), phase: "complete", percent: 100 }));
-      setMessage(`The chart generation package is installed and verified at ${result?.install?.path || settings.modelsFolder || "the chart generation files folder"}.`);
+      setMessage("Model installed.");
     } catch (err) {
       setInstallProgress((current) => ({ ...(current || {}), phase: "failed" }));
-      setMessage({ text: err.message || "Could not install the chart generation package.", tone: "error" });
+      setMessage({ text: err.message || "Could not install the model.", tone: "error" });
     } finally {
       setBusy("");
     }
@@ -274,360 +353,275 @@ export default function Settings() {
     try {
       const opened = await openNotice(key);
       if (!opened) {
-        setMessage({ text: "Bundled notices are available in the desktop app package.", tone: "info" });
+        setMessage({ text: "Notices are available in the desktop app.", tone: "info" });
       }
     } catch (err) {
       setMessage({ text: err.message || "Could not open the notice.", tone: "error" });
     }
   };
-  const components = setup?.components || [];
+
+  const generators = manifest?.generators || [];
+  const generatorsById = new Map(generators.map((generator) => [generator.id, generator]));
+  const manifestLoaded = Boolean(manifest);
+  const preferences = { defaultGeneratorId: settings.defaultGeneratorId };
+  const defaultGeneratorId = defaultGeneratorIdFrom(generators, preferences);
+  const isReady = (generatorId) => Boolean(generatorsById.get(generatorId)?.setup?.ready);
+
   const standardPack = setup?.standardPack;
-  const standardIds = packComponentIds(standardPack);
-  const chartComponents = components.filter((component) => component.kind === "chart-model");
-  const runtimeComponents = components.filter((component) => component.kind === "runtime");
-  const standardChartComponents = chartComponents.filter((component) => standardIds.has(component.id));
-  const standardRuntimeComponents = runtimeComponents.filter((component) => standardIds.has(component.id));
-  const optionalRuntimeComponents = runtimeComponents.filter((component) => !standardIds.has(component.id));
-  const setupLoading = !setup;
-  const readyCount = setup?.readyGeneratorIds?.length || 0;
-  const chartStatus = setupLoading
-    ? "checking"
-    : setup?.combinedStatus || standardPack?.status || "missing";
-  const unsupported = chartStatus === "unsupported" || hardware?.supportedPlatform === false;
-  const installButtonLabel = busy === "installing-models"
-    ? "Installing…"
-    : unsupported
-      ? "Unavailable"
-      : chartStatus === "ready"
-        ? "Installed"
-        : chartStatus === "partial" || chartStatus === "corrupt"
-          ? "Repair Package"
-          : "Download Package";
-  const installDisabled = Boolean(busy) || unsupported || ["ready", "checking"].includes(chartStatus);
-  const installDisabledReason = unsupported
-    ? setup?.message || `${friendlyTarget(setup || hardware)} is unsupported for chart generation.`
-    : busy
-      ? "Wait for the current settings operation to finish."
-      : chartStatus === "ready"
-        ? "The chart generation package is already installed."
-        : chartStatus === "checking"
-          ? "Wait for the package scan to finish."
-          : "";
+  const unsupported = setup?.combinedStatus === "unsupported" || hardware?.supportedPlatform === false;
   const targetPlatform = setup?.platform || hardware?.platform || electronPlatform();
   const hardwareModes = hardwareModesForPlatform(targetPlatform);
+  const selectedHardwareMode = hardwareModeForPlatform(settings.hardwareMode, targetPlatform);
+  const home = settings.homeFolder;
 
   const messageText = typeof message === "string" ? message : message?.text;
   const messageTone = typeof message === "object" ? message.tone : "success";
 
+  const familyAction = (family) => {
+    const status = familyStatus(family, generatorsById, manifestLoaded);
+    const downloadable = standardPack?.defaultGeneratorId === family.generatorId;
+    if (status === "checking") return <StatusPill status="checking" />;
+    if (status === "ready") return <StatusPill status="ready" />;
+    if (status === "unsupported") return <StatusPill status="unsupported" />;
+    const installing = busy === "installing-models" && downloadable;
+    const label = installing
+      ? "Installing…"
+      : status === "missing"
+        ? `Download${downloadable ? ` · ${generationDownloadSize(standardPack)}` : ""}`
+        : "Repair";
+    const reason = !downloadable
+      ? "Not available to download yet."
+      : busy && !installing
+        ? "Wait for the current settings operation to finish."
+        : "";
+    return (
+      <>
+        <button
+          className={(downloadable ? "btn-primary" : "settings-secondary") + " model-action"}
+          onClick={installModels}
+          disabled={!downloadable || Boolean(busy)}
+          aria-describedby={`settings-install-reason-${family.id}`}
+          title={reason || `Download ${family.label}`}
+        >
+          {label}
+        </button>
+        <span id={`settings-install-reason-${family.id}`} className="sr-only">{reason}</span>
+      </>
+    );
+  };
+
+  // The model new projects start on: each download's drafting model, then the
+  // beta drafting models that come with a download.
+  const defaultChoices = [
+    ...MODEL_FAMILIES.map((family) => ({
+      id: family.generatorId,
+      label: family.shortLabel,
+      disabled: !isReady(family.generatorId),
+      title: family.label,
+      reason: `Download ${family.label} first`,
+    })),
+    ...BETA_MODELS.map((model) => ({
+      id: model.generatorId,
+      label: model.shortLabel,
+      beta: true,
+      disabled: !isReady(model.generatorId),
+      title: model.about,
+      reason: "Comes with Fretformer 2",
+    })),
+  ];
+
   return (
     <div className="ac-body settings-page">
       <main className="settings-main">
-        <header className="page-head">
+        <header className="page-head settings-head">
           <h1 className="page-title">Settings</h1>
-          <p className="page-sub">Storage, chart generation, and hardware.</p>
+          <button className="settings-secondary" onClick={() => setDiagnosticsOpen(true)} title="Model files and hardware">
+            <I.info /> Diagnostics
+          </button>
         </header>
 
         {settings.settingsRecovery && (
-          <section className="settings-section" role="status">
-            <div className="settings-section-label">SETTINGS RECOVERED</div>
-            <div className="settings-row-item">
-              <div className="settings-row-copy">
-                <h2>Your previous settings file could not be read</h2>
-                <p>
-                  Autochart restored safe defaults and preserved the original file at
-                  {` ${settings.settingsRecovery.backupPath}`}.
-                </p>
-              </div>
-              <div className="settings-row-control">
-                <button
-                  className="settings-secondary"
-                  disabled={Boolean(busy)}
-                  onClick={() => runAction("dismiss-recovery", dismissSettingsRecoveryNotice)}
-                >
-                  Dismiss
-                </button>
-              </div>
+          <section className="settings-card settings-recovery" role="status">
+            <div>
+              <h2 className="settings-card-title">Your settings were reset</h2>
+              <p className="settings-card-sub">
+                The old settings file couldn't be read. It's saved at <code>{settings.settingsRecovery.backupPath}</code>.
+              </p>
             </div>
+            <button
+              className="settings-secondary"
+              disabled={Boolean(busy)}
+              onClick={() => runAction("dismiss-recovery", dismissSettingsRecoveryNotice)}
+            >
+              Dismiss
+            </button>
           </section>
         )}
 
-        <section className="settings-section">
-          <div className="settings-section-label">STORAGE</div>
-          {STORAGE_ROWS.map((row) => (
-            <div className="settings-row-item" key={row.key}>
-              <div className="settings-row-copy">
-                <h2>{row.title}</h2>
-                <p>{row.copy}</p>
-              </div>
-              <div className="settings-row-control">
-                <PathBox value={settings[row.key]} empty={row.empty} />
-                <div className="settings-actions">
-                  <button
-                    className="settings-secondary"
-                    onClick={() => runAction(row.key, row.choose)}
-                    disabled={Boolean(busy)}
-                  >
-                    <I.inbox /> Choose Folder
-                  </button>
-                  <button
-                    className="settings-secondary"
-                    onClick={() => runAction("opening", () => openSettingsPath(row.key))}
-                    disabled={Boolean(busy) || !settings[row.key]}
-                  >
-                    <I.open /> Open Folder
-                  </button>
-                  <button
-                    className="settings-secondary"
-                    onClick={() => runAction(`reset-${row.key}`, () => resetSettingsPath(row.key))}
-                    disabled={Boolean(busy)}
-                  >
-                    Reset
-                  </button>
-                  {row.key === "cacheFolder" && (
-                    <button
-                      className="settings-secondary"
-                      onClick={confirmAndClearCache}
-                      disabled={Boolean(busy) || !settings.cacheFolder}
-                    >
-                      <I.trash /> Clear Cache
-                    </button>
-                  )}
-                  {row.key === "cloneHeroLibraryFolder" && (
-                    <button
-                      className="settings-secondary"
-                      onClick={() => runAction("clear-clone-hero", clearCloneHeroLibraryFolder)}
-                      disabled={Boolean(busy) || !settings.cloneHeroLibraryFolder}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
+        <div className="settings-grid">
+          <section className="settings-card settings-models" aria-labelledby="settings-models-title">
+            <div className="settings-card-head">
+              <h2 className="settings-card-title" id="settings-models-title">Models</h2>
             </div>
-          ))}
-        </section>
 
-        <section className="settings-section">
-          <div className="settings-section-label">CHART GENERATION</div>
-          <div className="setup-summary-row compact">
-            <div>
-              <h2>Download source</h2>
-              <p>Base URL that hosts the pinned Demucs, Beat This, and Fretformer files.</p>
-            </div>
-            <div className="settings-row-control">
-              <input
-                className="settings-select"
-                value={settings.assetBaseUrl || ""}
-                onChange={(e) => setSettings((current) => ({ ...current, assetBaseUrl: e.target.value }))}
-                placeholder="https://host/path/to/autochart-assets"
-                disabled={Boolean(busy)}
-              />
-              <div className="settings-actions">
-                <button className="settings-secondary" onClick={saveAssetBaseUrl} disabled={Boolean(busy)}>
-                  Save Source
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="setup-summary-row">
-            <div>
-              <h2>Chart generation package</h2>
-              <p>
-                {setupLoading
-                  ? "Checking the installed chart generation files…"
-                  : chartStatus === "unsupported"
-                    ? setup?.message || `${friendlyTarget(setup || hardware)} is unsupported.`
-                    : readyCount
-                      ? "Every required generation stage is installed and verified."
-                      : setup?.message || "The chart generation package is not installed yet."}
-              </p>
-            </div>
-            <div className="settings-actions">
-              <StatusPill status={chartStatus} />
-              <button
-                className="btn-primary"
-                onClick={installModels}
-                disabled={installDisabled}
-                aria-describedby="settings-install-reason"
-                title={installDisabledReason || "Install the verified chart generation package"}
-              >
-                {installButtonLabel}
-              </button>
-              <span id="settings-install-reason" className="sr-only">{installDisabledReason}</span>
-              <button className="settings-secondary" onClick={() => loadAll({ fresh: true })} disabled={Boolean(busy)} title={busy ? "Wait for the current settings operation to finish." : "Scan installed chart generation files again"}>
-                <I.spark /> Scan Again
-              </button>
-            </div>
-          </div>
-          <p className="settings-note">
-            The package is about {generationDownloadSize(standardPack)}. Autochart verifies every downloaded file before using it.
-          </p>
-          {(busy === "installing-models" || installProgress) && <InstallProgress progress={installProgress} />}
-          <details className="setup-package-details">
-            <summary>What’s included?</summary>
-            <div className="setup-package-details-body">
-              <GenerationPipeline pack={standardPack} />
-            </div>
-          </details>
-          {!setupLoading && !unsupported && standardChartComponents.length === 0 && (
-            <p className="settings-note">No chart generation files found. Choose a chart generation files folder above, then scan again.</p>
-          )}
-          {standardChartComponents.length > 0 && (
-            <details className="setup-details">
-              <summary>Exact file verification</summary>
-              <div className="setup-component-grid">
-                {standardChartComponents.map((component) => (
-                  <ComponentCard key={component.id} component={component} />
-                ))}
-              </div>
-            </details>
-          )}
-          {setup?.sourceRoots?.length > 0 && (
-            <details className="setup-details setup-roots">
-              <summary>Scanned folders</summary>
-              <div className="setup-file-list">
-                {setup.sourceRoots.map((root) => (
-                  <div className="setup-file-row" key={root}>
-                    <span>{root}</span>
+            <div className="model-list">
+              {MODEL_FAMILIES.map((family) => (
+                <div className="model-row" key={family.id}>
+                  <span className={`model-badge ${family.id}`} aria-hidden="true">{family.badge}</span>
+                  <div className="model-row-copy">
+                    <div className="model-row-name">
+                      <b>{family.label}</b>
+                      {family.recommended && <span className="model-tag recommended">Recommended</span>}
+                    </div>
+                    <small>{family.about}</small>
                   </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </section>
-
-        <section className="settings-section">
-          <div className="settings-section-label">RUNTIME AND HARDWARE</div>
-          {standardRuntimeComponents.length > 0 && (
-            <div className="setup-component-grid runtime-grid">
-              {standardRuntimeComponents.map((component) => (
-                <ComponentCard key={component.id} component={component} />
+                  <div className="model-row-action">{familyAction(family)}</div>
+                </div>
               ))}
             </div>
-          )}
-          {optionalRuntimeComponents.length > 0 && (
-            <details className="setup-details optional-components">
-              <summary>Optional runtimes</summary>
-              <div className="setup-component-grid runtime-grid">
-                {optionalRuntimeComponents.map((component) => (
-                  <ComponentCard key={component.id} component={component} />
-                ))}
-              </div>
-            </details>
-          )}
-          <div className="settings-row-item">
-            <div className="settings-row-copy">
-              <h2>Performance mode</h2>
-              <p>
-                {setupLoading
-                  ? "Checking hardware…"
-                  : unsupported
-                    ? `${friendlyTarget(hardware || setup)} is unsupported.`
-                    : hardware
-                      ? `${hardware.selectedModeLabel} selected.`
-                      : "Hardware has not been checked."}
-              </p>
-            </div>
-            <div className="settings-row-control">
-              <select
-                className="settings-select"
-                value={hardwareModeForPlatform(settings.hardwareMode, targetPlatform)}
-                onChange={(e) => updateHardwareMode(e.target.value)}
-                disabled={Boolean(busy) || unsupported}
-                aria-label="Performance mode"
+
+            {(busy === "installing-models" || installProgress) && <InstallProgress progress={installProgress} />}
+
+            <div className="settings-subsection">
+              <h3 className="settings-card-title small" id="settings-default-title">New projects start with</h3>
+              <div
+                className="perf-modes"
+                role="radiogroup"
+                aria-labelledby="settings-default-title"
+                style={{ gridTemplateColumns: `repeat(${defaultChoices.length}, minmax(0, 1fr))` }}
               >
-                  {hardwareModes.map((mode) => (
-                    <option key={mode.value} value={mode.value}>
-                      {mode.label}
-                  </option>
+                {defaultChoices.map((choice) => (
+                  <button
+                    key={choice.id}
+                    role="radio"
+                    aria-checked={defaultGeneratorId === choice.id}
+                    className={defaultGeneratorId === choice.id ? "active" : ""}
+                    onClick={() => updateModelPreference({ defaultGeneratorId: choice.id })}
+                    disabled={choice.disabled}
+                    title={choice.disabled ? choice.reason : choice.title}
+                  >
+                    {choice.label}
+                    {choice.beta && <span className="model-tag beta">Beta</span>}
+                  </button>
                 ))}
-              </select>
-              <div className="settings-actions">
-                <button className="settings-secondary" onClick={() => loadAll({ fresh: true })} disabled={Boolean(busy)}>
-                  <I.bolt /> Check Again
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-card settings-folders" aria-labelledby="settings-folders-title">
+            <div className="settings-card-head">
+              <h2 className="settings-card-title" id="settings-folders-title">Folders</h2>
+            </div>
+            <div className="folder-list">
+              {FOLDER_ROWS.map((row) => {
+                const value = settings[row.key];
+                const atDefault = settings.pathDefaults ? value === (settings.pathDefaults[row.key] || "") : false;
+                return (
+                  <div className="folder-row" key={row.key}>
+                    <div className="folder-row-copy">
+                      <b>{row.title}</b>
+                      <span className={"folder-path" + (value ? "" : " empty")} title={value || ""}>
+                        {value ? shortPath(value, home) : "Not set"}
+                      </span>
+                    </div>
+                    <div className="folder-row-actions">
+                      <button
+                        className="settings-secondary"
+                        onClick={() => runAction("opening", () => openSettingsPath(row.key))}
+                        disabled={Boolean(busy) || !value}
+                        title="Open folder"
+                      >
+                        <I.open /> Open
+                      </button>
+                      <button
+                        className="settings-secondary"
+                        onClick={() => runAction(row.key, row.choose)}
+                        disabled={Boolean(busy)}
+                        title="Choose another folder"
+                      >
+                        <I.inbox /> Change
+                      </button>
+                      <button
+                        className="settings-secondary"
+                        onClick={() => runAction(`reset-${row.key}`, () => resetSettingsPath(row.key))}
+                        disabled={Boolean(busy) || atDefault}
+                        title={atDefault ? "Already the default" : "Go back to the default folder"}
+                      >
+                        <I.undo /> Reset
+                      </button>
+                      {row.key === "cacheFolder" && (
+                        <button
+                          className="settings-secondary"
+                          onClick={confirmAndClearCache}
+                          disabled={Boolean(busy) || !value}
+                          title="Delete separated stems and analysis"
+                        >
+                          <I.trash /> Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="settings-card settings-perf" aria-labelledby="settings-perf-title">
+            <div className="settings-card-head">
+              <h2 className="settings-card-title" id="settings-perf-title">Performance</h2>
+              <span className="settings-card-hint" title={hardwareModeCaveat(settings.hardwareMode, targetPlatform)}>
+                {performanceSummary(hardware, unsupported)}
+              </span>
+            </div>
+            <div
+              className="perf-modes"
+              role="radiogroup"
+              aria-labelledby="settings-perf-title"
+              style={{ gridTemplateColumns: `repeat(${hardwareModes.length}, minmax(0, 1fr))` }}
+            >
+              {hardwareModes.map((mode) => (
+                <button
+                  key={mode.value}
+                  role="radio"
+                  aria-checked={selectedHardwareMode === mode.value}
+                  className={selectedHardwareMode === mode.value ? "active" : ""}
+                  onClick={() => updateHardwareMode(mode.value)}
+                  disabled={Boolean(busy) || unsupported}
+                >
+                  {mode.label}
                 </button>
-              </div>
-              {hardware && (
-                <div className="hardware-details">
-                  <div><span>Platform</span><b>{friendlyTarget(hardware)}</b></div>
-                  {hardware.supportLabel && <div><span>Support</span><b>{humanizeSupportLabel(hardware.supportLabel)}</b></div>}
-                  <div><span>CPU</span><b>{hardware.cpu || "Unknown"}</b></div>
-                  <div><span>GPU</span><b>{hardware.nvidia?.detected ? hardware.nvidia.gpus.map((gpu) => gpu.name).join(", ") : "Not detected"}</b></div>
-                  <div><span>Runtime</span><b>{humanizeRuntime(hardware.selectedRuntimePack)}</b></div>
-                  <div><span>Provider</span><b>{humanizeStatus(hardware.providerStatus)}</b></div>
-                  {!unsupported && (
-                    <div><span>Provider note</span><b>{hardware.providerCaveat || hardwareModeCaveat(settings.hardwareMode, hardware.platform)}</b></div>
-                  )}
-                  {hardware.fallbackReason && <div><span>Note</span><b>{hardware.fallbackReason}</b></div>}
-                </div>
-              )}
+              ))}
             </div>
-          </div>
-        </section>
+            {hardware?.fallbackReason && <p className="settings-card-sub warn">{hardware.fallbackReason}</p>}
+          </section>
 
-        <section className="settings-section">
-          <div className="settings-section-label">LICENSES</div>
-          <div className="license-list">
-            {["Autochart app", "Autochart chart models", "Beat This", "Demucs", "ONNX Runtime, Node.js, and runtime dependencies"].map((item) => (
-              <div className="license-row" key={item}>
-                <I.info />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-          <p className="settings-note">
-            Third-party notices are in docs/third-party-notices.md.
-          </p>
-        </section>
-
-        <section className="settings-section">
-          <div className="settings-section-label">RELEASE NOTICES</div>
-          <div className="setup-summary-row compact">
-            <div>
-              <h2>Licenses and release information</h2>
-              <p>
-                Supported release targets: {SUPPORTED_TARGETS.map((target) => target.label).join(", ")}.
-                FFmpeg is bundled for local media decoding and transforms.
-              </p>
+          <section className="settings-card settings-about" aria-labelledby="settings-about-title">
+            <div className="settings-card-head">
+              <h2 className="settings-card-title" id="settings-about-title">About</h2>
+              <span className="settings-card-hint">Everything stays on this computer. No telemetry.</span>
             </div>
-            <div className="settings-actions">
-              <button className="settings-secondary" onClick={() => openBundledNotice("thirdParty")} disabled={Boolean(busy)}>
-                Open third-party notices
-              </button>
-              <button className="settings-secondary" onClick={() => openBundledNotice("ffmpegLicense")} disabled={Boolean(busy)}>
-                Open FFmpeg LGPL notice
-              </button>
+            <div className="about-links">
+              {NOTICE_BUTTONS.map((notice) => (
+                <button key={notice.key} className="settings-secondary" onClick={() => openBundledNotice(notice.key)}>
+                  {notice.label}
+                </button>
+              ))}
               <a className="settings-secondary" href={NOTICE_LINKS.ffmpeg} target="_blank" rel="noreferrer">
-                FFmpeg legal information
+                FFmpeg legal
               </a>
             </div>
-          </div>
-          <p className="settings-note">
-            Each public binary must be accompanied by the exact FFmpeg Corresponding Source archive and checksum
-            from the same release page, at no additional charge.
-          </p>
-          <div className="settings-actions">
-            <button className="settings-secondary" onClick={() => openBundledNotice("releaseNotes")} disabled={Boolean(busy)}>
-              Open release notes
-            </button>
-            <button className="settings-secondary" onClick={() => openBundledNotice("privacy")} disabled={Boolean(busy)}>
-              Open privacy notice
-            </button>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <section className="settings-section">
-          <div className="settings-section-label">PRIVACY</div>
-          <div className="setup-summary-row">
-            <div>
-              <h2>Local by default</h2>
-              <p>Imported audio, generated charts, projects, and analysis caches stay on this computer.</p>
-            </div>
-          </div>
-          <p className="settings-note">
-            Autochart does not include telemetry. Network access is used to download the chart generation package from the configured source.
-          </p>
-        </section>
+        {diagnosticsOpen && (
+          <DiagnosticsSheet
+            setup={setup}
+            hardware={hardware}
+            busy={busy}
+            onCheck={() => loadAll({ fresh: true })}
+            onClose={() => setDiagnosticsOpen(false)}
+          />
+        )}
 
         {messageText && (
           <div

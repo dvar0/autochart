@@ -188,13 +188,13 @@ function assert(condition, message) {
     ]);
     assert(/role=\{message\.tone === "ok" \? "status" : "alert"\}/.test(setupSource), "setup messages lack semantic status roles");
     assert(/aria-live=\{message\.tone === "ok" \? "polite" : "assertive"\}/.test(setupSource), "setup messages are not announced");
-    assert(setupSource.includes("Scan Again") && settingsSource.includes("Scan Again"), "setup scan actions use different wording");
-    assert(setupSource.includes("Save Source") && settingsSource.includes("Save Source"), "download-source actions use different wording");
+    assert(setupSource.includes("Scan Again") && settingsSource.includes("Check files"), "model file scan actions are missing");
+    assert(setupSource.includes("Save Source") && !settingsSource.includes("Save Source"), "download-source field belongs to setup only");
     assert(projectBarSource.includes("Start new project with this media"), "source replacement does not explain that it creates a project");
     assert(!projectBarSource.includes('"Replace media"'), "misleading source-replacement label remains");
     assert(/\.setup-status\.checking\s*\{[^}]*var\(--text-dim\)[^}]*var\(--surface-2\)/.test(styles), "checking status is not neutral");
-    assert(settingsSource.includes("RELEASE NOTICES"), "release notices are not actionable in Settings");
-    assert(settingsSource.includes("Open FFmpeg LGPL notice") && settingsSource.includes("FFmpeg legal information"), "FFmpeg notice actions are missing");
+    assert(settingsSource.includes("Release notes") && settingsSource.includes("Licenses"), "release notices are not actionable in Settings");
+    assert(settingsSource.includes("FFmpeg license") && settingsSource.includes("FFmpeg legal"), "FFmpeg notice actions are missing");
     assert(generatePageSource.indexOf("project.unsupportedTarget") < generatePageSource.indexOf("project.setupBlocking"), "unsupported state must render before setup CTA");
     const targets = JSON.parse(targetSource).targets;
     assert(JSON.stringify(targets.map((target) => target.key).sort()) === JSON.stringify(["darwin-arm64", "linux-x64", "win32-x64"]), "shared target matrix is incomplete");
