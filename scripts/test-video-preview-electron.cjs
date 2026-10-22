@@ -117,7 +117,7 @@ async function main() {
         window.videoTestRoot = createRoot(host); window.videoTestRoot.render(<Harness />);
       ` },
       bundle: true, format: "iife", jsx: "automatic", write: false,
-      alias: { "@autochart/chart-writer": path.join(__dirname, "..", "shared", "chartWriter.cjs") },
+      alias: { "@autochart/chart-writer": path.join(__dirname, "..", "shared", "chartWriter.js") },
       define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "false" },
     });
     await win.webContents.executeJavaScript(`${ui.outputFiles[0].text}\nvoid 0;`);

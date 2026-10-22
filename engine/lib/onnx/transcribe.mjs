@@ -1,16 +1,14 @@
-"use strict";
-
 // JS port of the reference ONNX transcriber. Greedy (T<=0) is the CPU parity bar;
 // sampled mode uses app-owned RNG (not bit-compatible with numpy PCG64).
 
-const { createSession, tensor, runSession } = require("./sessionLoader.cjs");
-const { graphPath } = require("./modelsManifest.cjs");
-const {
+import { createSession, createRawSession, tensor, runSession, graphPath } from "./runtime.mjs";
+import { KV_CACHE_SLICE_ONNX_BASE64 } from "./kvCacheSliceGraph.mjs";
+import {
   PAD_TOKEN,
   BOS_TOKEN,
   EOS_TOKEN,
   BEAT_TOKEN,
-} = require("./chartEventStream.cjs");
+} from "./chartEventStream.mjs";
 
 const NEG_INF = -Infinity;
 
@@ -288,7 +286,7 @@ async function generate({
   const ctx0 = { nLayers, nHead, headDim };
   const guidanceEnabled = guidanceScale != null && guidanceScale !== 1.0
     && Array.isArray(uncondPrefixTokens) && uncondPrefixBias != null;
-  const cfgTwoCall = process.env.AUTOCHART_CFG_TWO_CALL === "1";
+  const cfgTwoCall = globalThis.process?.env?.AUTOCHART_CFG_TWO_CALL === "1";
 
   let alignedMemory, crossK, crossV, memInvalid;
   if (encoderCtx) {
@@ -534,9 +532,7 @@ function sliceCacheData({ nLayers, batch, nHead, headDim, length }, data, keep) 
 let gpuSliceSession = null;
 async function sliceGpuCache(k, v, keep) {
   if (!gpuSliceSession) {
-    const ort = require("onnxruntime-node");
-    const { KV_CACHE_SLICE_ONNX_BASE64 } = require("./kvCacheSliceGraph.cjs");
-    gpuSliceSession = ort.InferenceSession.create(Buffer.from(KV_CACHE_SLICE_ONNX_BASE64, "base64"), {
+    gpuSliceSession = createRawSession(Uint8Array.from(atob(KV_CACHE_SLICE_ONNX_BASE64), (c) => c.charCodeAt(0)), {
       executionProviders: ["webgpu"],
       preferredOutputLocation: { k_out: "gpu-buffer", v_out: "gpu-buffer" },
     });
@@ -600,22 +596,24 @@ function beatMelDims(beatMel, nBeats) {
   return [1, nBeats, channels, 80, 32];
 }
 
-module.exports = {
+async function runEncoder(encoderSession, beatMel, beatMask, nBeats) {
+  const beatMelTensor = tensor("float32", beatMel, beatMelDims(beatMel, nBeats));
+  const beatMaskTensor = tensor("bool", beatMask, [1, nBeats]);
+  const encOut = await runSession(encoderSession, { beat_mel: beatMelTensor, beat_mask: beatMaskTensor });
+  return {
+    alignedMemory: encOut.aligned_memory,
+    crossK: encOut.cross_k,
+    crossV: encOut.cross_v,
+    memInvalid: encOut.mem_invalid,
+  };
+}
+
+export {
   loadEncoderSessions,
   loadDecoderSession,
   generate,
   makeRng,
-  runEncoder: async (encoderSession, beatMel, beatMask, nBeats) => {
-    const beatMelTensor = tensor("float32", beatMel, beatMelDims(beatMel, nBeats));
-    const beatMaskTensor = tensor("bool", beatMask, [1, nBeats]);
-    const encOut = await runSession(encoderSession, { beat_mel: beatMelTensor, beat_mask: beatMaskTensor });
-    return {
-      alignedMemory: encOut.aligned_memory,
-      crossK: encOut.cross_k,
-      crossV: encOut.cross_v,
-      memInvalid: encOut.mem_invalid,
-    };
-  },
+  runEncoder,
   runDecoderStep,
   runDecoderBatchStep,
   sliceCache,

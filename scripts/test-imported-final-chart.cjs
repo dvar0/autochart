@@ -4,8 +4,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { writeChartText } = require("../shared/chartWriter.cjs");
-const { sourceChartBeatGrid } = require("../engine/lib/chartTiming.cjs");
+const { writeChartText } = require("../shared/chartWriter.js");
+const { sourceChartBeatGrid } = require("../engine/lib/chartTiming.mjs");
 const library = require("../electron/libraryStore.cjs");
 const { persistGeneratedTake } = require("../electron/generatedTake.cjs");
 

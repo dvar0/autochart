@@ -1,5 +1,3 @@
-"use strict";
-
 // Faithful JS port of the production Beat This detect->smooth grid pipeline.
 //
 // Reference (upstream beat_this + local smoother):
@@ -17,8 +15,8 @@
 // at exactly 1500 frames (50 fps = 30 s of audio). Assert chunk mel length == 1500
 // before every core call; off-shape inference silently corrupts output.
 
-const { createSession, sessionDevice, tensor, runSession } = require("./sessionLoader.cjs");
-const { graphPath } = require("./modelsManifest.cjs");
+import { createSession, sessionDevice, tensor, runSession } from "./runtime.mjs";
+import { graphPath } from "./runtime.mjs";
 
 const DEFAULTS = {
   sampleRate: 22050,
@@ -665,7 +663,7 @@ async function detectBeats(signalMono22050, manifest, sessions, orch, {
   };
 }
 
-module.exports = {
+export {
   DEFAULTS,
   beatOrchestration,
   loadBeatSessions,

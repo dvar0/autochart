@@ -28,7 +28,7 @@ const {
     assert.equal(isAllowedAppFile("dist/assets/index-abcdef12.js", "linux", "x64", allowlist), true);
     assert.equal(isAllowedAppFile("dist/extra.js", "linux", "x64", allowlist), false);
     assert.equal(isAllowedAppFile("shared/finalSlots.js", "linux", "x64", allowlist), true);
-    assert.equal(isAllowedAppFile("engine/lib/chartTiming.cjs", "linux", "x64", allowlist), true);
+    assert.equal(isAllowedAppFile("engine/lib/chartTiming.mjs", "linux", "x64", allowlist), true);
     assert.equal(isAllowedAppFile("dist/assets/index-abcdef12.js.map", "linux", "x64", allowlist), false);
 
     await fs.writeFile(path.join(assetsDir, "evil.js"), "console.log('unexpected');");

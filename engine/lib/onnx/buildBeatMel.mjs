@@ -1,5 +1,3 @@
-"use strict";
-
 // Beat-aligned mel pipeline (mirrors the training-time feature recipe).
 // v1: mel on six monos (full + four stems + non_drums = bass+vocals+other); non_drums
 // only supplies shared ref_db and is dropped before the stack. Output stacks
@@ -8,8 +6,8 @@
 // no reference-only mix -> [n_beats, 6, 80, 32]). Beat windows: 32 points at
 // t_i + (j+0.5)/32*(t_{i+1}-t_i), fractional frame + linear interp (Python parity).
 
-const { createSession, tensor, runSession } = require("./sessionLoader.cjs");
-const { graphPath } = require("./modelsManifest.cjs");
+import { createSession, tensor, runSession } from "./runtime.mjs";
+import { graphPath } from "./runtime.mjs";
 
 const CHANNEL_ORDER = ["full", "drums", "bass", "vocals", "other"];
 const FRAME_DURATION = 512 / 22050; // 0.023219954648526078
@@ -189,7 +187,7 @@ async function buildBeatMel({
   return { beatMel: out, beatMask, nBeats, nChannels, nFramesFinal, refDb };
 }
 
-module.exports = {
+export {
   buildBeatMel,
   loadMelSession,
   runMelGraph,

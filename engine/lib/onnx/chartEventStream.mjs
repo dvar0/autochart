@@ -1,6 +1,4 @@
-"use strict";
-
-const chartWriter = require("../../../shared/chartWriter.cjs");
+import * as chartWriter from "../../../shared/chartWriter.js";
 
 // Faithful JS port of the reference Python event-stream + chart-writer logic.
 // Pure logic, no ONNX, no audio. Kept in lock-step spec with the reference:
@@ -311,7 +309,7 @@ function stripSustainsFromTokens(tokens) {
   return out;
 }
 
-module.exports = {
+export {
   TICKS_PER_BEAT,
   SUSTAIN_BUCKET_TICKS,
   DIFFICULTY_NAMES,

@@ -1,5 +1,3 @@
-"use strict";
-
 // A .chart difficulty as the transcriber's token stream, so a model can read a
 // chart the app already has (Regenerate's inpainting context). Ports of the
 // training repo's
@@ -9,8 +7,8 @@
 // Python's round() is round-half-to-even; pyRound keeps beats and grid ticks
 // identical to the training data on charts whose ticks fall on a half.
 
-const { parseChartSections, chartResolution } = require("../chartTiming.cjs");
-const {
+import { parseChartSections, chartResolution } from "../chartTiming.mjs";
+import {
   TICKS_PER_BEAT,
   SUSTAIN_BUCKET_TICKS,
   BOS_TOKEN,
@@ -26,7 +24,7 @@ const {
   DESC_AUTO_BIN,
   difficultyToken,
   descriptorToken,
-} = require("./chartEventStream.cjs");
+} from "./chartEventStream.mjs";
 
 const TRACK_BY_DIFFICULTY = { expert: "ExpertSingle", hard: "HardSingle", medium: "MediumSingle", easy: "EasySingle" };
 
@@ -336,7 +334,7 @@ function spliceTrackNotes(chartText, difficulty, spans) {
   return [...lines.slice(0, open + 1), ...rows.map((row) => row.text), ...lines.slice(close)].join("\n");
 }
 
-module.exports = {
+export {
   TRACK_BY_DIFFICULTY,
   spliceTrackNotes,
   pyRound,

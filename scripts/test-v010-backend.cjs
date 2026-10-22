@@ -5,8 +5,8 @@ const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const vm = require("vm");
-const chartEvents = require("../engine/lib/onnx/chartEventStream.cjs");
-const chartWriter = require("../shared/chartWriter.cjs");
+const chartEvents = require("../engine/lib/onnx/chartEventStream.mjs");
+const chartWriter = require("../shared/chartWriter.js");
 const generationStages = require("../engine/lib/generationStages.cjs");
 const demucsWorkspace = require("../electron/demucsWorkspace.cjs");
 const hardwareProbe = require("../electron/hardwareProbe.cjs");
@@ -43,6 +43,7 @@ async function main() {
       require: (name) => {
         if (name === "onnxruntime-node") return fakeOrt;
         if (name === "./modelsManifest.cjs") return { graphPath: () => "fixture.onnx" };
+        if (name === "./runtime.mjs") return { installHost: () => {} };
         if (name === "child_process") return { execFile: (_command, _args, options, callback) => {
           queries += 1;
           assert.ok(options.windowsHide && options.timeout > 0 && options.maxBuffer > 0);

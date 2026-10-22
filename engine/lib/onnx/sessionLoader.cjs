@@ -2,12 +2,14 @@
 
 // ONNX session loader: EP selection (cpu/webgpu/coreml/cuda/auto), provider probes + runtime latches.
 // gpu-buffer preferredOutputLocation is WebGPU-only; CUDA throws BatchOrCopyMLValue if pinned.
+// Loading this module installs it as the stage modules' runtime host (runtime.mjs).
 
 const ort = require("onnxruntime-node");
 const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
-const { graphPath } = require("./modelsManifest.cjs");
+const { graphPath, loadNpz } = require("./modelsManifest.cjs");
+const { installHost } = require("./runtime.mjs");
 
 function defaultThreads() {
   try {
@@ -263,20 +265,6 @@ async function createSession(onnxPath, options = {}) {
   return session;
 }
 
-async function loadDemucsSessions(manifest, device = "cpu") {
-  const opts = { device };
-  const analysis = await createSession(graphPath(manifest, "demucs-analysis-stft"), opts);
-  const core = await createSession(graphPath(manifest, "demucs-core-network"), opts);
-  const synthesis = await createSession(graphPath(manifest, "demucs-synthesis-istft"), opts);
-  const devices = [analysis, core, synthesis].map((session) => sessionDevice(session, device));
-  return {
-    analysis,
-    core,
-    synthesis,
-    device: devices.includes("cpu") ? "cpu" : devices[0] || device,
-  };
-}
-
 function tensor(type, data, dims) {
   return new ort.Tensor(type, data, dims);
 }
@@ -289,9 +277,17 @@ function clearSessionCache() {
   resetAutoDeviceResolution();
 }
 
+installHost({
+  createSession,
+  createRawSession: (source, sessionOptions) => ort.InferenceSession.create(source, sessionOptions),
+  tensor,
+  sessionDevice,
+  graphSource: graphPath,
+  loadTables: async (manifest, file) => loadNpz(path.join(manifest.folder, file)),
+});
+
 module.exports = {
   createSession,
-  loadDemucsSessions,
   tensor,
   runSession,
   clearSessionCache,

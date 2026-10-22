@@ -21,6 +21,34 @@ The implementation is in `engine/lib/onnx/`. It emits normal stage events and
 incremental `partial_chart` events while decoding; the final `notes.chart` is
 the authoritative output.
 
+The stage modules (`*.mjs`) are ES modules shared with the browser engine. They
+reach ONNX Runtime, graph files and `.npz` tables only through the host seam in
+`runtime.mjs`: `sessionLoader.cjs` installs an `onnxruntime-node` host for the
+desktop, `engine/web/host.mjs` installs an `onnxruntime-web` host (WebGPU, with
+the wasm backend as CPU). `pipeline.mjs` holds the stage orchestration both
+hosts run (separation, timing, transcription, chart writing), so desktop and
+browser charts come from the same code. `resample.mjs` is a port of FFmpeg's
+default resampler; the browser decodes with Web Audio at the file's own rate and
+resamples with it, which keeps its audio identical to the desktop's FFmpeg path.
+
+### Browser engine
+
+`engine/web/` runs the same pipeline in a Web Worker: `audio.mjs` (decode +
+resample), `host.mjs` (runtime host, device choice, model manifest over HTTP),
+`generate.mjs` (`generateChart`) and `engine.worker.mjs`. The page must be
+cross-origin isolated (COOP `same-origin`, COEP `require-corp`) so the wasm
+backend can use threads. On WebGPU, charts match the desktop byte for byte. In
+`auto` mode the transcriber moves to CPU when a GPU readback takes longer than
+20 ms (Firefox polls GPU work about every 100 ms, which makes per-token decoding
+roughly ten times slower than on CPU). The CPU backend's separation differs
+slightly from native CPU, so CPU-only browser charts are valid but not identical
+to the desktop's.
+
+`scripts/web-spike/` is the test harness: `build.mjs` bundles the page and
+worker, `server.mjs` serves them with the isolation headers plus the model
+folder, and `compare.mjs` checks a browser run against a desktop job (chart,
+beats, per-stem SDR).
+
 For project-backed jobs, Electron commits the completed take to the project
 before returning the generation response. This save is independent of the
 renderer page and is deduplicated by job ID. Project writes are serialized;
@@ -159,7 +187,7 @@ the `[SyncTrack]` the generated chart ships with. Two detectors exist, chosen by
   timing cache key includes the source chart hash. A chart with no usable
   `[SyncTrack]` fails the job rather than falling back to detection, so a take
   labeled "Imported chart sync" can never have been charted against a detected
-  grid. `engine/lib/chartTiming.cjs` holds the tempo-map math and
+  grid. `engine/lib/chartTiming.mjs` holds the tempo-map math and
   `npm run test:source-chart-timing` gates it.
 
 A project that ships an imported `notes.chart` defaults to `source_chart_sync`,

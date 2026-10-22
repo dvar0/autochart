@@ -40,7 +40,7 @@ async function main() {
       format: "iife",
       platform: "browser",
       jsx: "automatic",
-      alias: { "@autochart/chart-writer": path.join(ROOT, "shared/chartWriter.cjs") },
+      alias: { "@autochart/chart-writer": path.join(ROOT, "shared/chartWriter.js") },
       define: { "import.meta.env.DEV": "false" },
       logLevel: "silent",
     });

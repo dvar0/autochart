@@ -1,5 +1,3 @@
-"use strict";
-
 // Regenerate (inpainting) with a fill-in-the-middle model. Port of the
 // training repo's FIM inference (src/data/fim.py build_fim_example;
 // scripts/eval_inpainting_continuation.py fim_candidates, seam_lp_of).
@@ -20,9 +18,9 @@
 // top of a past cache. CFG (style picks set) runs a second, all-auto stream
 // beside the conditioned one; seams are scored on the all-auto stream.
 
-const { createSession, tensor, runSession } = require("./sessionLoader.cjs");
-const { graphPath } = require("./modelsManifest.cjs");
-const {
+import { createSession, tensor, runSession } from "./runtime.mjs";
+import { graphPath } from "./runtime.mjs";
+import {
   PAD_TOKEN,
   BOS_TOKEN,
   EOS_TOKEN,
@@ -31,8 +29,8 @@ const {
   DESC_AUTO_BIN,
   descriptorToken,
   decodeTokens,
-} = require("./chartEventStream.cjs");
-const { sampleNext, sliceCache, disposeCache, disposeGpuTensor, NEG_INF } = require("./transcribe.cjs");
+} from "./chartEventStream.mjs";
+import { sampleNext, sliceCache, disposeCache, disposeGpuTensor, NEG_INF } from "./transcribe.mjs";
 
 async function loadFimDecoderSession(manifest, device = "cpu") {
   return createSession(graphPath(manifest, "transcriber-fim-decoder"), {
@@ -378,4 +376,4 @@ function fillEvents(fillTokens, startBeat) {
   return decodeTokens(fillTokens).events.map((e) => ({ ...e, beat: e.beat + startBeat }));
 }
 
-module.exports = { loadFimDecoderSession, inpaint, buildFimContext, normalBeatIndex, fillEvents };
+export { loadFimDecoderSession, inpaint, buildFimContext, normalBeatIndex, fillEvents };

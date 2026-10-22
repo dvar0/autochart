@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import chartWriter from "@autochart/chart-writer";
+import * as chartWriter from "@autochart/chart-writer";
 import { DIFF } from "../../data/difficultyMetadata.js";
 import { GAME_LIBRARY_NAME } from "../../data/gameLibrary.js";
 import { parseChart } from "../../lib/chart/parseChart.js";

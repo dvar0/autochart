@@ -1,5 +1,3 @@
-"use strict";
-
 const TRACK_SECTION_BY_DIFFICULTY = Object.freeze({
   easy: "EasySingle",
   medium: "MediumSingle",
@@ -76,7 +74,7 @@ function writeChartText(noteLines, {
   return { text: out.join("\n"), noteLineCount: (noteLines || []).length };
 }
 
-module.exports = {
+export {
   TRACK_SECTION_BY_DIFFICULTY,
   normalizeChartValue,
   writeChartText,

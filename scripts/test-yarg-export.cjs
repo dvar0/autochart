@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const library = require("../electron/libraryStore.cjs");
-const { writeChartText } = require("../shared/chartWriter.cjs");
+const { writeChartText } = require("../shared/chartWriter.js");
 const { readBuild } = require("./prepare-ffmpeg.cjs");
 
 // Exact Core submodule of YARG v0.15.0. Keep upstream code outside this repo

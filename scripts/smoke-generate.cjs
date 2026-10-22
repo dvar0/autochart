@@ -27,6 +27,7 @@ Options:
   --projects-folder <path>  Project folder (default: isolated temporary path).
   --asset-base-url <url>    Asset catalog base URL.
   --hardware <mode>         auto, cuda, webgpu, coreml, or cpu. Default: auto.
+  --generator <id>          Generator id. Default: the first one in the engine manifest.
   --generation-timeout-seconds <n>  Cancel generation after n seconds (default: 900; excludes installation).
   --difficulty <value>      easy, medium, hard, or expert. Default: expert.
   --seed <number>           Fixed generation seed. Default: 20260622.
@@ -50,6 +51,7 @@ function parseArgs(argv) {
     isolationRoot: "",
     assetBaseUrl: process.env.AUTOCHART_ASSETS_BASE_URL || assetInstaller.DEFAULT_ASSET_BASE_URL,
     hardware: "auto",
+    generator: "",
     generationTimeoutSeconds: 900,
     difficulty: "expert",
     seed: 20260622,
@@ -79,6 +81,7 @@ function parseArgs(argv) {
     } else if (arg === "--isolation-root") args.isolationRoot = next();
     else if (arg === "--asset-base-url") args.assetBaseUrl = next();
     else if (arg === "--hardware") args.hardware = next();
+    else if (arg === "--generator") args.generator = next();
     else if (arg === "--generation-timeout-seconds") args.generationTimeoutSeconds = Number(next());
     else if (arg === "--difficulty") args.difficulty = next();
     else if (arg === "--seed") args.seed = Number.parseInt(next(), 10);
@@ -339,7 +342,9 @@ async function withGenerationTimeout(jobId, sender, timeoutSeconds, generate) {
 
 async function runGeneration(userData, settings, args) {
   const manifest = await engineManager.loadManifest();
-  const generator = manifest.generators?.[0];
+  const generator = args.generator
+    ? manifest.generators?.find((entry) => entry.id === args.generator)
+    : manifest.generators?.[0];
   if (!generator) throw new Error("No generator is available.");
   const events = [];
   const sender = {

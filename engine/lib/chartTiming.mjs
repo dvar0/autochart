@@ -1,5 +1,3 @@
-"use strict";
-
 // .chart tempo-map reading, shared by the engine's timing stage (imported chart
 // sync) and its generated-chart reporting.
 
@@ -205,7 +203,7 @@ function sourceChartBeatGrid(chartText, { resolution: requestedResolution, audio
   };
 }
 
-module.exports = {
+export {
   SOURCE_CHART_MAX_BEATS,
   chartBpms,
   chartKeyValue,

@@ -109,7 +109,7 @@ async function main() {
         resolveDir: path.resolve(__dirname, '..'),
         loader: 'jsx',
       },
-      alias: { "@autochart/chart-writer": path.resolve(__dirname, "../shared/chartWriter.cjs") },
+      alias: { "@autochart/chart-writer": path.resolve(__dirname, "../shared/chartWriter.js") },
       bundle: true,
       outfile: path.join(temp, 'app.js'),
       format: 'iife', platform: 'browser', jsx: 'automatic',

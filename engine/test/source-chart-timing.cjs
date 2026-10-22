@@ -12,7 +12,7 @@ const {
   hasChartTempoAnchor,
   parseChartSections,
   sourceChartBeatGrid,
-} = require("../lib/chartTiming.cjs");
+} = require("../lib/chartTiming.mjs");
 
 const RESOLUTION = 192;
 

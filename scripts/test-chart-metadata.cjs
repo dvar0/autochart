@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { writeChartText } = require("../shared/chartWriter.cjs");
+const { writeChartText } = require("../shared/chartWriter.js");
 const library = require("../electron/libraryStore.cjs");
 
 (async () => {

@@ -1,5 +1,3 @@
-"use strict";
-
 // "Force a solo" for structure-marker models (Fretformer v2 DPO). Port of the
 // training repo's --require-solo (scripts/generate_chart_transcriber_song.py:
 // marker_observer, force_marker_at_best, force_solo_passes); its parity gate
@@ -17,8 +15,8 @@
 // them), and restarts the sampler from the same seed, as the reference
 // re-runs generate with the same seed.
 
-const { BEAT_TOKEN, decodeStructure } = require("./chartEventStream.cjs");
-const { generate, makeRng, sliceCache, disposeCache } = require("./transcribe.cjs");
+import { BEAT_TOKEN, decodeStructure } from "./chartEventStream.mjs";
+import { generate, makeRng, sliceCache, disposeCache } from "./transcribe.mjs";
 
 // Returns { probs, observe }: probs maps beat -> { p, pos }, the highest
 // P(marker) seen at that beat and the stream position to insert it at.
@@ -145,4 +143,4 @@ async function generateWithForcedSolo(options, { structure, seed, log = null }) 
   return finish(third.result, forcedSolo);
 }
 
-module.exports = { generateWithForcedSolo, markerObserver };
+export { generateWithForcedSolo, markerObserver };

@@ -19,11 +19,8 @@ export default defineConfig(({ command }) => ({
   base: "./",
   resolve: {
     alias: {
-      "@autochart/chart-writer": path.resolve("shared/chartWriter.cjs"),
+      "@autochart/chart-writer": path.resolve("shared/chartWriter.js"),
     },
-  },
-  optimizeDeps: {
-    include: ["@autochart/chart-writer"],
   },
   server: {
     host: "127.0.0.1",

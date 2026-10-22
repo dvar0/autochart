@@ -199,12 +199,12 @@ function isAllowedAppFile(relative, platform, arch, distAllowlist = new Set()) {
     "engine/manifest.json",
     "config/human-labels.json",
     "config/human-labels.cjs",
-    "shared/chartWriter.cjs",
+    "shared/chartWriter.js",
     "shared/generatedVersion.js",
     "shared/chartProvenance.js",
     "shared/finalSlots.js",
     "engine/lib/generationStages.cjs",
-    "engine/lib/chartTiming.cjs",
+    "engine/lib/chartTiming.mjs",
     "engine/lib/finishProcess.cjs",
     "engine/lib/onnx/package.json",
     "engine/licenses/beat-this-mit.txt",
@@ -240,7 +240,7 @@ function isAllowedAppFile(relative, platform, arch, distAllowlist = new Set()) {
   if (relative.startsWith("dist/")) return isAllowedPackagedDistFile(relative) && distAllowlist.has(relative);
   if (/^electron\/[^/]+\.cjs$/.test(relative)) return true;
   if (/^engine\/bin\/[^/]+\.cjs$/.test(relative)) return true;
-  if (/^engine\/lib\/onnx\/[^/]+\.cjs$/.test(relative)) return true;
+  if (/^engine\/lib\/onnx\/[^/]+\.(?:cjs|mjs)$/.test(relative)) return true;
   if (/^node_modules\/onnxruntime-node\/dist\/[^/]+\.js$/.test(relative)) return true;
   if (/^node_modules\/onnxruntime-common\/dist\/cjs\/[^/]+\.js$/.test(relative)) return true;
   return relative.startsWith(`node_modules/onnxruntime-node/bin/napi-v6/${platform}/${arch}/`);
@@ -352,7 +352,7 @@ function assertPackageContents({
   }
 
   assertBundledLicenses(appDir);
-  for (const helper of ["shared/finalSlots.js", "shared/chartProvenance.js", "engine/lib/chartTiming.cjs"]) {
+  for (const helper of ["shared/finalSlots.js", "shared/chartProvenance.js", "engine/lib/chartTiming.mjs"]) {
     assertExactCopy(path.join(PROJECT_ROOT, helper), path.join(appDir, helper), `Packaged helper ${helper}`);
   }
 

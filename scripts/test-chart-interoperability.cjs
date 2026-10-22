@@ -4,7 +4,7 @@
 const assert = require("assert/strict");
 const fs = require("fs");
 const path = require("path");
-const chartWriter = require("../shared/chartWriter.cjs");
+const chartWriter = require("../shared/chartWriter.js");
 
 (async () => {
   const parser = await import("../src/lib/chart/parseChart.js");

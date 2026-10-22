@@ -13,7 +13,7 @@ const {
   parseChartSections,
   sourceChartBeatGrid,
   tickToSeconds,
-} = require("../lib/chartTiming.cjs");
+} = require("../lib/chartTiming.mjs");
 const { finishProcess } = require("../lib/finishProcess.cjs");
 
 const ENGINE_ROOT = path.resolve(__dirname, "..");
@@ -633,23 +633,20 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
   const length = decoded.length;
   emit({ type: "log", stage: "demucs", stream: "stdout", message: `decoded ${length} samples (${(length / orch.sampleRate).toFixed(1)}s)` });
 
-  const sessions = await onnxLib.loadDemucsSessions(manifest, requestedDevice);
-  const executionProvider = sessions.device || requestedDevice;
-  emit({
-    type: "stage",
-    stage: "demucs",
-    status: "running",
-    backend: "onnxruntime-node",
-    device: executionProvider,
-    requestedDevice,
-  });
-  const planar = new Float32Array(2 * length);
-  planar.set(decoded.left, 0);
-  planar.set(decoded.right, length);
-  emit({ type: "log", stage: "demucs", stream: "stdout", message: `running ${orch.sources.length}-stem separation` });
-
-  const sourceStems = await onnxLib.separate(planar, length, sessions, orch, {
+  const { stems, device: executionProvider } = await onnxLib.separateStems({
+    manifest,
+    device: requestedDevice,
+    left: decoded.left,
+    right: decoded.right,
     log: (m) => emit({ type: "log", stage: "demucs", stream: "stdout", message: m }),
+    onDevice: (device) => emit({
+      type: "stage",
+      stage: "demucs",
+      status: "running",
+      backend: "onnxruntime-node",
+      device,
+      requestedDevice,
+    }),
     onProgress: ({ index, total, offset, chunkLength }) => {
       emit({
         type: "log",
@@ -660,7 +657,6 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
       emit({ type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0 });
     },
   });
-  const stems = onnxLib.foldStems(sourceStems, orch);
 
   const stemsMap = {};
   const stemArrays = {};
@@ -1068,41 +1064,24 @@ async function onnxDetectBeats(job, jobPath, opts = {}) {
   const mono = await onnxLib.decodeMono(audioPath, { sampleRate: orch.sampleRate });
   emit({ type: "log", stage: "timing", stream: "stdout", message: `decoded ${mono.length} samples (${(mono.length / orch.sampleRate).toFixed(1)}s)` });
 
-  const beatSessions = await onnxLib.loadBeatSessions(manifest, requestedDevice);
-  const executionProvider = beatSessions.device || requestedDevice;
-  emit({
-    type: "stage",
-    stage: "timing",
-    status: "running",
-    backend: "onnxruntime-node",
-    detector: "beat_this_ft_v4",
-    device: executionProvider,
-    requestedDevice,
-    smoothing: smoothingEnabled,
-  });
-  const detected = await onnxLib.detectBeats(mono, manifest, beatSessions, orch, {
-    log: (m) => emit({ type: "log", stage: "timing", stream: "stdout", message: m }),
+  const { beats, device: executionProvider } = await onnxLib.detectTiming({
+    manifest,
+    device: requestedDevice,
+    mono,
     smooth: smoothingEnabled,
+    log: (m) => emit({ type: "log", stage: "timing", stream: "stdout", message: m }),
+    onDevice: (device) => emit({
+      type: "stage",
+      stage: "timing",
+      status: "running",
+      backend: "onnxruntime-node",
+      detector: "beat_this_ft_v4",
+      device,
+      requestedDevice,
+      smoothing: smoothingEnabled,
+    }),
     onSmoothingStart: () => opts.lifecycle?.enter("smoothing"),
     onSmoothingError: (error) => opts.lifecycle?.fail(error, "smoothing"),
-  });
-  const activeBeatTimes = smoothingEnabled ? detected.beatTimes : detected.rawBeatTimes;
-  const beats = {
-    beatTimes: Float64Array.from(activeBeatTimes),
-    downbeatTimes: Float64Array.from(detected.downbeatTimes),
-    rawBeatTimes: Float64Array.from(detected.rawBeatTimes),
-    smoothedBeatTimes: smoothingEnabled ? Float64Array.from(detected.beatTimes) : new Float64Array(0),
-    nLeadIn: smoothingEnabled ? detected.nLeadIn : 0,
-    tempoBpm: onnxLib.medianBpm(activeBeatTimes),
-    timingMode,
-    detector: "beat_this_ft_v4_onnx",
-    syncLines: null,
-  };
-  emit({
-    type: "log",
-    stage: "timing",
-    stream: "stdout",
-    message: `beat: using ${timingMode} timing grid (${beats.beatTimes.length} beats)`,
   });
 
   const payload = {
@@ -1177,25 +1156,6 @@ async function decodeTranscriberAudio(onnxLib, audioPath, demucsStage, channelOr
   return { fullMono, stemMonos, audioDuration: fullStereo.length / 22050 };
 }
 
-// The decoder's prefix bias for a header (BOS, difficulty, knobs, flags).
-function prefixBiasMaker(onnxLib, manifest) {
-  const transcriberStage = manifest.stages.transcriber;
-  const conditioning = transcriberStage.prefixConditioning;
-  const tables = onnxLib.loadNpz(path.join(manifest.folder, conditioning.file));
-  const dModel = Number((transcriberStage.modelConfig && transcriberStage.modelConfig.dModel) || 512);
-  const descPrefixScan = Number(conditioning.descPrefixScan || 8);
-  // v1's manifest has no descriptorTokenBase, which keeps its original knob
-  // lookup (see computePrefixBias); six-stem models declare the model's DESC_BASE.
-  const descriptorTokenBase = Number(conditioning.descriptorTokenBase || 0);
-  const prefixBiasOf = (prefixTokens) => onnxLib.computePrefixBias(prefixTokens, {
-    descPrefixScan,
-    pervasiveDifficulty: Boolean(conditioning.pervasiveDifficulty),
-    pervasiveDescriptors: Boolean(conditioning.pervasiveDescriptors),
-    dModel, tables, descriptorTokenBase,
-  });
-  return { prefixBiasOf, descPrefixScan };
-}
-
 async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycle({ emit }) } = {}) {
   const generator = await resolveGeneratorConfig(job.generatorId, job);
   const onnxLib = require("../lib/onnx");
@@ -1250,33 +1210,48 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       backend: "onnxruntime-node",
       requestedDevice: transcriberDevice,
     });
-    const transcriberStage = manifest.stages && manifest.stages.transcriber ? manifest.stages.transcriber : {};
-    const modelConfig = (transcriberStage && transcriberStage.modelConfig) || {};
-    const maxBeats = Number(modelConfig.maxBeats || 1280);
-    const channelOrder = Array.isArray(transcriberStage.channelOrder) && transcriberStage.channelOrder.length
-      ? transcriberStage.channelOrder.map(String)
-      : onnxLib.CHANNEL_ORDER;
-    const refOnlyMixes = transcriberStage.refOnlyMixes && typeof transcriberStage.refOnlyMixes === "object"
-      ? transcriberStage.refOnlyMixes
-      : onnxLib.DEFAULT_REF_ONLY_MIXES;
-    if (modelConfig.inChannels != null && Number(modelConfig.inChannels) !== channelOrder.length) {
-      throw new Error(`transcription: model expects ${modelConfig.inChannels} channels but the manifest orders ${channelOrder.length}`);
-    }
-    const vocab = transcriberStage.vocab || {};
-    // The token layout is compiled into chartEventStream.cjs; refuse a model
-    // whose manifest disagrees instead of feeding it the wrong prefix ids.
-    for (const key of ["DIFF_BASE", "DESC_BASE", "N_DESCRIPTORS", "DESCRIPTOR_BIN_COUNT", "VOCAB_SIZE"]) {
-      if (vocab[key] != null && Number(vocab[key]) !== onnxLib[key]) {
-        throw new Error(`transcription: model vocab ${key}=${vocab[key]} does not match the engine (${onnxLib[key]})`);
-      }
-    }
-    const descNames = Array.isArray(vocab.DESCRIPTOR_NAMES) && vocab.DESCRIPTOR_NAMES.length
-      ? vocab.DESCRIPTOR_NAMES.map(String)
-      : onnxLib.DESCRIPTOR_NAMES;
-    const generatorKnobNames = descriptorKnobNames(generator);
-    if (descNames.join(",") !== generatorKnobNames.join(",")) {
-      throw new Error(`transcription: model knobs (${descNames.join(", ")}) do not match generator knobs (${generatorKnobNames.join(", ")})`);
-    }
+    const channelOrder = onnxLib.transcriberChannels(manifest);
+    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decoding ${channelOrder.length} channels (${channelOrder.join(", ")}) to mono 22050` });
+    const { fullMono, stemMonos, audioDuration } = await decodeTranscriberAudio(onnxLib, audioPath, demucsStage, channelOrder);
+    const beatTimes = Float64Array.from(beatStage.beats.beatTimes);
+    const resolution = beatStage.beats.resolution || CHART_OUTPUT_RESOLUTION;
+    const offset = beatStage.beats.offset || 0;
+    const transcription = await onnxLib.transcribe({
+      manifest,
+      device: transcriberDevice,
+      settings,
+      knobNames: descriptorKnobNames(generator),
+      fullMono,
+      stemMonos,
+      audioDuration,
+      beatTimes,
+      resolution,
+      offset,
+      // Imported chart sync hands back the source tempo map so the chart keeps it
+      // verbatim; a detected grid is turned back into tempo anchors.
+      syncLines: beatStage.beats.syncLines,
+      log: (m) => emit({ type: "log", stage: "transcription", stream: "stdout", message: m }),
+      onDevice: (device) => {
+        transcriberExecutionProvider = device;
+        emit({
+          type: "stage",
+          stage: "transcription",
+          status: "running",
+          backend: "onnxruntime-node",
+          device,
+          requestedDevice: transcriberDevice,
+        });
+      },
+      onPartial: (partial) => emit({
+        type: "partial_chart",
+        schemaVersion: 1,
+        stage: "transcription",
+        songKey: job.jobId,
+        songName: job.title || (job.metadata && job.metadata.title) || "Autochart",
+        ...partial,
+      }),
+    });
+    const { tokens, structure, forceSolo, forcedSolo, syncLines, nBeats, descNames, bins, useCfg } = transcription;
     const decoderSettings = {
       difficulty: settings.difficulty,
       temperature: settings.temperature,
@@ -1285,173 +1260,8 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       guidanceScale: settings.guidanceScale,
       knobs: settings.knobs,
       knobsActive: settings.knobsActive,
-      descriptorTrained: Boolean(transcriberStage && transcriberStage.prefixConditioning),
+      descriptorTrained: transcription.descriptorTrained,
     };
-
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decoding ${channelOrder.length} channels (${channelOrder.join(", ")}) to mono 22050` });
-    const melSession = await onnxLib.loadMelSession(manifest, transcriberDevice);
-    transcriberExecutionProvider = onnxLib.sessionDevice
-      ? onnxLib.sessionDevice(melSession, transcriberDevice)
-      : transcriberDevice;
-    emit({
-      type: "stage",
-      stage: "transcription",
-      status: "running",
-      backend: "onnxruntime-node",
-      device: transcriberExecutionProvider,
-      requestedDevice: transcriberDevice,
-    });
-    const { fullMono, stemMonos, audioDuration } = await decodeTranscriberAudio(onnxLib, audioPath, demucsStage, channelOrder);
-    const beatTimes = Float64Array.from(beatStage.beats.beatTimes);
-    const resolution = beatStage.beats.resolution || CHART_OUTPUT_RESOLUTION;
-    const offset = beatStage.beats.offset || 0;
-    // Imported chart sync hands back the source tempo map so the chart keeps it
-    // verbatim; a detected grid is turned back into tempo anchors here.
-    const syncLines = Array.isArray(beatStage.beats.syncLines) && beatStage.beats.syncLines.length
-      ? beatStage.beats.syncLines
-      : onnxLib.beatsToSyncLines(beatTimes, resolution, 0.5);
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: building beat_mel (${beatTimes.length - 1} beats, audio ${audioDuration.toFixed(1)}s)` });
-    const { beatMel, beatMask, nBeats, nFramesFinal, refDb } = await onnxLib.buildBeatMel({
-      melSession,
-      fullMono22050: fullMono,
-      stemMonos22050: stemMonos,
-      beatTimes,
-      maxBeats,
-      audioDuration,
-      channelOrder,
-      refOnlyMixes,
-      log: (m) => emit({ type: "log", stage: "transcription", stream: "stdout", message: m }),
-    });
-    const beatMelShape = [1, nBeats, channelOrder.length, 80, 32];
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: beat_mel shape [${beatMelShape.join(", ")}] nFrames=${nFramesFinal} refDb=${refDb.toFixed(3)}` });
-
-    const knobs = settings.knobs || {};
-    const bins = descNames.map((name) => {
-      const v = knobs[name];
-      if (v == null) return onnxLib.DESC_AUTO_BIN; // auto
-      const n = Math.trunc(Number(v));
-      if (!Number.isFinite(n)) return onnxLib.DESC_AUTO_BIN;
-      return Math.max(0, Math.min(6, n));
-    });
-    const prefixTokens = [onnxLib.BOS_TOKEN, onnxLib.difficultyToken(settings.difficulty)];
-    for (let knex = 0; knex < descNames.length; knex += 1) {
-      prefixTokens.push(onnxLib.descriptorToken(knex, bins[knex]));
-    }
-    // Structure-marker models take solo/section flags after the knobs.
-    const structure = transcriberStage.structure || null;
-    const structurePrefix = onnxLib.structurePrefixTokens(structure, { solos: settings.solos });
-    prefixTokens.push(...structurePrefix);
-    const { prefixBiasOf, descPrefixScan } = prefixBiasMaker(onnxLib, manifest);
-    const prefixBias = prefixBiasOf(prefixTokens);
-
-    // All-Auto CFG reproduces the unguided logits exactly (cond == uncond), so
-    // models that opt in skip the second decoder stream when no knob is set.
-    const cfgNeedsSetKnob = Boolean(transcriberStage.prefixConditioning && transcriberStage.prefixConditioning.cfgOnlyWithSetKnobs);
-    const useCfg = settings.guidanceScale > 1.0 &&
-      Boolean(transcriberStage.prefixConditioning && transcriberStage.prefixConditioning.pervasiveDescriptors) &&
-      (!cfgNeedsSetKnob || settings.knobsActive);
-    let uncondPrefixTokens = null, uncondPrefixBias = null;
-    if (useCfg) {
-      uncondPrefixTokens = [onnxLib.BOS_TOKEN, onnxLib.difficultyToken(settings.difficulty)];
-      for (let knex = 0; knex < descNames.length; knex += 1) {
-        uncondPrefixTokens.push(onnxLib.descriptorToken(knex, onnxLib.DESC_AUTO_BIN));
-      }
-      uncondPrefixTokens.push(...structurePrefix);
-      uncondPrefixBias = prefixBiasOf(uncondPrefixTokens);
-      emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: CFG w=${settings.guidanceScale} uncond prefix len ${uncondPrefixTokens.length}` });
-    } else {
-      emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: single-stream (no CFG; guidance=${settings.guidanceScale})` });
-    }
-
-    const encoderSession = await onnxLib.loadEncoderSessions(manifest, transcriberDevice);
-    const decoderSession = await onnxLib.loadDecoderSession(manifest, transcriberDevice);
-    const sessionDevices = [melSession, encoderSession, decoderSession].map((session) =>
-      onnxLib.sessionDevice ? onnxLib.sessionDevice(session, transcriberDevice) : transcriberDevice
-    );
-    transcriberExecutionProvider = sessionDevices.includes("cpu")
-      ? "cpu"
-      : sessionDevices[0] || transcriberDevice;
-    emit({
-      type: "stage",
-      stage: "transcription",
-      status: "running",
-      backend: "onnxruntime-node",
-      device: transcriberExecutionProvider,
-      requestedDevice: transcriberDevice,
-    });
-    const greedy = settings.temperature <= 0;
-    const rng = greedy ? null : onnxLib.makeRng(settings.seed);
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decode loop (device=${transcriberExecutionProvider}, requestedDevice=${transcriberDevice}, mode=${greedy ? "greedy" : "sampled"}, T=${settings.temperature}, top_p=${settings.topP}, seed=${settings.seed}, max_tokens=${Number(modelConfig.maxTokens || 8192)})` });
-
-    const partialState = { sequence: 0, sentTiming: false };
-
-    const forceSolo = Boolean(structure && settings.solos && settings.forceSolo);
-    const generateOptions = {
-      manifest,
-      encoderSession,
-      decoderSession,
-      beatMel,
-      beatMask,
-      nBeats,
-      prefixTokens,
-      prefixBias,
-      temperature: settings.temperature,
-      topP: settings.topP,
-      rng,
-      guidanceScale: useCfg ? settings.guidanceScale : 1.0,
-      uncondPrefixTokens,
-      uncondPrefixBias,
-      sampleOnlyAfterPrefix: Boolean(transcriberStage.decode && transcriberStage.decode.sampleOnlyAfterPrefix),
-      progressIntervalBeats: 4,
-      onProgress: ({ tokens, committedBeats, totalBeats, done }) => {
-        if (committedBeats <= 0 && !done) return;
-        const { events, issues } = onnxLib.decodeTokens(tokens);
-        const filtered = done ? events : events.filter((e) => e.beat < committedBeats);
-        const noteLines = onnxLib.flattenNoteLines(onnxLib.eventsToChartNotes(filtered, resolution));
-        partialState.sequence += 1;
-        const event = {
-          type: "partial_chart",
-          schemaVersion: 1,
-          stage: "transcription",
-          songKey: job.jobId,
-          songName: job.title || (job.metadata && job.metadata.title) || "Autochart",
-          sequence: partialState.sequence,
-          complete: done,
-          done,
-          committedBeats,
-          totalBeats,
-          tokenCount: tokens.length,
-          eventCount: filtered.length,
-          noteLineCount: noteLines.length,
-          noteLines,
-          decodeIssues: {
-            orphanModifiers: issues.orphan_modifiers,
-            orphanPositions: issues.orphan_positions,
-            notesWithoutPosition: issues.notes_without_position,
-            duplicatePositions: issues.duplicate_positions,
-          },
-        };
-        if (!partialState.sentTiming) {
-          event.timing = { resolution, syncLines, offset };
-          partialState.sentTiming = true;
-        }
-        emit(event);
-      },
-      log: (m) => emit({ type: "log", stage: "transcription", stream: "stdout", message: m }),
-    };
-    let decodeResult;
-    let forcedSolo = null;
-    if (forceSolo) {
-      ({ result: decodeResult, forcedSolo } = await onnxLib.generateWithForcedSolo(generateOptions, {
-        structure,
-        seed: settings.seed,
-        log: generateOptions.log,
-      }));
-    } else {
-      decodeResult = await onnxLib.generate(generateOptions);
-    }
-    const tokens = Array.from(decodeResult.tokens);
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decoded ${tokens.length} tokens in ${decodeResult.stats.generationSeconds}s` });
     emit({
       type: "stage",
       stage: "transcription",
@@ -1465,10 +1275,6 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     const result = await lifecycle.runStage("chart", async () => {
       activeGenerationStage = "chart";
       emit({ type: "stage", stage: "chart", status: "running", backend: "onnxruntime-node" });
-    const { events, issues } = onnxLib.decodeTokens(tokens);
-    const rows = onnxLib.eventsToChartNotes(events, resolution);
-    const structureMarks = onnxLib.decodeStructure(tokens, structure);
-    const { trackEvents, globalEvents } = onnxLib.structureChartLines(structureMarks, resolution, nBeats);
     const chartMetadata = {
       title: String(job.title || job.metadata?.title || "Untitled").trim() || "Untitled",
       artist: String(job.metadata?.artist || "Unknown Artist").trim() || "Unknown Artist",
@@ -1477,14 +1283,15 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     const chartDir = path.join(outputDir, "chart");
     const chartPath = path.join(chartDir, "notes.chart");
     await fs.mkdir(chartDir, { recursive: true });
-    const { text: chartText, noteLineCount } = onnxLib.writeChartText(rows, {
-      ...chartMetadata,
-      difficulty: settings.difficulty,
+    const { text: chartText, noteLineCount, events, issues, structureMarks } = onnxLib.chartFromTokens({
+      tokens,
+      structure,
+      nBeats,
       resolution,
       syncLines,
       offset,
-      globalEvents,
-      trackEvents,
+      metadata: chartMetadata,
+      difficulty: settings.difficulty,
     });
     await writeVerifiedAtomic(chartPath, chartText, {
       rootDirectory: outputDir,
@@ -1524,7 +1331,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       note_line_count: noteLineCount,
       token_stats: {
         n_tokens: tokens.length,
-        generation_seconds: decodeResult.stats.generationSeconds,
+        generation_seconds: transcription.stats.generationSeconds,
         n_beats: nBeats,
       },
       decode_issues: {
@@ -1553,17 +1360,9 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
         path: timingOutputPath,
         audioDuration,
       },
-      prefix: {
-        cond: prefixTokens,
-        uncond: uncondPrefixTokens,
-        descPrefixScan,
-        pervasiveDifficulty: Boolean(transcriberStage.prefixConditioning.pervasiveDifficulty),
-        pervasiveDescriptors: Boolean(transcriberStage.prefixConditioning.pervasiveDescriptors),
-      },
+      prefix: transcription.prefix,
       featureBuild: {
-        refDb, nFramesFinal, nBeats, maxBeats,
-        channelOrder,
-        beatMelShape,
+        ...transcription.featureBuild,
         demucsModel: demucsStage.demucsModel || null,
       },
       generatedStats: null,
@@ -1784,7 +1583,7 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
         structure,
         sectionFlag: Boolean(structure && structure.mode === "solo_sections"),
       });
-      const { prefixBiasOf } = prefixBiasMaker(onnxLib, manifest);
+      const { prefixBiasOf } = await onnxLib.prefixBiasMaker(manifest);
 
       const encoderSession = await onnxLib.loadEncoderSessions(manifest, runtime.device);
       const session = await onnxLib.loadFimDecoderSession(manifest, runtime.device);

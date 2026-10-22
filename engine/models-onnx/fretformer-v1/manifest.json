@@ -190,7 +190,7 @@
       "nBeatsDetermination": "From beatThis smoothed grid + nLeadIn prepended; n_beats = len(beatTimes)-1, capped so beatTimes[n_beats] <= audioDuration and to model_config.max_beats (1280).",
       "prefixConditioning": {
         "file": "prefix_tables.npz",
-        "loader": "engine/lib/onnx/prefixTables.cjs (tiny pure-JS npz/npy reader; no Python at runtime)",
+        "loader": "engine/lib/onnx/prefixTables.mjs (tiny pure-JS npz/npy reader; no Python at runtime)",
         "pervasiveDifficulty": false,
         "pervasiveDescriptors": true,
         "arrayKeys": ["descriptor_embedding_0", "descriptor_embedding_1", "descriptor_embedding_2", "descriptor_embedding_3", "descriptor_embedding_4"],

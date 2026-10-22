@@ -1,7 +1,18 @@
-"use strict";
+import { createSession, graphPath, sessionDevice, tensor, runSession } from "./runtime.mjs";
 
-const { tensor, runSession } = require("./sessionLoader.cjs");
-const { writeStereoWav } = require("./wavWrite.cjs");
+async function loadDemucsSessions(manifest, device = "cpu") {
+  const opts = { device };
+  const analysis = await createSession(graphPath(manifest, "demucs-analysis-stft"), opts);
+  const core = await createSession(graphPath(manifest, "demucs-core-network"), opts);
+  const synthesis = await createSession(graphPath(manifest, "demucs-synthesis-istft"), opts);
+  const devices = [analysis, core, synthesis].map((session) => sessionDevice(session, device));
+  return {
+    analysis,
+    core,
+    synthesis,
+    device: devices.includes("cpu") ? "cpu" : devices[0] || device,
+  };
+}
 
 // Faithful JS port of the reference Demucs-ONNX separation pipeline.
 // All math mirrors the reference implementation byte-for-byte. Reference validated at
@@ -206,9 +217,9 @@ function triangularWeights(N, transitionPower) {
   return w;
 }
 
-// Separate a stereo mix Float32Array (interleaved? NO: planar (C, L) -> we accept planar (1,2,L) flattened) into 4 stems.
-// mixFlat: Float32Array length 2*L (planar, channel-major: [ch0samples..., ch1samples...])
-// Returns arrays[stemIndex] = Float32Array planar (2, L): [leftSamples, rightSamples] flattened, OR {left,right}.
+// Separate a stereo mix into the model's sources.
+// mixFlat: Float32Array length 2*L, planar (all left samples, then all right).
+// Returns [{ name, left, right }] in orch.sources order.
 async function separate(mixFlat, totalLength, sessions, orch, { onProgress = null, log = null } = {}) {
   if (totalLength !== mixFlat.length / 2) {
     throw new Error(`mix length mismatch: ${mixFlat.length} != 2*${totalLength}`);
@@ -221,7 +232,9 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
   const stride = Math.floor((1 - overlap) * segmentLength);
   if (stride <= 0) throw new Error(`non-positive stride: ${stride}`);
 
-  const out = new Float32Array(B * S * C * totalLength); // (1,S,2,L)
+  // One buffer per source and channel: the stems come straight out of these.
+  const rows = [];
+  for (let r = 0; r < S * C; r += 1) rows.push(new Float32Array(totalLength));
   const sumWeight = new Float32Array(totalLength);
   const wAll = triangularWeights(segmentLength, orch.transitionPower); // length segmentLength
 
@@ -245,9 +258,9 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
       for (let c = 0; c < C; c += 1) {
         const segRow = (s * C + c) * segmentLength;
         const trimStart = (segmentLength - chunkLength) >> 1;
-        const outRow = ((0 * S + s) * C + c) * totalLength + offset;
+        const row = rows[s * C + c];
         for (let t = 0; t < targetLen; t += 1) {
-          out[outRow + t] += wClipped[t] * segData[segRow + trimStart + t];
+          row[offset + t] += wClipped[t] * segData[segRow + trimStart + t];
         }
       }
     }
@@ -263,26 +276,12 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
   for (let i = 0; i < totalLength; i += 1) if (sumWeight[i] < minW) minW = sumWeight[i];
   if (!(minW > 0)) throw new Error("overlap-add weight sum must be strictly positive everywhere");
 
-  for (let s = 0; s < S; s += 1) {
-    for (let c = 0; c < C; c += 1) {
-      const row = ((0 * S + s) * C + c) * totalLength;
-      for (let t = 0; t < totalLength; t += 1) out[row + t] /= sumWeight[t];
-    }
+  for (const row of rows) {
+    for (let t = 0; t < totalLength; t += 1) row[t] /= sumWeight[t];
   }
 
-  // Return stems as array of {name, left, right} in SOURCES order: drums, bass, other, vocals
-  const stems = [];
-  for (let s = 0; s < S; s += 1) {
-    const left = out.subarray(((0 * S + s) * C + 0) * totalLength, ((0 * S + s) * C + 1) * totalLength);
-    const right = out.subarray(((0 * S + s) * C + 1) * totalLength, ((0 * S + s) * C + 2) * totalLength);
-    // copy to detach from out buffer
-    stems.push({
-      name: orch.sources[s],
-      left: Float32Array.from(left),
-      right: Float32Array.from(right),
-    });
-  }
-  return stems;
+  // Stems as {name, left, right} in the model's source order.
+  return orch.sources.map((name, s) => ({ name, left: rows[s * C], right: rows[s * C + 1] }));
 }
 
 // Sum model sources into the cached stems per orch.stemFold (htdemucs_6s:
@@ -309,25 +308,10 @@ function foldStems(stems, orch) {
   });
 }
 
-// Decode-independent convenience: take planar stereo {left,right} Float32Arrays, separate, write wavs.
-async function separateAndWrite(mix, totalLength, sessions, orch, outDir, { onProgress = null, log = null, bits = 32 } = {}) {
-  const planar = new Float32Array(2 * totalLength);
-  planar.set(mix.left, 0);
-  planar.set(mix.right, totalLength);
-  const stems = await separate(planar, totalLength, sessions, orch, { onProgress, log });
-  const written = {};
-  for (const stem of stems) {
-    const p = `${outDir}/${stem.name}.wav`;
-    await writeStereoWav(p, stem.left, stem.right, orch.sampleRate, { bits });
-    written[stem.name] = { path: p, format: "wav", mime: "audio/wav" };
-  }
-  return { stems: written, stemArrays: stems };
-}
-
-module.exports = {
+export {
+  loadDemucsSessions,
   separate,
   foldStems,
-  separateAndWrite,
   triangularWeights,
   runSegment,
   chunkPadded,

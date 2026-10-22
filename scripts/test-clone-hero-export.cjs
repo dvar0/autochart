@@ -7,7 +7,7 @@ const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
 const { readBuild } = require("./prepare-ffmpeg.cjs");
 const library = require("../electron/libraryStore.cjs");
-const { writeChartText } = require("../shared/chartWriter.cjs");
+const { writeChartText } = require("../shared/chartWriter.js");
 
 // Exercise the real exporter and packaged codecs. These are documentation-based
 // contracts, not an assertion that Clone Hero itself has loaded the result.
