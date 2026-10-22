@@ -3528,22 +3528,34 @@ video.bg-layer {
 
 /* ---------- rail tabs: Generate · Regenerate · Edit ---------- */
 /* Pinned to the top of the rail on every tab, in the same spot, so the
-   switch reads as one panel changing pages. */
-.work-tabs {
+   switch reads as one panel changing pages. The bar is page-coloured, so
+   rail content scrolls under it and fades out below it. */
+.work-tabs-bar {
   position: sticky;
   top: 0;
   z-index: 7;
   flex: none;
+  /* a solid strip under the tabs that overlaps the next card's top padding,
+     so the layout at rest is unchanged */
+  padding: var(--sp-4) var(--sp-5) var(--sp-3);
+  margin-bottom: calc(-1 * var(--sp-3));
+  background: var(--window);
+}
+.work-tabs-bar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 100%;
+  height: 16px;
+  background: linear-gradient(var(--window), transparent);
+  pointer-events: none;
+}
+.work-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
-  margin: var(--sp-4) var(--sp-5) 0;
   padding: 3px;
   border-radius: var(--r-box);
   background: var(--surface-2);
-  /* the page colour around it hides rail content scrolling underneath */
-  box-shadow: 0 0 0 var(--sp-5) var(--window);
-  clip-path: inset(calc(-1 * var(--sp-4)) calc(-1 * var(--sp-5)) -6px);
 }
 .work-tabs button {
   min-width: 0;
@@ -5410,8 +5422,24 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   border-radius: 4px;
   opacity: .8;
 }
-.strip-redo, .strip-pending, .track-view, .track-sel, .track-hover, .track-time { position: absolute; pointer-events: none; }
+.strip-redo, .strip-pending, .track-view, .track-sel, .track-loop, .track-hover, .track-time { position: absolute; pointer-events: none; }
 .strip-redo { top: 0; height: 3px; background: var(--orange); }
+.strip-redo.is-original { opacity: .35; }
+/* Loops: a bracket along the timeline's foot; the one playing is solid. */
+.track-loop {
+  top: 0; bottom: 0; z-index: 2;
+  border-bottom: 3px solid color-mix(in srgb, var(--orange) 45%, transparent);
+}
+.track-loop::before, .track-loop::after {
+  content: "";
+  position: absolute; bottom: 0;
+  width: 3px; height: 10px;
+  background: color-mix(in srgb, var(--orange) 45%, transparent);
+}
+.track-loop::before { left: 0; }
+.track-loop::after { right: 0; }
+.track-loop.on { border-color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); }
+.track-loop.on::before, .track-loop.on::after { background: var(--orange); }
 .strip-pending { top: 0; bottom: 0; background: color-mix(in srgb, var(--orange) 30%, transparent); animation: strip-pulse 1s ease-in-out infinite alternate; }
 @keyframes strip-pulse { from { opacity: .45; } to { opacity: 1; } }
 /* What the roll is showing: a pair of brackets, [ ], around that span. */
@@ -5683,20 +5711,12 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-redo { justify-content: center; font-size: var(--fs-base); padding: 13px 16px; }
 .insp-redo svg { width: 17px; height: 17px; }
 .insp-knob { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; }
-/* Style knobs line up as one table: a label column, then three equal segments. */
-.insp-knobs { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 14px; }
-.insp-knobs .insp-knob { display: contents; }
-.insp-knobs .insp-knob > span { color: var(--text); }
-.insp-knobs .insp-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.insp-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
-.insp-seg button {
-  min-height: 28px; padding: 0 9px;
-  border: none; border-radius: calc(var(--r-pill) - 2px);
-  background: transparent; color: var(--text-dim);
-  font-size: var(--fs-xs); font-weight: 700;
-  cursor: pointer;
-}
-.insp-seg button.active { background: var(--surface); color: var(--purple); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+/* Tries and Style use the Generate rail's fields as they are. */
+.insp-settings { gap: 0; }
+.insp-settings .variant-field:last-child { margin-bottom: 0; }
+.tries-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tries-grid button { min-height: 36px; }
+.insp-info { margin-left: 6px; vertical-align: -2px; }
 .insp-progress { height: 10px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
 .insp-progress span {
   display: block; height: 100%;
@@ -5720,8 +5740,17 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-keys { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; align-items: center; }
 .insp-keys dt { display: flex; gap: 3px; font: 700 10px var(--font-mono); color: var(--text-dim); align-items: center; }
 .insp-keys dd { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.insp-alike { margin-left: auto; font-family: var(--font-ui); letter-spacing: 0; }
 .insp-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.insp-history li { display: flex; align-items: stretch; gap: 4px; }
+.insp-history li { display: flex; align-items: stretch; gap: 4px; border-radius: var(--r-box); }
+.insp-history li.on .insp-history-name { box-shadow: inset 0 0 0 var(--bw) var(--purple-bri); }
+.insp-history .insp-takes { flex: 0 0 132px; min-height: 0; background: var(--surface-2); }
+.insp-history .insp-takes span { color: var(--text); }
+.insp-history .insp-takes:not([data-on]) span { color: var(--text-faint); }
+.insp-history .insp-takes button:hover:not(:disabled) { background: var(--purple-bg); }
+.insp-pick { display: inline-grid; margin-left: 4px; vertical-align: -2px; color: var(--purple); visibility: hidden; }
+.insp-pick.on { visibility: visible; }
+.insp-pick svg { width: 11px; height: 11px; }
 .insp-history-name {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
@@ -5733,7 +5762,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-history-name b { font-size: var(--fs-sm); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .insp-history-name span { font-size: var(--fs-xs); color: var(--text-faint); }
 .insp-history-name:hover { background: var(--purple-bg); }
-.insp-history-name.active { box-shadow: inset 0 0 0 2px var(--orange); }
 .insp-takes {
   display: flex; align-items: center;
   min-height: 38px;

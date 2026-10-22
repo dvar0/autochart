@@ -153,7 +153,8 @@ export default function PianoRollEditor({
   onPreviewSelection,
   songEndTick = 0,
   pending = null,
-  loop = null,
+  loops = [],
+  activeLoop = -1,
   apiRef,
   onViewChange,
 }) {
@@ -175,12 +176,12 @@ export default function PianoRollEditor({
   const editorRef = useRef(editor);
   const pxPerBeatRef = useRef(pxPerBeat);
   const layoutRef = useRef(layout);
-  const viewRef = useRef({ mode, bars, sections, regions, pending, loop, songEnd: 0 });
+  const viewRef = useRef({ mode, bars, sections, regions, pending, loops, activeLoop, songEnd: 0 });
   docRef.current = doc;
   editorRef.current = editor;
   pxPerBeatRef.current = pxPerBeat;
   layoutRef.current = layout;
-  viewRef.current = { mode, bars, sections, regions, pending, loop, songEnd: songEndBarTick(bars, songEndTick) };
+  viewRef.current = { mode, bars, sections, regions, pending, loops, activeLoop, songEnd: songEndBarTick(bars, songEndTick) };
 
   const resolution = doc?.resolution || 192;
   const pxPerTick = pxPerBeat / resolution;
@@ -457,14 +458,13 @@ export default function PianoRollEditor({
       if (sustainOverride?.id === note.id) return sustainOverride.sustain;
       return note.open ? note.sustainsByLane.open || 0 : note.sustainsByLane[lane] || 0;
     };
-    const drawNote = (note, { faded = false } = {}) => {
+    const drawNote = (note) => {
       if (eraseOverride?.noteIds?.has(note.id)) return;
       const moved = moveDelta && sel.has(note.id);
       const baseTick = note.tick + (moved ? moveDelta.tick : 0);
       const headX = tickToX(baseTick);
       if (headX < -200 || headX > viewW + 200) return;
       const selected = sel.has(note.id);
-      ctx.globalAlpha = faded ? 0.22 : 1;
       if (note.open) {
         // A slim bar across all five lanes, like the open-note bar in game.
         const sustain = sustainFor(note, "open");
@@ -496,8 +496,8 @@ export default function PianoRollEditor({
       }
       ctx.globalAlpha = 1;
     };
-    for (const note of activeDoc.notes) drawNote(note, { faded: Boolean(pendingJob && inPending(note.tick)) });
-    // Streamed notes from an in-flight redo draw over the faded originals.
+    // Areas being regenerated show only the notes streaming in.
+    for (const note of activeDoc.notes) if (!(pendingJob && inPending(note.tick))) drawNote(note);
     for (const note of pendingJob?.notes || []) drawNote(note);
 
     // Ghost note under the pointer: where a click would add one.
@@ -553,16 +553,14 @@ export default function PianoRollEditor({
     ctx.lineTo(viewW, SECTION_ROW_H + BAR_ROW_H - 0.5);
     ctx.stroke();
 
-    // Redone spans get an orange edge along the top of the lanes (faint
-    // while showing the original). Takes are switched from the side panel.
+    // Regenerated areas get an orange edge along the top of the lanes (faint
+    // while showing the original). Tries are switched from the side panel.
     for (const redo of activeDoc.redos || []) {
-      for (const region of redo.regions) {
-        const x = tickToX(region.startTick);
-        const w = (region.endTick - region.startTick) * ppt;
-        if (x > viewW || x + w < 0) continue;
-        ctx.fillStyle = alpha(orange, redo.active < 0 ? 0.35 : 0.95);
-        ctx.fillRect(x, L.rulerH, w, 4);
-      }
+      const x = tickToX(redo.region.startTick);
+      const w = (redo.region.endTick - redo.region.startTick) * ppt;
+      if (x > viewW || x + w < 0) continue;
+      ctx.fillStyle = alpha(orange, redo.active < 0 ? 0.35 : 0.95);
+      ctx.fillRect(x, L.rulerH, w, 4);
     }
 
     ctx.font = "700 11px Inter, system-ui, sans-serif";
@@ -607,15 +605,17 @@ export default function PianoRollEditor({
       ctx.fillText(String(index + 1), x + 4, SECTION_ROW_H + 15);
     });
 
-    // Loop bracket along the bottom of the bar row.
-    if (view.loop) {
-      const x1 = tickToX(view.loop.startTick);
-      const x2 = tickToX(view.loop.endTick);
-      ctx.fillStyle = orange;
+    // Loop brackets along the bottom of the bar row; the playing one is
+    // solid, the others wait faintly.
+    view.loops.forEach((loop, index) => {
+      const x1 = tickToX(loop.startTick);
+      const x2 = tickToX(loop.endTick);
+      if (x2 < 0 || x1 > viewW) return;
+      ctx.fillStyle = index === view.activeLoop ? orange : alpha(orange, 0.4);
       ctx.fillRect(x1, SECTION_ROW_H + BAR_ROW_H - 3, x2 - x1, 3);
       ctx.fillRect(x1, SECTION_ROW_H + 4, 2, BAR_ROW_H - 4);
       ctx.fillRect(x2 - 2, SECTION_ROW_H + 4, 2, BAR_ROW_H - 4);
-    }
+    });
 
     // Grips on the selection's ends in the bar row, where nothing covers
     // them: drag one to stretch the span, drag the span itself to move it.
@@ -710,7 +710,7 @@ export default function PianoRollEditor({
   // Redraw on any state that affects the picture.
   useEffect(() => {
     scheduleDraw();
-  }, [doc, editor.revision, editor.selectedNoteIds, editor.selectedRangeIds, editor.playhead, editor.snap, pxPerBeat, layout, mode, bars, sections, regions, pending, loop, scheduleDraw]);
+  }, [doc, editor.revision, editor.selectedNoteIds, editor.selectedRangeIds, editor.playhead, editor.snap, pxPerBeat, layout, mode, bars, sections, regions, pending, loops, activeLoop, scheduleDraw]);
 
   useEffect(() => {
     reportView();

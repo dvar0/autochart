@@ -11,8 +11,10 @@
 // 2. Sample `candidates` fills from that context. The chart's own solo and
 //    section markers are teacher-forced after each hole BEAT and sampled
 //    markers are masked, so a regenerate never moves a solo or section.
-// 3. Keep the fill under which the model, reading in normal order, finds the
-//    chart's next `seamBeats` beats most likely (best seam).
+// 3. Score each fill by how likely the model, reading in normal order, finds
+//    the chart's next `seamBeats` beats after it (its seam). Every fill comes
+//    back; the best seam is marked chosen and stays in the chart for the
+//    holes after it.
 //
 // One graph does everything (transcriber-fim-decoder): n tokens per call on
 // top of a past cache. CFG (style picks set) runs a second, all-auto stream
@@ -186,31 +188,28 @@ function logSoftmaxAt(logits, offset, vocab, token) {
   return logits[offset + token] - max - Math.log(sum);
 }
 
-// Style picks: "less" / "more" move the chart's own speed / chords / movement
-// bin two steps (clamped); "auto" leaves the knob on auto. Training set the
-// knobs from the whole chart (per difficulty), so the steps start there.
-const STEP_KNOBS = { density: "speed", chords: "chords", movement: "movement" };
-function stepKnobBins(knobs, songValues, knobNames, descriptorBin) {
+// Style: the same knobs and 0..6 bins as Generate, keyed by knob name; a
+// missing or null knob stays on auto.
+function knobBins(knobs, knobNames) {
   const bins = new Array(N_DESCRIPTORS).fill(DESC_AUTO_BIN);
   let active = false;
-  for (const [pick, knob] of Object.entries(STEP_KNOBS)) {
-    const dir = knobs[pick] === "more" ? 1 : knobs[pick] === "less" ? -1 : 0;
-    const index = knobNames.indexOf(knob);
-    if (!dir || index < 0) continue;
-    bins[index] = Math.max(0, Math.min(6, descriptorBin(knob, songValues[knob]) + 2 * dir));
+  knobNames.forEach((name, index) => {
+    const value = knobs[name];
+    if (index >= N_DESCRIPTORS || !Number.isInteger(value)) return;
+    bins[index] = Math.max(0, Math.min(6, value));
     active = true;
-  }
+  });
   return { bins, active };
 }
 
 /**
  * tokens: the chart's normal stream (header with all-auto knobs, structure
  * flags, beats, EOS). holes: sorted, disjoint [startBeat, endBeat).
- * makePrefixBias(headerTokens) -> Float32Array. songValues: the chart's raw
- * descriptors (computeDescriptors). Returns the final stream and, per
- * hole, the chosen fill's tokens and the candidates' seam scores.
+ * makePrefixBias(headerTokens) -> Float32Array. knobs: { [knobName]: 0..6 }.
+ * Returns the final stream (chosen fills) and, per hole, every fill's tokens
+ * and seam score plus the chosen one's index.
  * onProgress({ hole, candidate, candidates, beats, fill }) after each sampled
- * BEAT (fill: that candidate's tokens so far); onHole(result) per kept fill.
+ * BEAT (fill: that candidate's tokens so far); onHole(result) per finished hole.
  */
 async function inpaint({
   manifest,
@@ -221,8 +220,6 @@ async function inpaint({
   holes,
   knobs = {},
   knobNames,
-  songValues,
-  descriptorBin,
   makePrefixBias,
   guidanceScale = 2,
   temperature,
@@ -261,7 +258,7 @@ async function inpaint({
   for (let h = 0; h < holes.length; h += 1) {
     const [b0, b1] = holes[h];
     const nHole = b1 - b0;
-    const { bins, active } = stepKnobBins(knobs, songValues, knobNames, descriptorBin);
+    const { bins, active } = knobBins(knobs, knobNames);
     const condTokens = tokens.slice();
     for (let k = 0; k < N_DESCRIPTORS; k += 1) condTokens[descScan + k] = descriptorToken(k, bins[k]);
     const useCfg = active && guidanceScale > 1;
@@ -358,12 +355,14 @@ async function inpaint({
         }
       }
       if (!fills.length) throw new Error("Regenerate could not fit these bars in the model's token budget.");
-      let best = fills[0];
-      for (const fill of fills) if (fill.seam !== null && (best.seam === null || fill.seam > best.seam)) best = fill;
-      tokens = tokens.slice(0, layout.beatPos[b0]).concat(best.middle, tokens.slice(layout.q));
+      let chosen = 0;
+      fills.forEach((fill, i) => {
+        if (fill.seam !== null && (fills[chosen].seam === null || fill.seam > fills[chosen].seam)) chosen = i;
+      });
+      tokens = tokens.slice(0, layout.beatPos[b0]).concat(fills[chosen].middle, tokens.slice(layout.q));
       const seams = fills.map((f) => (f.seam === null ? null : Math.round(f.seam * 1000) / 1000));
-      if (log) log(`inpaint: hole ${h + 1} kept candidate ${best.candidate + 1} of ${fills.length} (seams ${seams.join(", ")}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-      const done = { startBeat: b0, endBeat: b1, tokens: best.middle, chosen: best.candidate, seams, cfg: useCfg, bins };
+      if (log) log(`inpaint: hole ${h + 1} chose fill ${chosen + 1} of ${fills.length} (seams ${seams.join(", ")}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      const done = { startBeat: b0, endBeat: b1, fills: fills.map((f) => f.middle), chosen, seams, cfg: useCfg, bins };
       results.push(done);
       if (onHole) onHole(done);
     } finally {

@@ -1483,7 +1483,6 @@ async function readContainedOutputFile(outputDir, filePath, label, maxBytes = 64
   return readVerifiedFile(candidate, { label, maxBytes });
 }
 
-const INPAINT_PICKS = new Set(["less", "auto", "more"]);
 const INPAINT_DIFFICULTIES = new Set(["expert", "hard", "medium", "easy"]);
 
 // Regenerate's request, checked before it reaches the engine.
@@ -1497,17 +1496,21 @@ function inpaintRequest(value, generator) {
     endTick: Math.trunc(Number(region?.endTick)),
   })).filter((region) => Number.isSafeInteger(region.startTick) && Number.isSafeInteger(region.endTick) && region.startTick >= 0 && region.endTick > region.startTick);
   if (!regions.length) throw new Error("Pick bars to regenerate.");
+  // Style knobs as on Generate: a 0..6 bin, or left out for auto.
   const knobs = {};
-  for (const name of ["density", "chords", "movement"]) {
-    const pick = plainObject(request.knobs)[name];
-    knobs[name] = INPAINT_PICKS.has(pick) ? pick : "auto";
+  const knobNames = Array.isArray(generator.capabilities?.descriptorKnobs) ? generator.capabilities.descriptorKnobs : [];
+  for (const name of knobNames) {
+    const value = plainObject(request.knobs)[name];
+    if (Number.isInteger(value) && value >= 0 && value <= 6) knobs[name] = value;
   }
+  const tries = Math.trunc(Number(request.tries));
   const seed = Math.trunc(Number(request.seed));
   return {
     chartText,
     difficulty: INPAINT_DIFFICULTIES.has(request.difficulty) ? request.difficulty : "expert",
     regions,
     knobs,
+    tries: Number.isSafeInteger(tries) ? Math.max(1, Math.min(8, tries)) : 1,
     ...(Number.isSafeInteger(seed) && seed >= 0 ? { seed: seed % (2 ** 31 - 1) } : {}),
   };
 }

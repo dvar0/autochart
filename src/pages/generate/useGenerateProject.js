@@ -30,6 +30,7 @@ import {
   buildGenerationSettings,
   controlsForGenerationPreset,
   controlsFromSavedGeneration,
+  descriptorKnobsForGenerator,
   getGenerationPreset,
   generationVersionName,
   normalizeLeadInSilenceSeconds,
@@ -79,6 +80,8 @@ import { DEFAULT_DEMUCS_ID, newSongId } from "../../services/songSchema.js";
 // Regenerate's model: Fretformer v2 DPO stays the Generate model; its FIM
 // sibling rewrites picked bars.
 const INPAINT_GENERATOR_ID = "autochart.fretformer.v2-dpo-fim-onnx";
+// The FIM model's style knobs, for the browser preview where no generator is listed.
+const INPAINT_FALLBACK_KNOBS = descriptorKnobsForGenerator({ capabilities: { descriptorKnobs: ["speed", "chords", "hopos", "taps", "movement"] } });
 const EMPTY_DETAILS = { title: "", artist: "", album: "", year: "", genre: "", charter: "Autochart" };
 export const MIN_COMPARE_CHARTS = 2;
 export const MAX_COMPARE_CHARTS = 4;
@@ -2328,7 +2331,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       : !importedSong?.audioSource
         ? "Save the song first"
         : "";
-  const startInpaint = ({ regions, knobs, seed, onProgress }) => {
+  const startInpaint = ({ regions, knobs, tries, seed, onProgress }) => {
     const doc = editorState.doc;
     const source = editorSourceVersion;
     const jobId = crypto.randomUUID();
@@ -2339,7 +2342,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       if (inpaintBlockedReason) throw new Error(inpaintBlockedReason);
       unsubscribe = subscribeGenerationEvents((event) => {
         if (event?.jobId !== jobId || event.type !== "inpaint_progress") return;
-        onProgress?.({ done: event.done, total: event.total, notes: toNotes(event.regions || []) });
+        onProgress?.({ done: event.done, total: event.total, try: event.candidate, tries: event.candidates, notes: toNotes(event.regions || []) });
       });
       const result = await inpaintChart({
         jobId,
@@ -2353,11 +2356,20 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           difficulty: doc.difficulty,
           regions: regions.map(({ startTick, endTick }) => ({ startTick, endTick })),
           knobs,
+          tries,
           seed,
         },
       });
       if (canceled || result.status === "canceled") throw new DOMException("Regenerate canceled", "AbortError");
-      return toNotes(result.inpaint.regions);
+      return {
+        areas: result.inpaint.regions.map((region) => ({
+          startTick: region.startTick,
+          endTick: region.endTick,
+          tries: region.tries.map((t) => notesFromNoteLines(t.noteLines)),
+          seams: region.tries.map((t) => t.seam),
+          chosen: region.chosen,
+        })),
+      };
     })()
       .catch((err) => {
         if (err?.name !== "AbortError") setStatusMsg(err.message || "Regenerate failed.");
@@ -2394,6 +2406,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     previewTrack: editorPreviewTrack,
     hasSession: hasEditorSession,
     inpaintBlockedReason,
+    inpaintKnobs: inpaintGenerator ? descriptorKnobsForGenerator(inpaintGenerator) : INPAINT_FALLBACK_KNOBS,
     startInpaint: canInpaint() ? startInpaint : null,
   };
 

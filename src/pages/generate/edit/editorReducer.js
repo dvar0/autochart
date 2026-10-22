@@ -318,42 +318,74 @@ function applyOperation(state, action) {
       const ranges = doc.ranges.filter((range) => !ids.has(range.id));
       return { ...commit(state, { ...doc, ranges }), selectedRangeIds: [] };
     }
-    // Redo records live on the doc so undo/redo restores which take is showing.
-    // A record keeps the original notes and every take for its regions; star
-    // power and solo ranges inside the regions are left alone.
+    // Redo records live on the doc so undo/redo restores which try is showing.
+    // Star power and solo ranges inside an area are left alone.
+    // One record per regenerated area: { id, label, region, original, takes,
+    // seams, picked, active, matchedWith }. active -1 is the original; picked
+    // is the try Regenerate chose (matchedWith: the partners it was matched
+    // to, see alike.js). Regenerating an area's exact bars adds its tries to
+    // the record; an area over other records' bars replaces them, and its
+    // original keeps their originals.
     case "applyRedo": {
-      const regions = action.regions || [];
-      if (!regions.length) return state;
-      const redos = doc.redos || [];
-      const existing = action.redoId ? redos.find((redo) => redo.id === action.redoId) : null;
-      const inRegions = (note) => regions.some((r) => note.tick >= r.startTick && note.tick < r.endTick);
-      const kept = doc.notes.filter((note) => !inRegions(note));
-      const record = existing
-        ? { ...existing, takes: [...existing.takes, action.notes], active: existing.takes.length }
-        : {
-            id: `redo_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
-            label: action.label || "",
-            regions,
-            original: doc.notes.filter(inRegions),
-            takes: [action.notes],
-            active: 0,
+      const areas = action.areas || [];
+      if (!areas.length) return state;
+      let redos = doc.redos || [];
+      let notes = doc.notes;
+      for (const area of areas) {
+        const { region } = area;
+        const inArea = (note) => note.tick >= region.startTick && note.tick < region.endTick;
+        const existing = redos.find((r) => r.region.startTick === region.startTick && r.region.endTick === region.endTick);
+        let record;
+        if (existing) {
+          const at = existing.takes.length + area.pick;
+          record = {
+            ...existing,
+            takes: [...existing.takes, ...area.tries],
+            seams: [...existing.seams, ...area.seams],
+            picked: at,
+            active: at,
+            matchedWith: area.matchedWith || null,
           };
-      // A new redo over an older one's bars replaces that older record.
-      const others = redos.filter(
-        (redo) => redo.id !== record.id && !redo.regions.some((a) => regions.some((b) => a.startTick < b.endTick && b.startTick < a.endTick))
-      );
-      const nextDoc = untouchRegions(withNotes({ ...doc, redos: [...others, record] }, [...kept, ...action.notes]), regions);
+          redos = redos.map((r) => (r.id === existing.id ? record : r));
+        } else {
+          const older = redos.filter((r) => r.region.startTick < region.endTick && region.startTick < r.region.endTick);
+          const underOlder = (note) => older.some((r) => note.tick >= r.region.startTick && note.tick < r.region.endTick);
+          record = {
+            id: `redo_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+            label: area.label || "",
+            region,
+            original: [...notes.filter((n) => inArea(n) && !underOlder(n)), ...older.flatMap((r) => r.original.filter(inArea))],
+            takes: area.tries,
+            seams: area.seams,
+            picked: area.pick,
+            active: area.pick,
+            matchedWith: area.matchedWith || null,
+          };
+          redos = [...redos.filter((r) => !older.includes(r)), record];
+        }
+        notes = [...notes.filter((n) => !inArea(n)), ...record.takes[record.active]];
+      }
+      redos = [...redos].sort((a, b) => a.region.startTick - b.region.startTick);
+      const nextDoc = untouchRegions(withNotes({ ...doc, redos }, notes), areas.map((area) => area.region));
       return { ...commit(state, nextDoc), selectedNoteIds: [] };
     }
-    case "pickRedoTake": {
-      const redo = (doc.redos || []).find((r) => r.id === action.redoId);
-      if (!redo || redo.active === action.index) return state;
-      const notesFor = action.index < 0 ? redo.original : redo.takes[action.index];
-      if (!notesFor) return state;
-      const inRegions = (note) => redo.regions.some((r) => note.tick >= r.startTick && note.tick < r.endTick);
-      const kept = doc.notes.filter((note) => !inRegions(note));
-      const redos = doc.redos.map((r) => (r.id === redo.id ? { ...r, active: action.index } : r));
-      return { ...commit(state, untouchRegions(withNotes({ ...doc, redos }, [...kept, ...notesFor]), redo.regions)), selectedNoteIds: [] };
+    // picks: [{ redoId, index }], applied as one step.
+    case "pickRedoTakes": {
+      let redos = doc.redos || [];
+      let notes = doc.notes;
+      const regions = [];
+      for (const { redoId, index } of action.picks || []) {
+        const redo = redos.find((r) => r.id === redoId);
+        if (!redo || redo.active === index) continue;
+        const notesFor = index < 0 ? redo.original : redo.takes[index];
+        if (!notesFor) continue;
+        const inArea = (note) => note.tick >= redo.region.startTick && note.tick < redo.region.endTick;
+        notes = [...notes.filter((n) => !inArea(n)), ...notesFor];
+        redos = redos.map((r) => (r.id === redo.id ? { ...r, active: index } : r));
+        regions.push(redo.region);
+      }
+      if (!regions.length) return state;
+      return { ...commit(state, untouchRegions(withNotes({ ...doc, redos }, notes), regions)), selectedNoteIds: [] };
     }
     default:
       return state;

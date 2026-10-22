@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { alikeRegenPicks, mostAlikeRecordPicks } from "./alike.js";
+import { buildEditorPreviewTrack } from "./chartEditor.js";
 import { handEditedRegions } from "./editorReducer.js";
 import {
   barEndTick,
@@ -13,9 +15,22 @@ import {
 } from "./editRegions.js";
 import { startRedo } from "./inpaintService.js";
 
+// Regenerate writes this many versions of each area (remembered per machine).
+export const TRIES_OPTIONS = [1, 2, 4, 8];
+const TRIES_KEY = "autochart.regenerate.tries";
+
+function readTries() {
+  try {
+    const n = Number(localStorage.getItem(TRIES_KEY));
+    return TRIES_OPTIONS.includes(n) ? n : 1;
+  } catch {
+    return 1;
+  }
+}
+
 // State and actions behind the Regenerate and Edit tabs. It lives at the page
 // level, beside the shared preview highway, so a trip to the Generate tab
-// keeps a running regenerate, the style picks, the loop and the playhead.
+// keeps a running regenerate, the style knobs, the loop and the playhead.
 //
 // Two tabs, two selections. Regenerate picks whole bars (sections, or spans
 // dragged on the roll) and makes new takes of them; Edit picks single notes
@@ -44,7 +59,17 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
   const setRegions = useCallback((next) => applyEditorChange({ type: "setRegions", regions: next }), [applyEditorChange]);
   const sectionPickRef = useRef(null);
   const [pending, setPending] = useState(null);
-  const [knobs, setKnobs] = useState({ density: "auto", chords: "auto", movement: "auto" });
+  // Style knobs as on Generate: "auto" or a bin "0".."6", by knob id.
+  const [knobs, setKnobs] = useState({});
+  const [tries, setTriesState] = useState(readTries);
+  const setTries = useCallback((n) => {
+    setTriesState(n);
+    try {
+      localStorage.setItem(TRIES_KEY, String(n));
+    } catch {
+      // Remembering is a convenience.
+    }
+  }, []);
   const [loopOn, setLoopOn] = useState(false);
   const [view, setView] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -69,25 +94,58 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     return doc.notes.filter((note) => ids.has(note.id));
   }, [doc, editor.selectedNoteIds]);
   const selectionName = selectionLabel(bars, regions, sections);
-  // The redo whose bars are exactly the selection; its takes show in the panel.
-  const selectedRedo = useMemo(() => redos.find((redo) =>
-    redo.regions.length === regions.length &&
-    redo.regions.every((r, i) => r.startTick === regions[i].startTick && r.endTick === regions[i].endTick)
-  ) || null, [redos, regions]);
+  // While a regenerate runs, the highway plays the take with the areas being
+  // written showing only the notes streamed so far, like the roll.
+  const previewTrack = useMemo(() => {
+    if (!pending || !doc) return editor.previewTrack;
+    const inPending = (note) => pending.regions.some((r) => note.tick >= r.startTick && note.tick < r.endTick);
+    const notes = [...doc.notes.filter((note) => !inPending(note)), ...pending.notes].sort((a, b) => a.tick - b.tick);
+    return buildEditorPreviewTrack({ ...doc, notes });
+  }, [pending, doc, editor.previewTrack]);
 
-  // Loop the picked bars, or the newest redo, with a bar of run-in and run-out
-  // so both seams are heard.
-  const loop = useMemo(() => {
-    if (!loopOn || !bars.length) return null;
-    const target = regions.length ? regions : redos[redos.length - 1]?.regions;
-    if (!target?.length) return null;
-    const first = barIndexAt(bars, target[0].startTick);
-    const last = barIndexAt(bars, target[target.length - 1].endTick - 1);
-    return { startTick: bars[Math.max(0, first - 1)], endTick: barEndTick(bars, Math.min(bars.length - 1, last + 1)) };
+  // "Pick most alike": what it would switch, so the button knows if it can.
+  const alikePicks = useMemo(() => (doc ? mostAlikeRecordPicks(redos, doc, sections) : []), [doc, redos, sections]);
+
+  // One loop per picked area (or per regenerated area when nothing is
+  // picked), each with a bar of run-in and run-out so both seams are heard.
+  // The loop that plays is the one the playhead is in; outside all of them
+  // playback just runs.
+  const loops = useMemo(() => {
+    if (!loopOn || !bars.length) return [];
+    const target = regions.length ? regions : redos.map((redo) => redo.region);
+    return target.map((area) => ({
+      area,
+      startTick: bars[Math.max(0, barIndexAt(bars, area.startTick) - 1)],
+      endTick: barEndTick(bars, Math.min(bars.length - 1, barIndexAt(bars, area.endTick - 1) + 1)),
+    }));
   }, [loopOn, regions, redos, bars]);
-  const loopRef = useRef(loop);
-  loopRef.current = loop;
+  const loopsRef = useRef(loops);
+  loopsRef.current = loops;
+  const [activeLoop, setActiveLoop] = useState(-1);
+  const activeLoopRef = useRef(-1);
+  const lastTimeRef = useRef(null);
   const canLoop = Boolean(regions.length || redos.length);
+
+  // The loop holding a tick: the playing one if it still does, else the one
+  // whose area holds it, else any whose run-in or run-out does.
+  const loopAt = useCallback((tick) => {
+    const spans = loopsRef.current;
+    const current = spans[activeLoopRef.current];
+    if (current && tick >= current.startTick && tick < current.endTick) return activeLoopRef.current;
+    const inArea = spans.findIndex((l) => tick >= l.area.startTick && tick < l.area.endTick);
+    return inArea >= 0 ? inArea : spans.findIndex((l) => tick >= l.startTick && tick < l.endTick);
+  }, []);
+  const updateActiveLoop = useCallback((index) => {
+    if (activeLoopRef.current === index) return;
+    activeLoopRef.current = index;
+    setActiveLoop(index);
+  }, []);
+  useEffect(() => {
+    if (!doc) return;
+    activeLoopRef.current = -1;
+    updateActiveLoop(loopAt(doc.tempoMap.secondsToTick(editor.playhead.time || 0)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loops]);
 
   // ---- playback ----
   // The highway keeps playing across tabs. Coming back, the roll and the song
@@ -112,17 +170,9 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
   const togglePlay = useCallback(() => {
     const preview = highwayRef.current;
     if (!preview) return;
-    if (preview.isPlaying?.()) {
-      preview.pause?.();
-      return;
-    }
-    const looping = loopRef.current;
-    if (looping && doc) {
-      const tick = doc.tempoMap.secondsToTick(editor.playhead.time || 0);
-      if (tick < looping.startTick || tick >= looping.endTick) preview.seek?.(doc.tempoMap.tickToSeconds(looping.startTick));
-    }
-    preview.play?.();
-  }, [doc, editor.playhead.time, highwayRef]);
+    if (preview.isPlaying?.()) preview.pause?.();
+    else preview.play?.();
+  }, [highwayRef]);
 
   useEffect(() => {
     if (!editor.playRequest) return;
@@ -130,14 +180,24 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor.playRequest]);
 
+  // Playing across the playing loop's end wraps to its start. A jump (a seek
+  // or scrub) lands wherever it lands, and the loop there takes over.
   const onProgress = useCallback((time, duration) => {
     setEditorPlayhead({ time, duration });
-    const looping = loopRef.current;
-    if (!looping || !doc || !highwayRef.current?.isPlaying?.()) return;
-    if (time >= doc.tempoMap.tickToSeconds(looping.endTick)) {
-      highwayRef.current.seek(doc.tempoMap.tickToSeconds(looping.startTick));
+    const prev = lastTimeRef.current;
+    lastTimeRef.current = time;
+    if (!doc || !loopsRef.current.length) return;
+    const current = loopsRef.current[activeLoopRef.current];
+    if (current && prev != null && highwayRef.current?.isPlaying?.()) {
+      const end = doc.tempoMap.tickToSeconds(current.endTick);
+      if (prev < end && time >= end && time - prev < 0.75) {
+        lastTimeRef.current = null;
+        highwayRef.current.seek(doc.tempoMap.tickToSeconds(current.startTick));
+        return;
+      }
     }
-  }, [doc, setEditorPlayhead, highwayRef]);
+    updateActiveLoop(loopAt(doc.tempoMap.secondsToTick(time)));
+  }, [doc, setEditorPlayhead, highwayRef, loopAt, updateActiveLoop]);
 
   const seekTick = useCallback((tick) => {
     if (!doc) return;
@@ -182,22 +242,33 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
   }, [seekTick]);
 
   // ---- regenerate ----
-  const runRedo = useCallback((targetRegions, { redoId = null, label }) => {
+  const runRedo = useCallback((targetRegions) => {
     if (!doc || pending || !targetRegions.length) return;
-    const total = targetRegions.reduce((sum, r) => sum + barIndexAt(bars, r.endTick - 1) - barIndexAt(bars, r.startTick) + 1, 0);
-    setPending({ regions: targetRegions, notes: [], done: 0, total, label });
+    const total = targetRegions.reduce((sum, r) => sum + barIndexAt(bars, r.endTick - 1) - barIndexAt(bars, r.startTick) + 1, 0) * tries;
+    setPending({ regions: targetRegions, notes: [], done: 0, total, try: 0, tries });
+    const knobBins = {};
+    for (const knob of editor.inpaintKnobs) {
+      const value = knobs[knob.id];
+      if (value != null && value !== "auto") knobBins[knob.id] = Number(value);
+    }
     const job = startRedo({
       doc,
       bars,
       regions: targetRegions,
-      knobs,
+      knobs: knobBins,
+      tries,
       run: editor.startInpaint,
-      onProgress: ({ done, total: of, notes }) => setPending((current) => (current ? { ...current, done, total: of ?? current.total, notes } : current)),
+      onProgress: ({ done, total: of, try: at, notes }) =>
+        setPending((current) => (current ? { ...current, done, total: of ?? current.total, try: at ?? current.try, notes } : current)),
     });
     jobRef.current = job;
     job.promise
-      .then((notes) => {
-        applyEditorChange({ type: "applyRedo", redoId, regions: targetRegions, notes, label });
+      .then(({ areas: results }) => {
+        const areas = results.map((result) => {
+          const region = { startTick: result.startTick, endTick: result.endTick };
+          return { region, label: redoLabel(bars, [region], sections), tries: result.tries, seams: result.seams, pick: result.chosen };
+        });
+        applyEditorChange({ type: "applyRedo", areas: alikeRegenPicks(areas, doc, sections) });
         // The bars stay selected, so Regenerate again tries another take.
         setRegions(targetRegions);
         setLoopOn(true);
@@ -211,7 +282,7 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
         if (jobRef.current === job) jobRef.current = null;
         setPending(null);
       });
-  }, [doc, pending, bars, knobs, editor, applyEditorChange, setRegions, seekTick]);
+  }, [doc, pending, bars, sections, knobs, tries, editor, applyEditorChange, setRegions, seekTick]);
 
   useEffect(() => () => jobRef.current?.cancel(), []);
 
@@ -234,18 +305,22 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     setConfirm({ kind, regions: edited, run });
   }, [doc]);
 
-  // Redoing the exact bars of an earlier redo adds a take to it, so its
-  // Original stays reachable.
+  // Regenerating an area's exact bars again adds tries to it, so its
+  // original and earlier tries stay reachable.
   const redoSelection = useCallback(() => {
     if (!regions.length || pending || editor.inpaintBlockedReason) return;
-    guardHandEdits(regions, "regen", () =>
-      runRedo(regions, { redoId: selectedRedo?.id ?? null, label: selectedRedo?.label ?? redoLabel(bars, regions, sections) })
-    );
-  }, [regions, pending, editor.inpaintBlockedReason, guardHandEdits, runRedo, selectedRedo, bars, sections]);
+    guardHandEdits(regions, "regen", () => runRedo(regions));
+  }, [regions, pending, editor.inpaintBlockedReason, guardHandEdits, runRedo]);
 
   const pickRedoTake = useCallback((redo, index) => {
-    guardHandEdits(redo.regions, "take", () => applyEditorChange({ type: "pickRedoTake", redoId: redo.id, index }));
+    guardHandEdits([redo.region], "take", () => applyEditorChange({ type: "pickRedoTakes", picks: [{ redoId: redo.id, index }] }));
   }, [guardHandEdits, applyEditorChange]);
+
+  const pickMostAlike = useCallback(() => {
+    if (!alikePicks.length) return;
+    const regionsTouched = alikePicks.map((pick) => redos.find((r) => r.id === pick.redoId).region);
+    guardHandEdits(regionsTouched, "take", () => applyEditorChange({ type: "pickRedoTakes", picks: alikePicks }));
+  }, [alikePicks, redos, guardHandEdits, applyEditorChange]);
 
   const confirmOverwrite = useCallback(() => {
     const run = confirm?.run;
@@ -381,13 +456,19 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     redos,
     selectedNotes,
     selectionName,
-    selectedRedo,
+    previewTrack,
     songEndTick,
     pending,
     regenBlockedReason: editor.inpaintBlockedReason,
+    styleKnobs: editor.inpaintKnobs,
     knobs,
-    setKnob: (key, value) => setKnobs((current) => ({ ...current, [key]: value })),
-    loop,
+    setKnob: (id, value) => setKnobs((current) => ({ ...current, [id]: value })),
+    setAllKnobsAuto: () => setKnobs({}),
+    tries,
+    setTries,
+    loopOn,
+    loops,
+    activeLoop,
     canLoop,
     toggleLoop: () => setLoopOn((v) => !v),
     view,
@@ -412,10 +493,12 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     noteAction,
     redoSelection,
     pickRedoTake,
+    canPickMostAlike: alikePicks.length > 0,
+    pickMostAlike,
     cancelRedo: () => jobRef.current?.cancel(),
     focusRedo: (redo) => {
-      setRegions(redo.regions);
-      focusTick(redo.regions[0].startTick);
+      setRegions([redo.region]);
+      focusTick(redo.region.startTick);
     },
   };
 }

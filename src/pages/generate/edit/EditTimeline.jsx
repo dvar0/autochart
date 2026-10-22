@@ -25,11 +25,11 @@ export default function EditTimeline({ project, ws }) {
           </button>
           <span className="edit-time">{fmtTime(editor.playhead.time)} <i>/ {fmtTime(editor.playhead.duration || doc.durationSec)}</i></span>
           <button
-            className={"edit-loop" + (ws.loop ? " on" : "")}
+            className={"edit-loop" + (ws.loopOn && ws.loops.length ? " on" : "")}
             onClick={ws.toggleLoop}
             disabled={!ws.canLoop}
-            aria-pressed={Boolean(ws.loop)}
-            title={ws.canLoop ? "Loop the selection (L)" : "Select something to loop"}
+            aria-pressed={Boolean(ws.loopOn && ws.loops.length)}
+            title={ws.canLoop ? "Loop the area the playhead is in (L)" : "Select something to loop"}
           >
             ⟲ Loop
           </button>
@@ -43,6 +43,8 @@ export default function EditTimeline({ project, ws }) {
           lifted={ws.dragPreview?.active || null}
           origin={ws.dragPreview?.origin || null}
           pending={ws.pending}
+          loops={ws.loops}
+          activeLoop={ws.activeLoop}
           view={ws.view}
           playheadTick={playheadTick}
           endTick={ws.songEndTick}
@@ -72,7 +74,8 @@ export default function EditTimeline({ project, ws }) {
           onPreviewSelection={ws.setDragPreview}
           songEndTick={ws.songEndTick}
           pending={ws.pending}
-          loop={ws.loop}
+          loops={ws.loops}
+          activeLoop={ws.activeLoop}
           apiRef={ws.rollApiRef}
           onViewChange={ws.setView}
         />

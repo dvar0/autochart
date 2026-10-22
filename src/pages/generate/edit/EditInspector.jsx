@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { I } from "../../../icons.jsx";
+import StyleFader, { KNOB_COLORS } from "../StyleFader.jsx";
 import WorkTabs from "../WorkTabs.jsx";
-import { barNumberLabel } from "./editRegions.js";
+import { barNumberLabel, regionsCover } from "./editRegions.js";
+import { TRIES_OPTIONS } from "./useEditWorkspace.js";
 
 // The right rail on the Regenerate (pick bars, make new takes of them) and
 // Edit (change single notes) tabs. The tab also sets what the piano roll
@@ -10,11 +12,7 @@ import { barNumberLabel } from "./editRegions.js";
 // act on shakes the selection box instead. A running regenerate shows its
 // progress in place of its button.
 
-const KNOBS = [
-  { key: "density", name: "Notes", options: ["less", "auto", "more"], labels: ["Fewer", "Auto", "More"] },
-  { key: "chords", name: "Chords", options: ["less", "auto", "more"], labels: ["Fewer", "Auto", "More"] },
-  { key: "movement", name: "Movement", options: ["less", "auto", "more"], labels: ["Less", "Auto", "More"] },
-];
+const TRIES_INFO = "Versions written for each area. Regenerate keeps the one that fits best, and you can flip through the rest. More tries take longer.";
 
 const NOTE_ACTIONS = [
   { id: "tap", label: "Tap", key: "T", icon: I.bolt, tone: "tap" },
@@ -51,10 +49,15 @@ export default function EditInspector({ project, ws }) {
           bars={ws.bars}
           regions={ws.regions}
           selectionName={ws.selectionName}
-          selectedRedo={ws.selectedRedo}
           pending={ws.pending}
           blockedReason={ws.regenBlockedReason}
+          styleKnobs={ws.styleKnobs}
           knobs={ws.knobs}
+          tries={ws.tries}
+          onTries={ws.setTries}
+          onAllAuto={ws.setAllKnobsAuto}
+          canPickMostAlike={ws.canPickMostAlike}
+          onPickMostAlike={ws.pickMostAlike}
           confirm={ws.confirm}
           onConfirm={ws.confirmOverwrite}
           onCancelConfirm={ws.cancelOverwrite}
@@ -110,10 +113,15 @@ function RegenTab({
   bars,
   regions,
   selectionName,
-  selectedRedo,
   pending,
   blockedReason,
+  styleKnobs,
   knobs,
+  tries,
+  onTries,
+  onAllAuto,
+  canPickMostAlike,
+  onPickMostAlike,
   confirm,
   onConfirm,
   onCancelConfirm,
@@ -129,11 +137,12 @@ function RegenTab({
   const tempo = doc?.tempoMap;
   const redos = doc?.redos || [];
   const hasSelection = regions.length > 0;
+  const allAuto = styleKnobs.every((knob) => (knobs[knob.id] ?? "auto") === "auto");
+  const busy = Boolean(pending);
   const [nudge, needsSelection] = useNudge();
-  const spotLabel = (region) =>
-    regions.length === 1
-      ? `${barNumberLabel(bars, region)} · ${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`
-      : barNumberLabel(bars, region);
+  const timeSpan = (region) => `${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`;
+  const spotLabel = (region) => (regions.length === 1 ? `${barNumberLabel(bars, region)} · ${timeSpan(region)}` : barNumberLabel(bars, region));
+  const percent = pending?.total ? Math.round((100 * pending.done) / pending.total) : 0;
 
   return (
     <>
@@ -169,7 +178,9 @@ function RegenTab({
               <span />
             </div>
             <div className="insp-running-row">
-              <span>{pending.done ? `${Math.round((100 * pending.done) / pending.total)}%` : "Loading the song"}</span>
+              <span>
+                {!pending.done ? "Loading the song" : pending.tries > 1 ? `Try ${pending.try + 1} of ${pending.tries} · ${percent}%` : `${percent}%`}
+              </span>
               <button className="insp-link" onClick={onCancelRedo}>Cancel</button>
             </div>
           </div>
@@ -185,65 +196,107 @@ function RegenTab({
             </button>
           </div>
         )}
-        <div className="insp-takes" data-on={selectedRedo ? "" : undefined}>
-          <button
-            onClick={() => onPickRedo(selectedRedo, selectedRedo.active - 1)}
-            disabled={!selectedRedo || selectedRedo.active < 0}
-            title="Previous take"
-          >
-            <I.chevLeft />
-          </button>
-          <span>{!selectedRedo || selectedRedo.active < 0 ? "Original" : `Take ${selectedRedo.active + 1} of ${selectedRedo.takes.length}`}</span>
-          <button
-            onClick={() => onPickRedo(selectedRedo, selectedRedo.active + 1)}
-            disabled={!selectedRedo || selectedRedo.active >= selectedRedo.takes.length - 1}
-            title="Next take"
-          >
-            <I.chevRight />
-          </button>
-        </div>
       </section>
 
-      <section className="insp-card">
-        <div className="insp-eyebrow">STYLE</div>
-        <div className="insp-knobs">
-          {KNOBS.map((knob) => (
-            <div className="insp-knob" key={knob.key}>
-              <span>{knob.name}</span>
-              <div className="insp-seg" role="radiogroup" aria-label={knob.name}>
-                {knob.options.map((option, index) => (
-                  <button
-                    key={option}
-                    className={knobs[knob.key] === option ? "active" : ""}
-                    onClick={() => onKnob(knob.key, option)}
-                    role="radio"
-                    aria-checked={knobs[knob.key] === option}
-                  >
-                    {knob.labels[index]}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+      <section className="insp-card insp-settings">
+        <div className="variant-field generation-field">
+          <div className="field-line">
+            <label>
+              Tries
+              <i className="ms-info insp-info" title={TRIES_INFO} aria-label={TRIES_INFO} role="img">
+                <I.info />
+              </i>
+            </label>
+          </div>
+          <div className="preset-grid tries-grid" role="radiogroup" aria-label="Tries">
+            {TRIES_OPTIONS.map((n) => (
+              <button
+                key={n}
+                className={tries === n ? "active" : ""}
+                onClick={() => onTries(n)}
+                disabled={busy}
+                role="radio"
+                aria-checked={tries === n}
+              >
+                <b>{n}</b>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="variant-field generation-field style-field">
+          <div className="field-line">
+            <label>
+              Style <span className="field-aside">auto = model picks</span>
+            </label>
+            <button type="button" className="field-link" onClick={onAllAuto} disabled={busy || allAuto}>
+              All auto
+            </button>
+          </div>
+          <div className="style-faders" style={{ "--knob-count": styleKnobs.length }}>
+            {styleKnobs.map((knob, index) => (
+              <StyleFader
+                key={knob.id}
+                knob={knob}
+                color={KNOB_COLORS[index % KNOB_COLORS.length]}
+                raw={knobs[knob.id] ?? "auto"}
+                disabled={busy}
+                onChange={(value) => onKnob(knob.id, value)}
+              />
+            ))}
+          </div>
         </div>
       </section>
 
       <section className="insp-card insp-history">
-        <div className="insp-eyebrow">HISTORY</div>
+        <div className="insp-eyebrow">
+          REGENERATED
+          <button
+            type="button"
+            className="field-link insp-alike"
+            onClick={onPickMostAlike}
+            disabled={!canPickMostAlike}
+            title="Switch repeated sections (Verse 1, Verse 2) to the tries that look most alike"
+          >
+            Pick most alike
+          </button>
+        </div>
         {redos.length ? (
           <ul>
-            {[...redos].reverse().map((redo) => (
-              <li key={redo.id}>
-                <button
-                  className={"insp-history-name" + (redo === selectedRedo ? " active" : "")}
-                  onClick={() => onFocusRedo(redo)}
-                  title="Select it"
-                >
-                  <b>{redo.label}</b>
-                  <span>{redo.active < 0 ? "Original" : `Take ${redo.active + 1} of ${redo.takes.length}`}</span>
-                </button>
-              </li>
-            ))}
+            {redos.map((redo) => {
+              const showing = redo.active < 0 ? "Original" : `${redo.active + 1} of ${redo.takes.length}`;
+              const ourPick = redo.active >= 0 && redo.active === redo.picked;
+              return (
+                <li key={redo.id} className={regionsCover(regions, redo.region) ? "on" : ""}>
+                  <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title="Select it">
+                    <b>{redo.label}</b>
+                    <span>{timeSpan(redo.region)}</span>
+                  </button>
+                  <div className="insp-takes" data-on={redo.active >= 0 ? "" : undefined}>
+                    <button onClick={() => onPickRedo(redo, redo.active - 1)} disabled={busy || redo.active < 0} title="Previous" aria-label="Previous">
+                      <I.chevLeft />
+                    </button>
+                    <span>
+                      {showing}
+                      <i
+                        className={"insp-pick" + (ourPick ? " on" : "")}
+                        title={ourPick ? (redo.matchedWith ? `Our pick: most like ${redo.matchedWith}` : "Our pick") : undefined}
+                        aria-hidden={!ourPick}
+                      >
+                        <I.star />
+                      </i>
+                    </span>
+                    <button
+                      onClick={() => onPickRedo(redo, redo.active + 1)}
+                      disabled={busy || redo.active >= redo.takes.length - 1}
+                      title="Next"
+                      aria-label="Next"
+                    >
+                      <I.chevRight />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="insp-sub">Nothing regenerated yet.</p>

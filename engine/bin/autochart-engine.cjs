@@ -1707,8 +1707,9 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
 // Regenerate: new notes for bar spans of an existing chart with the
 // fill-in-the-middle model, on the chart's own tempo map (no beat tracking).
 // job.inpaint: { chartText, difficulty, regions: [{ startTick, endTick }],
-// knobs: { density, chords, movement: "less" | "auto" | "more" }, seed }.
-// Writes the spliced chart and returns each region's new note lines.
+// knobs: { [knobName]: 0..6 } (missing = auto), tries: 1..8, seed }.
+// Writes the chart with each region's chosen try spliced in and returns
+// every try's note lines and seam score per region.
 async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle({ emit }) } = {}) {
   const generator = await resolveGeneratorConfig(job.generatorId, job);
   const onnxLib = require("../lib/onnx");
@@ -1783,8 +1784,6 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
         structure,
         sectionFlag: Boolean(structure && structure.mode === "solo_sections"),
       });
-      const beatTimes = Float64Array.from(grid.beatTimes);
-      const songValues = onnxLib.computeDescriptors(stream.events.filter((e) => e.beat < nBeats), beatTimes);
       const { prefixBiasOf } = prefixBiasMaker(onnxLib, manifest);
 
       const encoderSession = await onnxLib.loadEncoderSessions(manifest, runtime.device);
@@ -1793,9 +1792,10 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
       emit({ type: "stage", stage: "transcription", status: "running", backend: "onnxruntime-node", device: executionProvider });
       const encoderCtx = await onnxLib.runEncoder(encoderSession, beatMel, beatMask, nBeats);
 
-      const candidates = Number(stage.fim.candidates || 4);
+      const candidates = integerValue(request.tries, 1, { min: 1, max: 8 });
       const holeBeats = holes.map(([a, b]) => b - a);
       const totalWork = holeBeats.reduce((sum, n) => sum + n, 0) * candidates;
+      // Chosen fills so far, so progress shows finished holes beside the one being written.
       const kept = [];
       const linesOf = (fillTokens, startBeat) =>
         onnxLib.flattenNoteLines(onnxLib.eventsToChartNotes(onnxLib.fillEvents(fillTokens, startBeat), resolution));
@@ -1813,8 +1813,6 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
           holes,
           knobs: plainObject(request.knobs),
           knobNames,
-          songValues,
-          descriptorBin: onnxLib.descriptorBin,
           makePrefixBias: prefixBiasOf,
           guidanceScale: settings.guidanceScale,
           temperature: Number(stage.fim.temperature ?? settings.temperature),
@@ -1837,7 +1835,7 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
               regions: [...kept, regionOf(holes[hole], linesOf(fill, holes[hole][0]))],
             });
           },
-          onHole: (fill) => kept.push(regionOf([fill.startBeat, fill.endBeat], linesOf(fill.tokens, fill.startBeat))),
+          onHole: (fill) => kept.push(regionOf([fill.startBeat, fill.endBeat], linesOf(fill.fills[fill.chosen], fill.startBeat))),
           log: (m) => emit({ type: "log", stage: "transcription", stream: "stdout", message: m }),
         });
       } finally {
@@ -1848,11 +1846,16 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
       activeStage = "chart";
       return lifecycle.runStage("chart", async () => {
         emit({ type: "stage", stage: "chart", status: "running", backend: "onnxruntime-node" });
-        const regions = decoded.holes.map((fill) => regionOf([fill.startBeat, fill.endBeat], linesOf(fill.tokens, fill.startBeat)));
+        const regions = decoded.holes.map((hole) => ({
+          startTick: hole.startBeat * resolution,
+          endTick: hole.endBeat * resolution,
+          chosen: hole.chosen,
+          tries: hole.fills.map((fill, i) => ({ noteLines: linesOf(fill, hole.startBeat), seam: hole.seams[i] })),
+        }));
         const chartDir = path.join(outputDir, "chart");
         const chartPath = path.join(chartDir, "notes.chart");
         await fs.mkdir(chartDir, { recursive: true });
-        await writeVerifiedAtomic(chartPath, onnxLib.spliceTrackNotes(chartText, difficulty, regions), {
+        await writeVerifiedAtomic(chartPath, onnxLib.spliceTrackNotes(chartText, difficulty, regions.map((r) => ({ ...r, noteLines: r.tries[r.chosen].noteLines }))), {
           rootDirectory: outputDir,
           label: "Chart output",
         });
@@ -1874,6 +1877,7 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
             seed,
             regions,
             holes: decoded.holes.map(({ startBeat, endBeat, chosen, seams, cfg, bins }) => ({ startBeat, endBeat, chosen, seams, cfg, bins })),
+            tries: candidates,
           },
           provenance: {
             kind: "autochart-engine-onnx-inpaint",

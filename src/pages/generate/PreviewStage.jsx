@@ -923,7 +923,7 @@ export default function PreviewStage({ project, ws, highwayRef }) {
         <GenerationPreviewStage
           project={project}
           highwayRef={highwayRef}
-          editTrack={editing ? project.editor.previewTrack : null}
+          editTrack={editing ? ws.previewTrack : null}
           onProgress={editing ? ws.onProgress : undefined}
         />
       ) : !track ? (

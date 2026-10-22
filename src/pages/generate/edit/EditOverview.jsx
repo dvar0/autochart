@@ -13,7 +13,8 @@ import { barEndTick, regionsCover, regionsOverlap } from "./editRegions.js";
 // outlines of line and handle first, then both fills) so it reads and moves
 // as a single object.
 // While an area is dragged on the roll it follows live: `lifted` is the area
-// being moved or stretched, `origin` where a moved one started.
+// being moved or stretched, `origin` where a moved one started. Loops show as
+// brackets along the timeline's foot; the one playing is solid.
 
 function barProfile(doc, bars) {
   const out = bars.map(() => ({ count: 0, lanes: [0, 0, 0, 0, 0], open: 0 }));
@@ -38,7 +39,7 @@ function fmtTime(seconds) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function EditOverview({ doc, bars, sections, regions, lifted = null, origin = null, pending, view, playheadTick, endTick, onScrub, onSection }) {
+export default function EditOverview({ doc, bars, sections, regions, lifted = null, origin = null, pending, loops = [], activeLoop = -1, view, playheadTick, endTick, onScrub, onSection }) {
   const canvasRef = useRef(null);
   const trackRef = useRef(null);
   const scrubRef = useRef(null);
@@ -168,11 +169,9 @@ export default function EditOverview({ doc, bars, sections, regions, lifted = nu
             style={span(region.startTick, region.endTick)}
           />
         ))}
-        {(doc?.redos || []).flatMap((redo) =>
-          redo.regions.map((region) => (
-            <span key={`d${redo.id}${region.startTick}`} className="strip-redo" style={span(region.startTick, region.endTick)} />
-          ))
-        )}
+        {(doc?.redos || []).map((redo) => (
+          <span key={`d${redo.id}`} className={"strip-redo" + (redo.active < 0 ? " is-original" : "")} style={span(redo.region.startTick, redo.region.endTick)} />
+        ))}
       </div>
 
       <div
@@ -186,6 +185,9 @@ export default function EditOverview({ doc, bars, sections, regions, lifted = nu
           <span key={`t${region.startTick}`} className="track-sel" style={span(region.startTick, region.endTick)} />
         ))}
         <canvas ref={canvasRef} />
+        {loops.map((loop, index) => (
+          <span key={`l${loop.startTick}`} className={"track-loop" + (index === activeLoop ? " on" : "")} style={span(loop.startTick, loop.endTick)} />
+        ))}
         {hoverTick != null && !scrubbing && (
           <span className={"track-hover" + (hover.section ? " snapped" : "")} style={{ left: `${hoverPct}%`, "--sec": hover.section?.color }} />
         )}
