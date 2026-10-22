@@ -139,12 +139,13 @@ async function main() {
     await waitFor(() => evaluate('Boolean(document.querySelector(".single-preview .transport-btn:not(.ghost):not(:disabled)"))'), "single preview ready");
     await evaluate('document.querySelector(".single-preview .transport-btn").click()');
     await waitFor(() => evaluate('document.querySelector(".single-preview .transport-btn")?.textContent.includes("Pause")'), "single preview playing");
+    // Checking the second take opens compare on its own, and it carries on
+    // playing from where the single preview was.
+    const singleTime = await evaluate('Number(document.querySelector(".single-preview .seekbar")?.value)');
     await evaluate('document.querySelectorAll(".take-check input").forEach(input => { if (!input.checked) input.click(); })');
-    await click("Compare (2)");
     await waitFor(() => evaluate('document.querySelectorAll(".joined-highway-canvas").length === 2 && Number(document.querySelector(".compare-timeline .seekbar")?.max) > 29'), "joined compare loaded with audio duration");
     const compareButton = 'document.querySelector(".compare-transport .transport-btn")';
-    await evaluate(`${compareButton}.click()`);
-    await waitFor(() => evaluate('Number(document.querySelector(".compare-timeline .seekbar")?.value) > 0.2'), "joined compare playback advances");
+    await waitFor(() => evaluate(`Number(document.querySelector(".compare-timeline .seekbar")?.value) > ${singleTime + 0.2}`), "joined compare keeps playing from the single preview's time");
     await evaluate(`${compareButton}.click()`);
     await evaluate(`(() => {
       const seek = document.querySelector('.compare-timeline .seekbar');
@@ -158,6 +159,9 @@ async function main() {
     await waitFor(() => evaluate('Number(document.querySelector(".compare-timeline .seekbar")?.value) > 10.2'), "split compare playback advances");
     await click("✕ Close compare");
     await waitFor(() => evaluate('Boolean(document.querySelector(".single-preview"))'), "single preview restored after compare");
+    // ...and the single preview carries on playing from compare's time.
+    await waitFor(() => evaluate('document.querySelector(".single-preview .transport-btn")?.textContent.includes("Pause") && Number(document.querySelector(".single-preview .seekbar")?.value) > 10.2'), "single preview keeps playing from compare's time");
+    await evaluate('document.querySelector(".single-preview .transport-btn").click()');
     assert.deepEqual(errors, [], "renderer errors during compare");
     await click("GENERATE CHART");
     await waitFor(() => jobs.length === 2, "second job started");

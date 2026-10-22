@@ -3693,13 +3693,11 @@ video.bg-layer {
   background: linear-gradient(var(--window), transparent);
   pointer-events: none;
 }
+/* No track: the open tab gets the same soft pill as the sidebar's pages. */
 .work-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3px;
-  padding: 3px;
-  border-radius: var(--r-box);
-  background: var(--surface-2);
+  gap: 4px;
 }
 .work-tabs button {
   min-width: 0;
@@ -3707,7 +3705,7 @@ video.bg-layer {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 0 6px;
   border: none;
-  border-radius: calc(var(--r-box) - 2px);
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-dim);
   font-size: var(--fs-md); font-weight: 700;
@@ -3716,8 +3714,8 @@ video.bg-layer {
   transition: background .12s, color .12s;
 }
 .work-tabs button svg { width: 15px; height: 15px; flex: none; }
-.work-tabs button:hover:not(.active):not(:disabled) { color: var(--purple); }
-.work-tabs button.active { background: var(--purple); color: var(--purple-fg); box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+.work-tabs button:hover:not(.active):not(:disabled) { color: var(--text); background: var(--surface-2); }
+.work-tabs button.active { background: var(--purple-bg); color: var(--purple); }
 .work-tabs button:disabled { color: var(--text-faint); opacity: .55; cursor: not-allowed; }
 
 /* ---------- console rail: settings + run only (channel strip) ---------- */
@@ -3868,23 +3866,6 @@ video.bg-layer {
   height: 14px;
   pointer-events: none;
   color: var(--text-faint);
-}
-.model-plate-badge {
-  flex: none;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: var(--bw) solid var(--amber-bd);
-  color: var(--amber-fg);
-  background: var(--amber-bg);
-  font-size: var(--fs-xs);
-  font-weight: 800;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-.model-plate-note {
-  color: var(--text-faint);
-  font-size: var(--fs-xs);
-  line-height: 1.35;
 }
 .model-plate-select {
   width: 100%;
@@ -5886,15 +5867,35 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-keys dd { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
 .insp-alike { margin-left: auto; font-family: var(--font-ui); letter-spacing: 0; }
 .insp-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.insp-history li { display: flex; align-items: stretch; gap: 4px; border-radius: var(--r-box); }
+.insp-history li { display: flex; flex-direction: column; gap: 4px; border-radius: var(--r-box); }
 .insp-history li.on .insp-history-name { box-shadow: inset 0 0 0 var(--bw) var(--purple-bri); }
-.insp-history .insp-takes { flex: 0 0 132px; min-height: 0; background: var(--surface-2); }
-.insp-history .insp-takes span { color: var(--text); }
-.insp-history .insp-takes:not([data-on]) span { color: var(--text-faint); }
-.insp-history .insp-takes button:hover:not(:disabled) { background: var(--purple-bg); }
-.insp-pick { display: inline-grid; margin-left: 4px; vertical-align: -2px; color: var(--purple); visibility: hidden; }
-.insp-pick.on { visibility: visible; }
-.insp-pick svg { width: 11px; height: 11px; }
+/* version chips: selected like a take card that's playing, checked like one
+   marked for compare */
+.insp-versions { display: flex; flex-wrap: wrap; gap: 4px; }
+.insp-version {
+  display: flex; align-items: center;
+  min-height: 32px;
+  padding-right: 2px;
+  border: var(--bw) solid transparent;
+  border-radius: var(--r-box);
+  background: var(--surface-2);
+}
+.insp-version.active { border-color: var(--purple); background: var(--surface); }
+.insp-version.in-compare { box-shadow: 0 0 0 var(--bw) var(--purple-bd); }
+.insp-version button {
+  align-self: stretch;
+  display: inline-flex; align-items: center; gap: 4px;
+  min-width: 28px; padding: 0 4px 0 10px;
+  border: none; background: transparent;
+  color: var(--text-dim);
+  font: 700 var(--fs-xs) var(--font-mono);
+  cursor: pointer;
+}
+.insp-version.active button { color: var(--text); }
+.insp-version button:hover:not(:disabled) { color: var(--purple); }
+.insp-version button:disabled { cursor: default; }
+.insp-version button svg { width: 11px; height: 11px; color: var(--purple); }
+.insp-version .take-check { width: 22px; height: 22px; }
 .insp-history-name {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
@@ -5906,25 +5907,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-history-name b { font-size: var(--fs-sm); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .insp-history-name span { font-size: var(--fs-xs); color: var(--text-faint); }
 .insp-history-name:hover { background: var(--purple-bg); }
-.insp-takes {
-  display: flex; align-items: center;
-  min-height: 38px;
-  border-radius: var(--r-box);
-  background: var(--surface-2);
-}
-.insp-takes[data-on] { background: var(--orange-bg); }
-.insp-takes span { flex: 1; text-align: center; font: 700 var(--fs-xs) var(--font-mono); color: var(--text-dim); white-space: nowrap; }
-.insp-takes[data-on] span { color: var(--text); }
-.insp-takes button {
-  width: 30px; align-self: stretch;
-  display: grid; place-items: center;
-  border: none; border-radius: var(--r-box);
-  background: transparent; color: var(--text);
-  cursor: pointer;
-}
-.insp-takes button svg { width: 15px; height: 15px; }
-.insp-takes button:hover:not(:disabled) { background: color-mix(in srgb, var(--orange) 30%, transparent); }
-.insp-takes button:disabled { opacity: .3; cursor: default; }
 
 
 @media (max-width: 1180px) {

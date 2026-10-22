@@ -14,6 +14,7 @@ import {
   subtractSpan,
 } from "./editRegions.js";
 import { startRedo } from "./inpaintService.js";
+import { MAX_COMPARE_CHARTS, MIN_COMPARE_CHARTS } from "../useGenerateProject.js";
 
 // Regenerate writes this many versions of each area (remembered per machine).
 export const TRIES_OPTIONS = [1, 2, 4, 8];
@@ -71,6 +72,11 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     }
   }, []);
   const [loopOn, setLoopOn] = useState(false);
+  // Compare, as on Generate: check up to four versions of regenerated areas
+  // ("redoId:index", index -1 = Original) and the stage shows them side by
+  // side. The stage carries the playhead across the swap.
+  const [compareMarks, setCompareMarks] = useState([]);
+  const [compareOn, setCompareOn] = useState(false);
   const [view, setView] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   // A regenerate or take switch that would replace hand edits waits here for
@@ -102,6 +108,50 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     const notes = [...doc.notes.filter((note) => !inPending(note)), ...pending.notes].sort((a, b) => a.tick - b.tick);
     return buildEditorPreviewTrack({ ...doc, notes });
   }, [pending, doc, editor.previewTrack]);
+
+  // Marks whose area or try is gone drop out; under two, compare closes.
+  const liveMarks = useMemo(() => compareMarks.filter((mark) => {
+    const [redoId, index] = mark.split(":");
+    const redo = redos.find((r) => r.id === redoId);
+    return redo && Number(index) < redo.takes.length;
+  }), [compareMarks, redos]);
+  const comparing = compareOn && liveMarks.length >= MIN_COMPARE_CHARTS;
+  // Each checked version is the whole take with that one area swapped in.
+  // `updatedAt` bumps on every rebuild so the joined view redraws them.
+  const compareRevRef = useRef(0);
+  const compareCharts = useMemo(() => {
+    if (!comparing || !doc) return [];
+    const rev = ++compareRevRef.current;
+    return liveMarks.map((mark) => {
+      const [redoId, rawIndex] = mark.split(":");
+      const index = Number(rawIndex);
+      const redo = redos.find((r) => r.id === redoId);
+      const { startTick, endTick } = redo.region;
+      const inArea = (note) => note.tick >= startTick && note.tick < endTick;
+      const notes = [...doc.notes.filter((note) => !inArea(note)), ...(index < 0 ? redo.original : redo.takes[index])]
+        .sort((a, b) => a.tick - b.tick);
+      return {
+        id: mark,
+        updatedAt: rev,
+        name: `${redo.label} · ${index < 0 ? "Original" : `Try ${index + 1}`}`,
+        track: buildEditorPreviewTrack({ ...doc, notes }),
+      };
+    });
+  }, [comparing, liveMarks, redos, doc]);
+  // Checking boxes is the compare: any change that leaves two or more checked
+  // opens it, like on Generate; under two closes it.
+  const toggleCompareMark = useCallback((redo, index) => {
+    const mark = `${redo.id}:${index}`;
+    const next = liveMarks.includes(mark)
+      ? liveMarks.filter((m) => m !== mark)
+      : liveMarks.length >= MAX_COMPARE_CHARTS ? liveMarks : [...liveMarks, mark];
+    setCompareMarks(next);
+    setCompareOn(next.length >= MIN_COMPARE_CHARTS);
+  }, [liveMarks]);
+  const toggleCompare = useCallback(() => setCompareOn(!comparing), [comparing]);
+  useEffect(() => {
+    if (compareOn && liveMarks.length < MIN_COMPARE_CHARTS) setCompareOn(false);
+  }, [compareOn, liveMarks.length]);
 
   // "Pick most alike": what it would switch, so the button knows if it can.
   const alikePicks = useMemo(() => (doc ? mostAlikeRecordPicks(redos, doc, sections) : []), [doc, redos, sections]);
@@ -471,6 +521,11 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     activeLoop,
     canLoop,
     toggleLoop: () => setLoopOn((v) => !v),
+    compareMarks: liveMarks,
+    toggleCompareMark,
+    comparing,
+    compareCharts,
+    toggleCompare,
     view,
     setView,
     dragPreview,

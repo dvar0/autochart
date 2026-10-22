@@ -1,6 +1,7 @@
 import { I } from "../../../icons.jsx";
 import EditOverview from "./EditOverview.jsx";
 import PianoRollEditor from "./PianoRollEditor.jsx";
+import { MIN_COMPARE_CHARTS } from "../useGenerateProject.js";
 
 function fmtTime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
@@ -57,6 +58,21 @@ export default function EditTimeline({ project, ws }) {
             <button onClick={() => ws.rollApiRef.current?.zoom(0.8)} aria-label="Zoom out" title="Zoom out (−)"><I.minus /></button>
             <button onClick={() => ws.rollApiRef.current?.zoom(1.25)} aria-label="Zoom in" title="Zoom in (+)"><I.plus /></button>
           </div>
+          {/* Same button, same corner as the takes deck's. */}
+          <button
+            className={"deck-compare-btn" + (ws.comparing ? " active" : "")}
+            onClick={ws.toggleCompare}
+            disabled={!ws.comparing && ws.compareMarks.length < MIN_COMPARE_CHARTS}
+            title={
+              ws.comparing
+                ? "Back to single preview"
+                : ws.compareMarks.length < MIN_COMPARE_CHARTS
+                  ? "Check at least two versions to compare"
+                  : undefined
+            }
+          >
+            {ws.comparing ? "✕ Comparing" : `Compare (${ws.compareMarks.length})`}
+          </button>
         </div>
       </div>
 

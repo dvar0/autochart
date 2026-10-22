@@ -124,15 +124,7 @@ export default function Console({ project }) {
                 ) : (
                   <div className="model-plate-name">{selectedGeneratorLabel}</div>
                 )}
-                {selectedGenerator?.badge && (
-                  <span className="model-plate-badge" title={selectedGenerator.description || selectedGenerator.badge}>
-                    {selectedGenerator.badge}
-                  </span>
-                )}
               </div>
-              {selectedGenerator?.status === "experimental" && (
-                <div className="model-plate-note">Test model. Its takes are tagged {selectedGeneratorLabel}.</div>
-              )}
               {selectedGeneratorSetup && !selectedGeneratorSetup.ready && (
                 <div className="model-plate-warning">{selectedGeneratorSetup.message}</div>
               )}

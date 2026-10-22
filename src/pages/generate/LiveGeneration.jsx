@@ -65,7 +65,9 @@ function liveCompareOffset(project, liveAudioLead) {
 // On the Regenerate and Edit tabs it shows the editable draft (`editTrack`)
 // with the song map as its transport; the highway itself stays mounted, so
 // switching tabs never moves the playhead or stops playback.
-export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, editTrack = null, onProgress }) {
+// `resume` is where the stage picks up after it was swapped out for a
+// compare: { time, playing }.
+export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, editTrack = null, resume = null, onProgress }) {
   const isLive = project.showingLiveStage;
   const live = project.liveGeneration;
   const phase = liveBoardPhase(project);
@@ -116,7 +118,7 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
       setLivePlaying(false);
     } else {
       // Chase-cam watching does not carry its near-the-end position into a take.
-      if (!livePlaying) highwayRef.current?.seek?.(0);
+      if (!livePlaying && !editing) highwayRef.current?.seek?.(0);
       setLivePlaying(false);
     }
   }, [isLive]);
@@ -182,8 +184,8 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
               videoOffset={isLive ? liveAudioLead : project.activeVideoOffset}
               background={project.background}
               className={isLive ? "live-stage-highway" : "single-preview"}
-              initialTime={0}
-              playOnReady={isLive && livePlaying}
+              initialTime={resume?.time || 0}
+              playOnReady={(isLive && livePlaying) || Boolean(resume?.playing)}
               followTime={isLive && !livePlaying ? liveFollowTime(live) : null}
               // compareOffset only applies once the user enters interactive
               // playback; chase-cam follow stays in the chart's own padded

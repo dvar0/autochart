@@ -69,6 +69,8 @@ export default function EditInspector({ project, ws }) {
           onFocusRedo={ws.focusRedo}
           onFocusRegion={(region) => ws.focusTick(region.startTick)}
           onPickRedo={ws.pickRedoTake}
+          compareMarks={ws.compareMarks}
+          onMark={ws.toggleCompareMark}
         />
       ) : (
         <NotesTab
@@ -133,6 +135,8 @@ function RegenTab({
   onFocusRedo,
   onFocusRegion,
   onPickRedo,
+  compareMarks,
+  onMark,
 }) {
   const tempo = doc?.tempoMap;
   const redos = doc?.redos || [];
@@ -262,41 +266,47 @@ function RegenTab({
         </div>
         {redos.length ? (
           <ul>
-            {redos.map((redo) => {
-              const showing = redo.active < 0 ? "Original" : `${redo.active + 1} of ${redo.takes.length}`;
-              const ourPick = redo.active >= 0 && redo.active === redo.picked;
-              return (
-                <li key={redo.id} className={regionsCover(regions, redo.region) ? "on" : ""}>
-                  <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title="Select it">
-                    <b>{redo.label}</b>
-                    <span>{timeSpan(redo.region)}</span>
-                  </button>
-                  <div className="insp-takes" data-on={redo.active >= 0 ? "" : undefined}>
-                    <button onClick={() => onPickRedo(redo, redo.active - 1)} disabled={busy || redo.active < 0} title="Previous" aria-label="Previous">
-                      <I.chevLeft />
-                    </button>
-                    <span>
-                      {showing}
-                      <i
-                        className={"insp-pick" + (ourPick ? " on" : "")}
-                        title={ourPick ? (redo.matchedWith ? `Our pick: most like ${redo.matchedWith}` : "Our pick") : undefined}
-                        aria-hidden={!ourPick}
+            {redos.map((redo) => (
+              <li key={redo.id} className={regionsCover(regions, redo.region) ? "on" : ""}>
+                <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title="Select it">
+                  <b>{redo.label}</b>
+                  <span>{timeSpan(redo.region)}</span>
+                </button>
+                {/* One chip per version, like the take cards: click plays it in
+                    the take, the box marks it for Compare. */}
+                <div className="insp-versions">
+                  {[-1, ...redo.takes.map((_, index) => index)].map((index) => {
+                    const mark = `${redo.id}:${index}`;
+                    const marked = compareMarks.includes(mark);
+                    const name = index < 0 ? "Original" : `Try ${index + 1}`;
+                    const ourPick = index >= 0 && index === redo.picked;
+                    return (
+                      <div
+                        key={index}
+                        className={"insp-version" + (redo.active === index ? " active" : "") + (marked ? " in-compare" : "")}
                       >
-                        <I.star />
-                      </i>
-                    </span>
-                    <button
-                      onClick={() => onPickRedo(redo, redo.active + 1)}
-                      disabled={busy || redo.active >= redo.takes.length - 1}
-                      title="Next"
-                      aria-label="Next"
-                    >
-                      <I.chevRight />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
+                        <button
+                          onClick={(e) => (e.shiftKey ? onMark(redo, index) : onPickRedo(redo, index))}
+                          disabled={busy}
+                          title={ourPick ? (redo.matchedWith ? `Our pick: most like ${redo.matchedWith}` : "Our pick") : `Use ${name.toLowerCase()}`}
+                        >
+                          {index < 0 ? "Original" : index + 1}
+                          {ourPick && <I.star />}
+                        </button>
+                        <label className="take-check" title="Mark for compare">
+                          <input
+                            type="checkbox"
+                            checked={marked}
+                            onChange={() => onMark(redo, index)}
+                            aria-label={`Compare ${redo.label} ${name}`}
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </li>
+            ))}
           </ul>
         ) : (
           <p className="insp-sub">Nothing regenerated yet.</p>

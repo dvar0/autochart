@@ -2,7 +2,7 @@
 // Real React UI and preload IPC with the shipped engine/manifest.json:
 // - installed-only generators stay hidden until their setup is ready, and
 //   Fretformer keeps the plain model plate;
-// - once installed, the plate is a model picker with a NEW badge;
+// - once installed, the plate is a model picker, with no badge or note;
 // - picking the six-stem model swaps the Style faders to its set and the
 //   generate payload carries its generator id and knob names;
 // - separation cards list each model's stems only where that separation has
@@ -222,9 +222,9 @@ async function main() {
       select.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     })()`);
-    await waitFor(() => evaluate('document.querySelector(".model-plate-badge")?.textContent.trim() === "New"'), "NEW badge");
+    await waitFor(async () => (await faderNames())[2] === "HOPOs", "six-stem faders");
     assert.deepEqual(await faderNames(), ["Speed", "Chords", "HOPOs", "Taps", "Move"]);
-    assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(`Its takes are tagged ${SIX_STEM.label}`)})`), true, "test-model note");
+    assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge, .model-plate-note"))'), false, "no badge or note");
     await screenshot("3-six-stem-selected");
 
     // Separation cards: only the +0.5s separation has six-stem stems.

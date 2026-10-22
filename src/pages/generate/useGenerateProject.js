@@ -2121,9 +2121,13 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       : [...compareSelection, versionId];
     if (next.length > MAX_COMPARE_CHARTS) next = next.slice(next.length - MAX_COMPARE_CHARTS);
     setCompareSelection(next);
-    if (previewMode === "compare") {
-      if (next.length >= MIN_COMPARE_CHARTS) setCompareVersionIds(next);
-      else setPreviewMode("single");
+    // Checking boxes is the compare: two or more checked opens it (the
+    // button only steps back out), fewer closes it.
+    if (next.length >= MIN_COMPARE_CHARTS) {
+      setCompareVersionIds(next);
+      setPreviewMode("compare");
+    } else if (previewMode === "compare") {
+      setPreviewMode("single");
     }
   };
 
