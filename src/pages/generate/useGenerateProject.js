@@ -78,7 +78,7 @@ import {
 } from "../../services/songLibrary.js";
 import { DEFAULT_DEMUCS_ID, newSongId } from "../../services/songSchema.js";
 
-// Regenerate's model: Fretformer v2 DPO stays the Generate model; its FIM
+// Inpaint's model: Fretformer v2 DPO stays the Generate model; its FIM
 // sibling rewrites picked bars.
 const INPAINT_GENERATOR_ID = "autochart.fretformer.v2-dpo-fim-onnx";
 // The FIM model's style knobs, for the browser preview where no generator is listed.
@@ -2307,7 +2307,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const editorDraftVersion = decoratedVersions.find((v) => v.id === editorDraftVersionId) || null;
   const hasEditorSession = Boolean(editorSourceVersionId && editorState.doc);
 
-  // Regenerate and Edit work on the selected take. They are closed while a
+  // Inpaint and Edit work on the selected take. They are closed while a
   // generation or separation runs (its result takes over the stage), and for
   // takes without a chart.
   const editBlockedReason =
@@ -2352,14 +2352,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     [editorState.doc]
   );
 
-  // Regenerate runs the fill-in-the-middle model on the edited chart as it
+  // Inpaint runs the fill-in-the-middle model on the edited chart as it
   // stands, with the take's own audio, lead-in and separation.
   const inpaintGenerator = generators.find((g) => g.id === INPAINT_GENERATOR_ID && g.capabilities?.inpaint) || null;
-  // The browser preview has no engine; the edit screen mocks Regenerate there.
+  // The browser preview has no engine; the edit screen mocks Inpaint there.
   const inpaintBlockedReason = !canInpaint()
     ? ""
     : !inpaintGenerator || (inpaintGenerator.setup && !inpaintGenerator.setup.ready)
-      ? "Regenerate needs Fretformer 2"
+      ? "Inpaint needs Fretformer 2"
       : !importedSong?.audioSource
         ? "Save the song first"
         : "";
@@ -2392,7 +2392,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           seed,
         },
       });
-      if (canceled || result.status === "canceled") throw new DOMException("Regenerate canceled", "AbortError");
+      if (canceled || result.status === "canceled") throw new DOMException("Inpaint canceled", "AbortError");
       return {
         areas: result.inpaint.regions.map((region) => ({
           startTick: region.startTick,
@@ -2404,7 +2404,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       };
     })()
       .catch((err) => {
-        if (err?.name !== "AbortError") setStatusMsg(err.message || "Regenerate failed.");
+        if (err?.name !== "AbortError") setStatusMsg(err.message || "Inpaint failed.");
         throw err;
       })
       .finally(() => unsubscribe());

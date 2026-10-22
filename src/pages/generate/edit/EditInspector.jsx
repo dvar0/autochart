@@ -5,14 +5,14 @@ import WorkTabs from "../WorkTabs.jsx";
 import { barNumberLabel, regionsCover } from "./editRegions.js";
 import { TRIES_OPTIONS } from "./useEditWorkspace.js";
 
-// The right rail on the Regenerate (pick bars, make new takes of them) and
+// The right rail on the Inpaint (pick bars, make new takes of them) and
 // Edit (change single notes) tabs. The tab also sets what the piano roll
 // does. Inside a tab the layout never changes, and its buttons keep their
 // colors whether or not anything is selected: pressing one with nothing to
 // act on shakes the selection box instead. A running regenerate shows its
 // progress in place of its button.
 
-const TRIES_INFO = "Versions written for each area. Regenerate keeps the one that fits best, and you can flip through the rest. More tries take longer.";
+const TRIES_INFO = "Versions written for each area. Inpaint keeps the one that fits best, and you can flip through the rest. More tries take longer.";
 
 const NOTE_ACTIONS = [
   { id: "tap", label: "Tap", key: "T", icon: I.bolt, tone: "tap" },
@@ -87,7 +87,7 @@ export default function EditInspector({ project, ws }) {
 }
 
 // Asks before a regenerate or a take switch writes over notes changed by
-// hand. It sits over the Regenerate card's buttons, so nothing moves.
+// hand. It sits over the Inpaint card's buttons, so nothing moves.
 function OverwriteConfirm({ confirm, bars, onConfirm, onCancel }) {
   const where = confirm.regions.map((region) => barNumberLabel(bars, region).toLowerCase()).join(", ");
   return (
@@ -97,7 +97,7 @@ function OverwriteConfirm({ confirm, bars, onConfirm, onCancel }) {
       <div className="insp-confirm-actions">
         <button className="settings-secondary" onClick={onCancel} title="Esc">Cancel</button>
         <button className="btn-primary" onClick={onConfirm} title="Enter" autoFocus>
-          {confirm.kind === "take" ? "Switch take" : <><I.spark /> Regenerate</>}
+          {confirm.kind === "take" ? "Switch take" : <><I.spark /> Inpaint</>}
         </button>
       </div>
     </div>
@@ -194,9 +194,9 @@ function RegenTab({
               className="btn-primary insp-redo"
               onClick={needsSelection(hasSelection, onRedo)}
               disabled={Boolean(blockedReason)}
-              title={blockedReason || "Regenerate (R)"}
+              title={blockedReason || "Inpaint (R)"}
             >
-              <I.spark /> Regenerate
+              <I.spark /> Inpaint
             </button>
           </div>
         )}
@@ -253,7 +253,7 @@ function RegenTab({
 
       <section className="insp-card insp-history">
         <div className="insp-eyebrow">
-          REGENERATED
+          INPAINTED
           <button
             type="button"
             className="field-link insp-alike"
@@ -309,7 +309,7 @@ function RegenTab({
             ))}
           </ul>
         ) : (
-          <p className="insp-sub">Nothing regenerated yet.</p>
+          <p className="insp-sub">Nothing inpainted yet.</p>
         )}
       </section>
     </>

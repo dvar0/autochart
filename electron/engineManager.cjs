@@ -1485,12 +1485,12 @@ async function readContainedOutputFile(outputDir, filePath, label, maxBytes = 64
 
 const INPAINT_DIFFICULTIES = new Set(["expert", "hard", "medium", "easy"]);
 
-// Regenerate's request, checked before it reaches the engine.
+// Inpaint's request, checked before it reaches the engine.
 function inpaintRequest(value, generator) {
   if (!generator.capabilities?.inpaint) throw new Error(`${generator.label} can't regenerate part of a chart.`);
   const request = plainObject(value);
   const chartText = typeof request.chartText === "string" ? request.chartText : "";
-  if (!chartText || chartText.length > 32 * 1024 * 1024) throw new Error("Regenerate needs the take's chart.");
+  if (!chartText || chartText.length > 32 * 1024 * 1024) throw new Error("Inpaint needs the take's chart.");
   const regions = (Array.isArray(request.regions) ? request.regions : []).slice(0, 512).map((region) => ({
     startTick: Math.trunc(Number(region?.startTick)),
     endTick: Math.trunc(Number(region?.endTick)),

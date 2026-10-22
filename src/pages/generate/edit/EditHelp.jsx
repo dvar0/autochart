@@ -38,12 +38,12 @@ export default function EditHelp({ tab }) {
       )}
       <div className="insp-eyebrow">KEYS</div>
       <dl className="insp-keys">
-        <dt><Kbd>Tab</Kbd></dt><dd>Regenerate / Edit</dd>
+        <dt><Kbd>Tab</Kbd></dt><dd>Inpaint / Edit</dd>
         <dt><Kbd>Space</Kbd></dt><dd>Play / pause</dd>
         <dt><Kbd>[</Kbd> <Kbd>]</Kbd></dt><dd>Previous / next section</dd>
         <dt><Kbd>L</Kbd></dt><dd>Loop</dd>
         {tab === "regen" ? (
-          <><dt><Kbd>R</Kbd></dt><dd>Regenerate the selection</dd></>
+          <><dt><Kbd>R</Kbd></dt><dd>Inpaint the selection</dd></>
         ) : (
           <>
             <dt><Kbd>T</Kbd> <Kbd>H</Kbd> <Kbd>S</Kbd> <Kbd>Q</Kbd></dt><dd>Tap, HOPO, star power, snap</dd>

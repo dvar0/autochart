@@ -263,7 +263,7 @@ export default function PianoRollEditor({
     const tickToX = (tick) => tick * ppt - scrollLeft;
     const startTick = scrollLeft / ppt;
     const endTick = (scrollLeft + viewW) / ppt;
-    // Note selection belongs to the Edit tab; Regenerate doesn't show it.
+    // Note selection belongs to the Edit tab; Inpaint doesn't show it.
     const sel = new Set(view.mode === "edit" ? editorRef.current.selectedNoteIds : []);
     const rangeSel = new Set(view.mode === "edit" ? editorRef.current.selectedRangeIds : []);
     const drag = dragRef.current;
@@ -1084,7 +1084,7 @@ export default function PianoRollEditor({
       return;
     }
 
-    // Regenerate tab: grips stretch the selection anywhere; the bar-row block
+    // Inpaint tab: grips stretch the selection anywhere; the bar-row block
     // moves it; any other drag (or click) below the ruler picks bars.
     if (regen && region.type !== "bars") {
       const edge = selectionEdgeAt(x);

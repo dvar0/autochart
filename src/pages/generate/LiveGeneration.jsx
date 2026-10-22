@@ -62,7 +62,7 @@ function liveCompareOffset(project, liveAudioLead) {
 }
 
 // Live and saved charts share one mounted transport, including fullscreen ownership.
-// On the Regenerate and Edit tabs it shows the editable draft (`editTrack`)
+// On the Inpaint and Edit tabs it shows the editable draft (`editTrack`)
 // with the song map as its transport; the highway itself stays mounted, so
 // switching tabs never moves the playhead or stops playback.
 // `resume` is where the stage picks up after it was swapped out for a

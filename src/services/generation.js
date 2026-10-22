@@ -107,12 +107,12 @@ export function canInpaint() {
 }
 
 /**
- * Regenerate: new notes for bar spans of a take. Nothing is saved.
+ * Inpaint: new notes for bar spans of a take. Nothing is saved.
  * @param {{ audioSource: object, generatorId: string, inpaint: { chartText: string, difficulty: string, regions: object[], knobs: object, seed: number }, jobId?: string }} input
  * @returns {Promise<{ jobId: string, status: string, chartText?: string, inpaint?: { resolution: number, regions: { startTick: number, endTick: number, noteLines: number[][] }[] } }>}
  */
 export async function inpaintChart(input) {
-  if (!canInpaint()) throw new Error("Regenerate requires the Electron app.");
+  if (!canInpaint()) throw new Error("Inpaint requires the Electron app.");
   const audio = await audioPayloadFromInput(input);
   return electronEngine().inpaintChart({
     jobId: input.jobId,

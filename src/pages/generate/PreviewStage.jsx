@@ -689,10 +689,10 @@ export default function PreviewStage({ project, ws, highwayRef }) {
     activeDemucsArtifact,
     workTab,
   } = project;
-  // Regenerate and Edit keep this stage, and its highway, mounted: the take
+  // Inpaint and Edit keep this stage, and its highway, mounted: the take
   // swaps for its editable draft in place, so the playhead never moves.
   const editing = workTab !== "generate";
-  // Regenerate's compare uses this same compare stage, with the checked
+  // Inpaint's compare uses this same compare stage, with the checked
   // versions of regenerated areas in the slots and the song map as transport.
   const regenCompare = editing && Boolean(ws?.comparing);
   const inCompare = regenCompare || previewMode === "compare";
@@ -829,7 +829,7 @@ export default function PreviewStage({ project, ws, highwayRef }) {
   };
 
   // Joined view renders every selected take; the deck checkboxes cap at 4.
-  // Regenerate's versions all share the draft's timing, so no offsets.
+  // Inpaint's versions all share the draft's timing, so no offsets.
   const compareVersions = regenCompare ? ws.compareCharts : selectedCompareVersions;
   const joinedCompareVersions = compareVersions;
   const compareLeadInSeconds = regenCompare
@@ -838,7 +838,7 @@ export default function PreviewStage({ project, ws, highwayRef }) {
   const compareOffsetForVersion = (version) =>
     regenCompare ? 0 : Math.max(0, compareLeadInSeconds - leadInSilenceSecondsFromVersion(version));
 
-  // On Regenerate the song map, the roll and the loops drive the stage
+  // On Inpaint the song map, the roll and the loops drive the stage
   // through highwayRef; while comparing, that is every compared highway.
   useEffect(() => {
     if (!regenCompare) return undefined;

@@ -3,7 +3,7 @@
 // operation snapshots the previous doc for undo. Drag gestures are committed
 // as a single action on pointerup, so history stays one-entry-per-gesture.
 //
-// The Regenerate tab's picked bars (`regions`) share that history: building a
+// The Inpaint tab's picked bars (`regions`) share that history: building a
 // custom pick takes work, so picking is undoable like an edit. A history entry
 // is { doc, regions }; a pick-only entry keeps the same doc.
 //
@@ -322,7 +322,7 @@ function applyOperation(state, action) {
     // Star power and solo ranges inside an area are left alone.
     // One record per regenerated area: { id, label, region, original, takes,
     // seams, picked, active, matchedWith }. active -1 is the original; picked
-    // is the try Regenerate chose (matchedWith: the partners it was matched
+    // is the try Inpaint chose (matchedWith: the partners it was matched
     // to, see alike.js). Regenerating an area's exact bars adds its tries to
     // the record; an area over other records' bars replaces them, and its
     // original keeps their originals.

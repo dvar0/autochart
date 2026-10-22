@@ -16,7 +16,7 @@ import {
 import { startRedo } from "./inpaintService.js";
 import { MAX_COMPARE_CHARTS, MIN_COMPARE_CHARTS } from "../useGenerateProject.js";
 
-// Regenerate writes this many versions of each area (remembered per machine).
+// Inpaint writes this many versions of each area (remembered per machine).
 export const TRIES_OPTIONS = [1, 2, 4, 8];
 const TRIES_KEY = "autochart.regenerate.tries";
 
@@ -29,11 +29,11 @@ function readTries() {
   }
 }
 
-// State and actions behind the Regenerate and Edit tabs. It lives at the page
+// State and actions behind the Inpaint and Edit tabs. It lives at the page
 // level, beside the shared preview highway, so a trip to the Generate tab
 // keeps a running regenerate, the style knobs, the loop and the playhead.
 //
-// Two tabs, two selections. Regenerate picks whole bars (sections, or spans
+// Two tabs, two selections. Inpaint picks whole bars (sections, or spans
 // dragged on the roll) and makes new takes of them; Edit picks single notes
 // for the note tools. Each tab keeps its selection while the other is open,
 // and the roll only answers to the open tab. Every change autosaves into the
@@ -54,7 +54,7 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
   const rollApiRef = useRef(null);
   const jobRef = useRef(null);
 
-  // The Regenerate tab's picked bars live in the editor state so Undo covers
+  // The Inpaint tab's picked bars live in the editor state so Undo covers
   // them too.
   const regions = editor.regions;
   const setRegions = useCallback((next) => applyEditorChange({ type: "setRegions", regions: next }), [applyEditorChange]);
@@ -319,7 +319,7 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
           return { region, label: redoLabel(bars, [region], sections), tries: result.tries, seams: result.seams, pick: result.chosen };
         });
         applyEditorChange({ type: "applyRedo", areas: alikeRegenPicks(areas, doc, sections) });
-        // The bars stay selected, so Regenerate again tries another take.
+        // The bars stay selected, so Inpaint again tries another take.
         setRegions(targetRegions);
         setLoopOn(true);
         seekTick(bars[Math.max(0, barIndexAt(bars, targetRegions[0].startTick) - 1)]);
@@ -387,7 +387,7 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
   }, [applyEditorChange, setRegions, tab]);
 
   // Clicking a section moves the playhead to its start and scrolls the roll
-  // there. On the Regenerate tab it also adds the section to the picked bars,
+  // there. On the Inpaint tab it also adds the section to the picked bars,
   // or takes it out if it is already picked, the same toggle as clicking bars
   // on the roll. Unpicking a section right after picking it puts back
   // whatever was picked before, so a partial pick inside it survives the

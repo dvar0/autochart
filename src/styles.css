@@ -3670,7 +3670,7 @@ video.bg-layer {
   background: var(--purple-bg);
 }
 
-/* ---------- rail tabs: Generate · Regenerate · Edit ---------- */
+/* ---------- rail tabs: Generate · Inpaint · Edit ---------- */
 /* Pinned to the top of the rail on every tab, in the same spot, so the
    switch reads as one panel changing pages. The bar is page-coloured, so
    rail content scrolls under it and fades out below it. */
@@ -5428,7 +5428,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 }
 
 /* ============================ TAKE EDITOR ============================ */
-/* The Regenerate and Edit tabs of the Generate screen. The stage stays where
+/* The Inpaint and Edit tabs of the Generate screen. The stage stays where
    it is; the editor panel takes the rail and the timeline (toolbar, song map,
    piano roll) takes the deck's place, running the full width underneath,
    since width is what shows more of the chart. */
@@ -5734,7 +5734,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
    the timeline starts. */
 .edit-inspector { border-left: 1px solid var(--border-soft); }
 .insp-regen-card { position: relative; }
-/* Asks before replacing hand edits. Covers the Regenerate card instead of
+/* Asks before replacing hand edits. Covers the Inpaint card instead of
    pushing anything down. */
 .insp-confirm {
   position: absolute;

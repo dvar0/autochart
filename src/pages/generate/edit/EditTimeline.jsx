@@ -8,7 +8,7 @@ function fmtTime(seconds) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// The bottom of the Regenerate and Edit tabs, where Generate has its takes
+// The bottom of the Inpaint and Edit tabs, where Generate has its takes
 // deck: transport and song map, then the full-width piano roll.
 export default function EditTimeline({ project, ws }) {
   const { editor } = project;

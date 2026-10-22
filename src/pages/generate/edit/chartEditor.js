@@ -187,7 +187,7 @@ export function parseEditableChart(chartText, difficulty = "expert") {
 }
 
 // Editor notes from [tick, type, sustain] .chart note lines (an engine
-// Regenerate result), grouped by tick like parseEditableChart.
+// Inpaint result), grouped by tick like parseEditableChart.
 export function notesFromNoteLines(noteLines) {
   const byTick = new Map();
   for (const [tick, fret, sustain] of noteLines) {

@@ -768,12 +768,12 @@ function registerIpcHandlers() {
     }
   });
 
-  // Regenerate: new notes for picked bars of a take. Nothing is saved here;
+  // Inpaint: new notes for picked bars of a take. Nothing is saved here;
   // the edit screen puts the notes in its draft.
   ipcMain.handle("engine:inpaintChart", async (event, payload) => {
     runtimeSelection.assertSupportedTarget(process.platform, process.arch);
     try {
-      if (!payload?.inpaint) throw new Error("Regenerate needs bars to rewrite.");
+      if (!payload?.inpaint) throw new Error("Inpaint needs bars to rewrite.");
       const enginePayload = await resolveEnginePayload(event, payload);
       const settings = await readRuntimeSettings();
       const manifest = await engineManager.loadManifest();
@@ -792,7 +792,7 @@ function registerIpcHandlers() {
       if (result.status !== "completed") return { jobId: result.jobId, status: result.status };
       return { jobId: result.jobId, status: result.status, chartText: result.chartText, inpaint: result.inpaint };
     } catch (err) {
-      throw new Error(err.message || "Regenerate failed.");
+      throw new Error(err.message || "Inpaint failed.");
     }
   });
 

@@ -17,7 +17,7 @@ import { targetLabel } from "../../data/supportedTargets.js";
 // owns only the grid skeleton and hands the project state hook to each region.
 //
 // The rail's tabs pick the job. Generate shows the console and the takes
-// deck; Regenerate and Edit swap them for the editor panel and the song map +
+// deck; Inpaint and Edit swap them for the editor panel and the song map +
 // piano roll. The stage stays put through every switch: one highway, one
 // playhead.
 export default function GeneratePage({ importedSong, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange }) {

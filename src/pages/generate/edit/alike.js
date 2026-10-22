@@ -1,4 +1,4 @@
-// "Keep repeats alike" for Regenerate. Areas that are the same kind of
+// "Keep repeats alike" for Inpaint. Areas that are the same kind of
 // section (Verse 1 and Verse 2) are partners; when one is longer, they are
 // compared over the shorter one's length, from their starts. When the
 // partners' notes already look alike before regenerating, the tries picked

@@ -1,6 +1,6 @@
 // How Settings and the model picker present the engine's generators. A family
 // is one download: its generator drafts charts (Generate), and its inpaint
-// generator, when it has one, rewrites picked bars (Regenerate).
+// generator, when it has one, rewrites picked bars (Inpaint).
 export const MODEL_FAMILIES = Object.freeze([
   Object.freeze({
     id: "fretformer-2",
@@ -28,7 +28,7 @@ export const BETA_MODELS = Object.freeze([
     id: "fretformer-2-fill-in",
     label: "Fretformer 2 Fill-in",
     shortLabel: "Fill-in",
-    about: "Fretformer 2's Regenerate model writes the whole chart. Experimental.",
+    about: "Fretformer 2's Inpaint model writes the whole chart. Experimental.",
     generatorId: "autochart.fretformer.v2-dpo-fim-onnx",
   }),
 ]);
