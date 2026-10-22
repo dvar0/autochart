@@ -64,6 +64,7 @@
   --purple-fg:   #fff;
   --purple-bri:  #6860b5;   /* accent / bright icons */
   --purple-bg:   #d9dbf6;   /* active/selected fill */
+  --rail-sel:    #c3c3ec;   /* rail selection — purple-bg vanishes on the rail */
   --purple-bd:   #9f9adb;
   --solo:        #9a6bff;   /* charted solo sections on the activity strip */
 
@@ -108,6 +109,7 @@
   --purple-fg:   #283045;   /* dark ink on lavender fills */
   --purple-bri:  #c6cffe;
   --purple-bg:   #414a6d;   /* selected fill */
+  --rail-sel:    var(--purple-bg);
   --purple-bd:   #8792d6;
   --solo:        #c77dff;   /* hotter than lavender so solos don't read as identity */
 
@@ -347,7 +349,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 }
 .rail-item svg { width: 17px; height: 17px; flex: none; }
 .rail-item:hover { color: var(--text); background: var(--surface-2); }
-.rail-item.active { background: var(--purple-bg); color: var(--purple); }
+.rail-item.active { background: var(--rail-sel); color: var(--purple); }
 .rail-item.sub { font-weight: 500; padding: 7px 10px 7px 12px; }
 .rail-item.quiet { color: var(--text-faint); font-weight: 500; }
 .rail-item.quiet:hover { color: var(--text); }
@@ -927,7 +929,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 /* ============== DETAIL PANEL — soft album-color wash ============== */
 .detail {
   --art-accent: var(--purple);
-  --detail-plane: color-mix(in srgb, var(--art-accent) 5%, var(--window));
+  --detail-plane: color-mix(in srgb, var(--art-accent) 8%, var(--window));
   --detail-tonal: color-mix(in srgb, var(--art-accent) 12%, var(--surface));
   --detail-tonal-2: color-mix(in srgb, var(--art-accent) 8%, var(--surface-2));
   --detail-tonal-key: color-mix(in srgb, var(--art-accent) 18%, var(--surface-2));
@@ -942,9 +944,9 @@ input:focus-visible, select:focus-visible { outline: none; }
   /* Fixed-size falloff keeps the color near the cover at every window height.
      Mixing into the theme surface keeps both pale and vivid covers readable. */
   background:
-    radial-gradient(ellipse 440px 360px at 18% 0%,
-      color-mix(in srgb, var(--art-accent) 20%, var(--detail-plane)) 0%,
-      color-mix(in srgb, var(--art-accent) 9%, var(--detail-plane)) 45%,
+    radial-gradient(ellipse 520px 560px at 18% 0%,
+      color-mix(in srgb, var(--art-accent) 42%, var(--detail-plane)) 0%,
+      color-mix(in srgb, var(--art-accent) 20%, var(--detail-plane)) 50%,
       var(--detail-plane) 100%);
 }
 .ac-app[data-theme="dark"] .detail {
