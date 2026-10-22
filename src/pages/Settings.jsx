@@ -131,30 +131,46 @@ function ComponentCard({ component }) {
   );
 }
 
+// Last values the page saw. Revisits render these immediately and refresh them
+// in the background instead of waiting on the model scan again.
+const lastLoaded = { settings: null, setup: null, hardware: null };
+
 export default function Settings() {
-  const [settings, setSettings] = useState(EMPTY_SETTINGS);
-  const [setup, setSetup] = useState(null);
-  const [hardware, setHardware] = useState(null);
+  const [settings, setSettingsState] = useState(() => lastLoaded.settings || EMPTY_SETTINGS);
+  const [setup, setSetupState] = useState(() => lastLoaded.setup);
+  const [hardware, setHardwareState] = useState(() => lastLoaded.hardware);
+  const setSettings = (next) => setSettingsState((current) => {
+    const value = typeof next === "function" ? next(current) : next;
+    lastLoaded.settings = value;
+    return value;
+  });
+  const setSetup = (value) => {
+    lastLoaded.setup = value;
+    setSetupState(value);
+  };
+  const setHardware = (value) => {
+    lastLoaded.hardware = value;
+    setHardwareState(value);
+  };
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [installProgress, setInstallProgress] = useState(null);
 
-  const loadAll = async () => {
-    setBusy("loading");
+  // Each source fills in as soon as it answers; settings are instant, the
+  // model scan is the slow one. Only an explicit rescan blocks the controls.
+  const loadAll = async ({ fresh = false } = {}) => {
+    if (fresh) setBusy("loading");
     setMessage("");
     try {
-      const [nextSettings, nextSetup, nextHardware] = await Promise.all([
-        getAppSettings(),
-        scanModelSetup(),
-        probeHardware(),
+      await Promise.all([
+        getAppSettings().then((next) => setSettings({ ...EMPTY_SETTINGS, ...next })),
+        scanModelSetup({ fresh }).then(setSetup),
+        probeHardware().then(setHardware),
       ]);
-      setSettings({ ...EMPTY_SETTINGS, ...nextSettings });
-      setSetup(nextSetup);
-      setHardware(nextHardware);
     } catch (err) {
       setMessage({ text: err.message || "Could not load settings.", tone: "error" });
     } finally {
-      setBusy("");
+      if (fresh) setBusy("");
     }
   };
 
@@ -272,7 +288,7 @@ export default function Settings() {
   const standardChartComponents = chartComponents.filter((component) => standardIds.has(component.id));
   const standardRuntimeComponents = runtimeComponents.filter((component) => standardIds.has(component.id));
   const optionalRuntimeComponents = runtimeComponents.filter((component) => !standardIds.has(component.id));
-  const setupLoading = busy === "loading" && !setup;
+  const setupLoading = !setup;
   const readyCount = setup?.readyGeneratorIds?.length || 0;
   const chartStatus = setupLoading
     ? "checking"
@@ -438,7 +454,7 @@ export default function Settings() {
                 {installButtonLabel}
               </button>
               <span id="settings-install-reason" className="sr-only">{installDisabledReason}</span>
-              <button className="settings-secondary" onClick={loadAll} disabled={Boolean(busy)} title={busy ? "Wait for the current settings operation to finish." : "Scan installed chart generation files again"}>
+              <button className="settings-secondary" onClick={() => loadAll({ fresh: true })} disabled={Boolean(busy)} title={busy ? "Wait for the current settings operation to finish." : "Scan installed chart generation files again"}>
                 <I.spark /> Scan Again
               </button>
             </div>
@@ -527,7 +543,7 @@ export default function Settings() {
                 ))}
               </select>
               <div className="settings-actions">
-                <button className="settings-secondary" onClick={loadAll} disabled={Boolean(busy)}>
+                <button className="settings-secondary" onClick={() => loadAll({ fresh: true })} disabled={Boolean(busy)}>
                   <I.bolt /> Check Again
                 </button>
               </div>

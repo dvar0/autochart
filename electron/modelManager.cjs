@@ -97,6 +97,28 @@ function fileCandidates(filePath, roots) {
   return candidates;
 }
 
+// Digests of verified files, keyed by path. Each entry is reused only while the
+// file's stat signature is unchanged, so a replaced or edited file is hashed
+// again; scans otherwise re-read ~700 MB of graphs on every page visit.
+const digestCache = new Map();
+
+function statSignature(stat) {
+  return `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.ino}`;
+}
+
+function clearDigestCache() {
+  digestCache.clear();
+}
+
+async function cachedSha256(filePath, stat) {
+  const signature = statSignature(stat);
+  const cached = digestCache.get(filePath);
+  if (cached?.signature === signature) return cached.digest;
+  const digest = await sha256(filePath);
+  digestCache.set(filePath, { signature, digest });
+  return digest;
+}
+
 async function sha256(filePath) {
   const hash = crypto.createHash("sha256");
   const handle = await fs.open(filePath, "r");
@@ -194,7 +216,7 @@ async function inspectFile(file, roots, installedCatalogs = new Map()) {
       };
     }
     if (expectedSha256) {
-      const digest = await sha256(candidate);
+      const digest = await cachedSha256(candidate, stat);
       if (digest !== expectedSha256) {
         return {
           path: file.path,
@@ -853,6 +875,7 @@ async function scanModelSetup({
 
 module.exports = {
   assertSetupReadyForCompletion,
+  clearDigestCache,
   decorateManifest,
   deriveCombinedStatus,
   generatorFailureMessage,

@@ -359,6 +359,35 @@ function parseLogPercent(message = "") {
   return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
 }
 
+// Last engine manifest any workspace loaded. A newly opened project starts from
+// it so the model picker is filled on the first frame, then refreshes it.
+let lastGeneratorManifest = null;
+
+function generatorStateFromManifest(manifest) {
+  return {
+    generators: manifest?.generators || [],
+    setupStatus:
+      manifest?.setup || manifest?.supportedPlatform === false
+        ? {
+            ...(manifest.setup || {}),
+            supportedPlatform: manifest.supportedPlatform,
+            platform: manifest.platform,
+            arch: manifest.arch,
+            ready: Boolean(manifest.setup?.ready),
+            message: manifest.error || manifest.setup?.message || "",
+            status: manifest.status || manifest.setup?.status || "",
+          }
+        : null,
+    engineError: manifest?.available === false ? manifest.error || "Generator engine is unavailable." : "",
+  };
+}
+
+function pickGeneratorId(generators, current) {
+  return generators.some((generator) => generator.id === current)
+    ? current
+    : generators[0]?.id || DEFAULT_GENERATOR_ID;
+}
+
 function initialCompareVersionIds(versions, importedVersion, generatedVersion) {
   const first = importedVersion?.id || versions[0]?.id || "imported";
   const second = generatedVersion?.id || versions[1]?.id || first;
@@ -522,10 +551,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // The take whose settings were last loaded with "Use settings", plus the
   // controls it loaded, so the console can say whether they still match.
   const [reusedFrom, setReusedFrom] = useState(null);
-  const [generators, setGenerators] = useState([]);
-  const [generatorId, setGeneratorId] = useState(DEFAULT_GENERATOR_ID);
-  const [setupStatus, setSetupStatus] = useState(null);
-  const [engineError, setEngineError] = useState("");
+  const [cachedGeneratorState] = useState(() => generatorStateFromManifest(lastGeneratorManifest));
+  const [generators, setGenerators] = useState(cachedGeneratorState.generators);
+  const [generatorId, setGeneratorId] = useState(() => pickGeneratorId(
+    cachedGeneratorState.generators,
+    importedSong?.settings?.generation?.generatorId || DEFAULT_GENERATOR_ID
+  ));
+  const [setupStatus, setSetupStatus] = useState(cachedGeneratorState.setupStatus);
+  const [engineError, setEngineError] = useState(cachedGeneratorState.engineError);
   const [busyAction, setBusyAction] = useState("");
   const generationInFlightRef = useRef(false);
   const cpuRetryRef = useRef(null);
@@ -627,34 +660,26 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   }, [visible]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      // The idle startup workspace prefetches the model list so the first
+      // opened project (and the main process's model scan) start warm.
+      if (!lastGeneratorManifest) {
+        listGenerators().then((manifest) => { lastGeneratorManifest ??= manifest; }).catch(() => {});
+      }
+      return;
+    }
     let active = true;
     listGenerators()
       .then((manifest) => {
         if (!active) return;
-        const nextGenerators = manifest.generators || [];
-        setGenerators(nextGenerators);
-        setSetupStatus(
-          manifest.setup || manifest.supportedPlatform === false
-            ? {
-                ...(manifest.setup || {}),
-                supportedPlatform: manifest.supportedPlatform,
-                platform: manifest.platform,
-                arch: manifest.arch,
-                ready: Boolean(manifest.setup?.ready),
-                message: manifest.error || manifest.setup?.message || "",
-                status: manifest.status || manifest.setup?.status || "",
-              }
-            : null
-        );
-        setEngineError(manifest.available === false ? manifest.error || "Generator engine is unavailable." : "");
+        lastGeneratorManifest = manifest;
+        const next = generatorStateFromManifest(manifest);
+        setGenerators(next.generators);
+        setSetupStatus(next.setupStatus);
+        setEngineError(next.engineError);
         // Keep the user's pick across manifest reloads; effectiveGenerator()
         // falls back to the first listed model if it isn't selectable.
-        setGeneratorId((current) =>
-          nextGenerators.some((generator) => generator.id === current)
-            ? current
-            : nextGenerators[0]?.id || DEFAULT_GENERATOR_ID
-        );
+        setGeneratorId((current) => pickGeneratorId(next.generators, current));
       })
       .catch((err) => {
         if (!active) return;
@@ -1730,12 +1755,6 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         }
         setSourceArtifacts(nextSourceArtifacts);
         setFinalSlots(nextFinalSlots);
-        setCompareVersionIds((ids) => {
-          const next = [...ids];
-          while (next.length < MIN_COMPARE_CHARTS) next.push(generated.id);
-          next[1] = generated.id;
-          return next.slice(0, MAX_COMPARE_CHARTS);
-        });
         setJustGeneratedId(generated.id);
         if (justGeneratedTimer.current) clearTimeout(justGeneratedTimer.current);
         justGeneratedTimer.current = setTimeout(() => setJustGeneratedId(""), 1700);

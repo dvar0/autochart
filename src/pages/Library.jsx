@@ -43,6 +43,10 @@ import {
 } from "../services/songLibrary.js";
 import { DEFAULT_DEMUCS_ID } from "../services/songSchema.js";
 
+// Last loaded library. The page unmounts whenever another page opens, so a
+// revisit renders this immediately and refreshes it from disk underneath.
+let libraryCache = null;
+
 // Effective card surface per theme (mirrors --surface in styles.css). Used to
 // decide whether the accent-tinted card reads as dark, so text can flip ink.
 const CARD_SURFACE = { light: "#f7f7ff", dark: "#313a52" };
@@ -472,8 +476,9 @@ export default function Library({
   const [view, setView] = useState("grid");
   const [selId, setSelId] = useState("");
   const [query, setQuery] = useState("");
-  const [songs, setSongs] = useState([]);
-  const [records, setRecords] = useState([]);
+  const [songs, setSongs] = useState(() => libraryCache?.songs || []);
+  const [records, setRecords] = useState(() => libraryCache?.records || []);
+  const loaded = Boolean(libraryCache);
   const [importing, setImporting] = useState(false);
   const [detailAction, setDetailAction] = useState("");
   const libraryFolderGate = useLibraryFolderGate();
@@ -492,6 +497,7 @@ export default function Library({
     const projects = await Promise.all(
       sorted.map(recordToCard)
     );
+    libraryCache = { records: sorted, songs: projects };
     if (!shouldCommit()) {
       return { records: sorted, songs: projects };
     }
@@ -570,6 +576,11 @@ export default function Library({
       setImportError(err.message || "Could not update project favorite.");
     }
   };
+
+  // Keep the cache in step with local edits such as favorites.
+  useEffect(() => {
+    if (libraryCache) libraryCache = { records, songs };
+  }, [records, songs]);
 
   useEffect(() => {
     onCounts?.({
@@ -787,7 +798,7 @@ export default function Library({
         </div>
 
         <div className="listregion">
-          {filtered.length === 0 ? (
+          {!loaded ? null : filtered.length === 0 ? (
             <div className="empty-state">
               <span className="empty-ico">
                 <I.search />

@@ -775,16 +775,16 @@ async function readManifest(dir, expectedId = path.basename(dir)) {
 async function listSongs(context) {
   const root = await canonicalProjectRoot(context, { create: true });
   const entries = await fs.readdir(root, { withFileTypes: true });
-  const records = [];
-  for (const ent of entries) {
-    if (!ent.isDirectory() || !SAFE_ID_RE.test(ent.name)) continue;
-    try {
-      const dir = await canonicalProjectDir(context, ent.name);
-      records.push(await readManifest(dir));
-    } catch {
-      /* skip corrupt or unsafe project folders */
-    }
-  }
+  const results = await Promise.all(entries
+    .filter((ent) => ent.isDirectory() && SAFE_ID_RE.test(ent.name))
+    .map(async (ent) => {
+      try {
+        return await readManifest(await canonicalProjectDir(context, ent.name));
+      } catch {
+        return null; /* skip corrupt or unsafe project folders */
+      }
+    }));
+  const records = results.filter(Boolean);
   return records.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 

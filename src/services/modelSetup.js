@@ -8,8 +8,8 @@ function hasElectronHardware() {
   return Boolean(electronHardware()?.isAvailable?.());
 }
 
-export async function scanModelSetup() {
-  if (hasElectronModelSetup()) return electronModelSetup().scan();
+export async function scanModelSetup({ fresh = false } = {}) {
+  if (hasElectronModelSetup()) return electronModelSetup().scan({ fresh });
   return {
     schemaVersion: 1,
     scannedAt: Date.now(),
