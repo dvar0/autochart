@@ -1,5 +1,9 @@
 import { createSession, graphPath, sessionDevice, tensor, runSession } from "./runtime.mjs";
+import { demucsOrchestration } from "./manifest.mjs";
+import { createStft } from "./stft.mjs";
 
+// Only the core network is a graph: both STFTs run in JS (stft.mjs), so the
+// model folder's demucs_analysis_stft / demucs_synthesis_istft go unused.
 async function loadDemucsSessions(manifest, device = "cpu", log = null) {
   const opts = { device, log };
   const load = async (role) => {
@@ -9,25 +13,14 @@ async function loadDemucsSessions(manifest, device = "cpu", log = null) {
     if (log) log(`  ${role} ready on ${sessionDevice(session, device)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     return session;
   };
-  const analysis = await load("demucs-analysis-stft");
+  const orch = demucsOrchestration(manifest);
   const core = await load("demucs-core-network");
-  const synthesis = await load("demucs-synthesis-istft");
-  // A host can keep a graph on the CPU because it runs faster there (the
-  // browser's inverse STFT); that isn't a fallback.
-  const devices = [analysis, core, synthesis]
-    .filter((session) => !session.__cpuByDesign)
-    .map((session) => sessionDevice(session, device));
-  return {
-    analysis,
-    core,
-    synthesis,
-    device: devices.includes("cpu") ? "cpu" : devices[0] || device,
-  };
+  return { stft: createStft(orch.nfft, orch.hopLength), core, device: sessionDevice(core, device) };
 }
 
-// Faithful JS port of the reference Demucs-ONNX separation pipeline.
-// All math mirrors the reference implementation byte-for-byte. Reference validated at
-// 77.6 dB mean SDR vs real PyTorch demucs; it is the ground truth for this port.
+// Faithful JS port of the reference Demucs-ONNX separation pipeline, with the
+// STFTs computed exactly (stft.mjs): 88-116 dB per stem against PyTorch
+// htdemucs_6s, where the reference's float32 DFT basis graphs got 44-81 dB.
 
 const ceil = Math.ceil;
 const floor = Math.floor;
@@ -63,10 +56,16 @@ function zeroPadLastAxis(arr, rows, cols, pl, pr) {
   return out;
 }
 
-// Run the 3-session chain on ONE chunk padded to segmentLength.
+const tick = (times, key, since) => {
+  times[key] = (times[key] || 0) + performance.now() - since;
+  return performance.now();
+};
+
+// Run STFT -> core -> inverse STFT on ONE chunk padded to segmentLength.
 // chunkViews: { data: Float32Array length 1*2*segmentLength, dims: [1,2,L] }
 // Returns stems: { data: Float32Array length 1*4*2*L, dims: [1,4,2,L] }
-async function runSegment(mixFlat, B, C, L, sessions, orch) {
+async function runSegment(mixFlat, B, C, L, sessions, orch, times = {}) {
+  let t = performance.now();
   if (L !== orch.segmentLength) {
     throw new Error(
       `Demucs core ONNX only valid at segmentLength=${orch.segmentLength}; got L=${L}. ` +
@@ -79,12 +78,8 @@ async function runSegment(mixFlat, B, C, L, sessions, orch) {
   const padRight = pad + le * hl - L; // matches np.pad reflect (pad, pad_right)
   // Reflect-pad both channels on the sample axis. mixFlat is (B*C=2, L).
   const x0 = reflectPadLastAxis(mixFlat, B * C, L, pad, padRight); // (2, padded_L)
-  // analysis STFT input "x" shape [stream=2, samples]
-  const xTensor = tensor("float32", x0, [B * C, L + pad + padRight]);
-  const analysisOut = await runSession(sessions.analysis, { x: xTensor });
-  const realRaw = await analysisOut.real.getData(true); // Float32Array
-  const imagRaw = await analysisOut.imag.getData(true);
-  const realDims = analysisOut.real.dims; // [2, 2049, T]
+  // [2, 2049, T]
+  const { real: realRaw, imag: imagRaw, dims: realDims } = sessions.stft.analysis(x0, B * C, L + pad + padRight);
   const analysisTime = realDims[realDims.length - 1];
   const freqRaw = realDims[realDims.length - 2];
   // real[:, :-1, :] : drop nyquist -> freq=freqRaw-1=2048 ; then [:, :, 2:2+le]
@@ -97,10 +92,12 @@ async function runSegment(mixFlat, B, C, L, sessions, orch) {
   const realT = tensor("float32", realSliced, [B * C, freqOut, timeOut]);
   const imagT = tensor("float32", imagSliced, [B * C, freqOut, timeOut]);
   const mixT = tensor("float32", mixFlat, [B, C, L]);
+  t = tick(times, "analysis", t);
   const coreOut = await runSession(sessions.core, { real: realT, imag: imagT, mix: mixT });
   const zrRaw = await coreOut.zout_real.getData(true); // (1,4,2,2048,le)
   const ziRaw = await coreOut.zout_imag.getData(true);
   const xtRaw = await coreOut.xt.getData(true); // (1,4,2,L)
+  t = tick(times, "core", t);
   const zrDims = coreOut.zout_real.dims; // [1,4,2,2048,le]
   const ztTime = zrDims[zrDims.length - 1]; // le
   const S = orch.sources.length; // 4
@@ -108,24 +105,14 @@ async function runSegment(mixFlat, B, C, L, sessions, orch) {
   const flatSC = B * S * C; // 8
   const zrReshaped = zrRaw; // already contiguous (1*4*2*2048*le == 8*2048*le)
   const ziReshaped = ziRaw;
-  // pad nyquist bin (freq +1) then time pad (2,2)
-  const freqPadded = freqOut + 1; // 2049
-  const timePadded = ztTime + 4; // le+4
-  const zrPadded = padFreqAndTime(zrReshaped, flatSC, freqOut, ztTime, freqPadded, timePadded);
-  const ziPadded = padFreqAndTime(ziReshaped, flatSC, freqOut, ztTime, freqPadded, timePadded);
   const le2 = hl * ceil(L / hl) + 2 * pad;
-  // synth inputs: real [8, 2049, timePadded], imag same, length int64 scalar
-  const realS = tensor("float32", zrPadded, [flatSC, freqPadded, timePadded]);
-  const imagS = tensor("float32", ziPadded, [flatSC, freqPadded, timePadded]);
-  const lengthArr = new BigInt64Array(1);
-  lengthArr[0] = BigInt(le2);
-  const lengthT = tensor("int64", lengthArr, []);
-  const synthOut = await runSession(sessions.synthesis, { real: realS, imag: imagS, length: lengthT });
-  const yRaw = await synthOut.y.getData(true); // (8, le2)
-  const yDims = synthOut.y.dims; // [8, le2]
-  const ySamples = yDims[yDims.length - 1];
-  // y[..., pad : pad+L] then reshape to (B, S, C, L) and return y + xt
-  return assembleStems(yRaw, xtRaw, flatSC, B, S, C, ySamples, pad, L, le2);
+  // The core's spectrogram has no nyquist bin and sits 2 frames in from each
+  // side of the frames the inverse STFT expects; both are zero.
+  const y = sessions.stft.synthesis(zrReshaped, ziReshaped, {
+    streams: flatSC, inBins: freqOut, inFrames: ztTime, framePad: 2, length: le2,
+  });
+  tick(times, "synthesis", t);
+  return assembleStems(y, xtRaw, flatSC, B, S, C, le2, pad, L, le2);
 }
 
 // slice [:, :-1, :] (drop LAST freq bin) then [:, :, 2:2+le] -> (rows, freq-1, tLen)
@@ -140,19 +127,6 @@ function sliceChannelsTime(src, rows, freq, time, freqDropLast, tStart, tLen) {
       const srcOff = r * freq * time + f * time + tStart;
       const dstOff = r * freqOut * tLen + f * tLen;
       out.set(src.subarray(srcOff, srcOff + tLen), dstOff);
-    }
-  }
-  return out;
-}
-
-// pad freq by +1 (zeros, nyquist) and time by (2,2) (zeros). src: (rows, freq, time)
-function padFreqAndTime(src, rows, freq, time, freqPadded, timePadded) {
-  const out = new Float32Array(rows * freqPadded * timePadded);
-  for (let r = 0; r < rows; r += 1) {
-    for (let f = 0; f < freq; f += 1) {
-      const srcOff = r * freq * time + f * time;
-      const dstOff = r * freqPadded * timePadded + f * timePadded + 2;
-      out.set(src.subarray(srcOff, srcOff + time), dstOff);
     }
   }
   return out;
@@ -254,11 +228,12 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
   const nTotal = offsets.length;
   if (log) log(`  separating ${nTotal} chunks`);
   const t0 = Date.now();
+  const times = {};
   for (let i = 0; i < nTotal; i += 1) {
     const offset = offsets[i];
     const chunkLength = Math.min(totalLength - offset, segmentLength);
     const padded = chunkPadded(mixFlat, B, C, totalLength, offset, chunkLength, segmentLength);
-    const seg = await runSegment(padded, B, C, segmentLength, sessions, orch); // {data (1,S,2,SEG), dims}
+    const seg = await runSegment(padded, B, C, segmentLength, sessions, orch, times); // {data (1,S,2,SEG), dims}
     const segData = seg.data;
     // center_trim each (B,S,C) row to chunkLength
     // out[..., offset:end] += w_clipped * seg_out_trim
@@ -284,6 +259,7 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
     if (onProgress) onProgress({ index: i + 1, total: nTotal, offset, chunkLength, elapsed });
   }
 
+  if (log) log(`  separation time per step: ${Object.entries(times).map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`).join(", ")}`);
   let minW = Infinity;
   for (let i = 0; i < totalLength; i += 1) if (sumWeight[i] < minW) minW = sumWeight[i];
   if (!(minW > 0)) throw new Error("overlap-add weight sum must be strictly positive everywhere");

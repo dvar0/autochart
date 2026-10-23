@@ -98,6 +98,7 @@
     "engine/lib/onnx/resample.mjs",
     "engine/lib/onnx/runtime.mjs",
     "engine/lib/onnx/sessionLoader.cjs",
+    "engine/lib/onnx/stft.mjs",
     "engine/lib/onnx/transcribe.mjs",
     "engine/lib/onnx/wavWrite.cjs",
     "engine/lib/transcriberSettings.mjs",

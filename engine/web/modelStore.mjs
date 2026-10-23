@@ -98,11 +98,14 @@ export async function loadModelManifest(folderUrl, { offlineOnly = false } = {})
   return manifest;
 }
 
+// Graphs the browser never loads: Demucs' STFTs run in JS (stft.mjs).
+const UNUSED_ROLES = new Set(["demucs-analysis-stft", "demucs-synthesis-istft"]);
+
 // Every file a model folder's manifest points at (graphs and tables).
 export function modelFiles(manifest) {
   const files = new Set();
   for (const graph of Object.values(manifest?.graphs || {})) {
-    if (graph?.file) files.add(graph.file);
+    if (graph?.file && !UNUSED_ROLES.has(graph.role)) files.add(graph.file);
   }
   for (const stage of Object.values(manifest?.stages || {})) {
     for (const value of Object.values(stage || {})) {

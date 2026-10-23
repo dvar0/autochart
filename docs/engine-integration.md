@@ -30,6 +30,10 @@ hosts run (separation, timing, transcription, chart writing), so desktop and
 browser charts come from the same code. `resample.mjs` is a port of FFmpeg's
 default resampler; the browser decodes with Web Audio at the file's own rate and
 resamples with it, which keeps its audio identical to the desktop's FFmpeg path.
+Demucs' STFT and inverse STFT are computed in JS with an FFT (`stft.mjs`); only
+its core network runs as an ONNX graph. The model folders still list the two
+STFT basis graphs (`demucs_analysis_stft.onnx`, `demucs_synthesis_istft.onnx`),
+but the engine no longer loads them and the browser doesn't download them.
 
 ### Browser engine
 
@@ -95,7 +99,7 @@ generated with. Inpaint rewrites picked bars with Fretformer 2 Inpaint
 They use the same pipeline code as Fretformer, with every difference read
 from the model folder's `manifest.json`:
 
-- Separation: `htdemucs_6s` (STFT/ISTFT graphs identical to Fretformer's) with
+- Separation: `htdemucs_6s` (same STFT settings as Fretformer's) with
   piano summed into other (`stages.demucs.stems` / `stemFold`). Their stems
   live in `<separation workspace>/stems_htdemucs_6s/` (`generator.separation`),
   next to Fretformer's `stems/`, and results report every stem set under

@@ -168,7 +168,7 @@ function providers(device) {
 }
 
 async function createSession(source, options = {}) {
-  const device = cpuSources.has(source) ? "cpu" : await resolveDevice(options.device);
+  const device = await resolveDevice(options.device);
   const key = `${source}|${device}|${JSON.stringify(options.preferredOutputLocation || {})}`;
   if (sessions.has(key)) return sessions.get(key);
   const sessionOptions = {
@@ -187,7 +187,6 @@ async function createSession(source, options = {}) {
   try {
     session = await ort.InferenceSession.create(bytes, sessionOptions);
     session.__resolvedDevice = device;
-    session.__cpuByDesign = cpuSources.has(source);
   } catch (err) {
     if (device !== "webgpu") throw err;
     latchCpu(String(err?.message || err).split("\n")[0], options.log || null);
@@ -201,17 +200,8 @@ function sessionDevice(session, fallback = null) {
   return session?.__resolvedDevice || fallback;
 }
 
-// Graphs that run faster on the CPU than on WebGPU. Demucs' inverse STFT is
-// one huge transposed convolution, which onnxruntime-web's WebGPU kernel runs
-// slowly: on an M2, 4.8 s per chunk on WebGPU against 1.0 s on the CPU. Its
-// input is built on the CPU anyway.
-const CPU_ROLES = new Set(["demucs-synthesis-istft"]);
-const cpuSources = new Set();
-
 function graphSource(manifest, role) {
-  const source = new URL(graphEntry(manifest, role).file, manifest.baseUrl).href;
-  if (CPU_ROLES.has(role)) cpuSources.add(source);
-  return source;
+  return new URL(graphEntry(manifest, role).file, manifest.baseUrl).href;
 }
 
 // Prefix tables ship stored (uncompressed) in the npz, so no inflater is needed.
