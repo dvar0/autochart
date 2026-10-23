@@ -8,11 +8,13 @@ import Library from "./pages/Library.jsx";
 import SetupWizard from "./pages/SetupWizard.jsx";
 import Settings from "./pages/Settings.jsx";
 import useResolvedTheme from "./hooks/useResolvedTheme.js";
+import { isWebApp } from "./services/runtimeBridge.js";
 
 export default function App() {
   const [themePreference, setThemePreference] = useState("system");
   const theme = useResolvedTheme(themePreference);
-  const [page, setPage] = useState("library");
+  // The browser version opens on a new project; its models download on first use.
+  const [page, setPage] = useState(isWebApp() ? "generate" : "library");
   // Stable workspace keys keep in-flight jobs attached to their project even
   // when a new project's saved song id arrives, or another song is opened.
   const [workspace, setWorkspace] = useState({
@@ -37,7 +39,7 @@ export default function App() {
         if (!active || !settings) return;
         if (["system", "light", "dark"].includes(settings.theme)) setThemePreference(settings.theme);
         if (settings.railCollapsed) setRailCollapsed(true);
-        if (!settings.setupComplete) {
+        if (!settings.setupComplete && !isWebApp()) {
           const hasLocalLibrary = await browserHasLocalSongRecords();
           if (!active) return;
           if (!hasLocalLibrary) setPage("setup");

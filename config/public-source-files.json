@@ -100,6 +100,7 @@
     "engine/lib/onnx/sessionLoader.cjs",
     "engine/lib/onnx/transcribe.mjs",
     "engine/lib/onnx/wavWrite.cjs",
+    "engine/lib/transcriberSettings.mjs",
     "engine/licenses/beat-this-mit.txt",
     "engine/licenses/cc-by-nc-sa-4.0.txt",
     "engine/licenses/demucs-mit.txt",

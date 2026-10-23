@@ -8,6 +8,9 @@ import * as ort from "onnxruntime-web/webgpu";
 import { installHost } from "../lib/onnx/runtime.mjs";
 import { graphEntry } from "../lib/onnx/manifest.mjs";
 import { parseNpz } from "../lib/onnx/prefixTables.mjs";
+import { fetchModelFile } from "./modelStore.mjs";
+
+export { loadModelManifest as loadManifest } from "./modelStore.mjs";
 
 let webgpuState = null; // null = not probed, "ok" | "unavailable"
 let fallbackCallback = null;
@@ -30,6 +33,9 @@ async function probeWebgpu() {
   webgpuState = ok ? "ok" : "unavailable";
   return ok;
 }
+
+// Above this round trip, decoding on the CPU beats waiting on the GPU every token.
+const SLOW_READBACK_MS = 20;
 
 // How long the page waits to read a few bytes back from the GPU. The decoder
 // reads its logits back once per token, so a browser that only notices
@@ -63,6 +69,50 @@ async function measureReadbackMs() {
   }
 }
 
+// Firefox only notices finished GPU work on a ~100 ms timer, or when the page
+// submits to a queue. While a readback is pending, the pump keeps submitting
+// empty command buffers so it resolves in a few milliseconds instead.
+const devices = new Set();
+let pendingMaps = 0;
+let pumping = false;
+
+function trackDevices() {
+  const adapterProto = globalThis.GPUAdapter?.prototype;
+  if (!adapterProto || adapterProto.__autochartTracked) return;
+  const requestDevice = adapterProto.requestDevice;
+  adapterProto.requestDevice = async function (...args) {
+    const device = await requestDevice.apply(this, args);
+    devices.add(device);
+    device.lost.then(() => devices.delete(device));
+    return device;
+  };
+  adapterProto.__autochartTracked = true;
+}
+
+async function pump() {
+  if (pumping) return;
+  pumping = true;
+  while (pendingMaps > 0) {
+    for (const device of devices) {
+      try { device.queue.submit([device.createCommandEncoder().finish()]); } catch { devices.delete(device); }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  pumping = false;
+}
+
+function startReadbackPump() {
+  const bufferProto = globalThis.GPUBuffer?.prototype;
+  if (!bufferProto || bufferProto.__autochartPumped) return;
+  const mapAsync = bufferProto.mapAsync;
+  bufferProto.mapAsync = function (...args) {
+    pendingMaps += 1;
+    pump();
+    return mapAsync.apply(this, args).finally(() => { pendingMaps -= 1; });
+  };
+  bufferProto.__autochartPumped = true;
+}
+
 async function resolveDevice(requested) {
   const dev = normalizeDevice(requested);
   if (dev === "cpu") return "cpu";
@@ -93,7 +143,7 @@ async function createSession(source, options = {}) {
   }
   let session;
   try {
-    session = await ort.InferenceSession.create(source, sessionOptions);
+    session = await ort.InferenceSession.create(await fetchModelFile(source), sessionOptions);
     session.__resolvedDevice = device;
   } catch (err) {
     if (device !== "webgpu") throw err;
@@ -114,9 +164,7 @@ function graphSource(manifest, role) {
 
 // Prefix tables ship stored (uncompressed) in the npz, so no inflater is needed.
 async function loadTables(manifest, file) {
-  const response = await fetch(new URL(file, manifest.baseUrl));
-  if (!response.ok) throw new Error(`Couldn't load ${file} (${response.status})`);
-  return parseNpz(new Uint8Array(await response.arrayBuffer()));
+  return parseNpz(await fetchModelFile(new URL(file, manifest.baseUrl).href));
 }
 
 // Frees every loaded model. The browser has far less memory than the desktop,
@@ -140,21 +188,29 @@ export async function installWebHost({ wasmPaths = null, threads = null } = {}) 
   if (threads) ort.env.wasm.numThreads = threads;
   installHost({
     createSession,
-    createRawSession: (source, sessionOptions) => ort.InferenceSession.create(source, sessionOptions),
+    createRawSession: async (source, sessionOptions) =>
+      ort.InferenceSession.create(typeof source === "string" ? await fetchModelFile(source) : source, sessionOptions),
     tensor: (type, data, dims) => new ort.Tensor(type, data, dims),
     sessionDevice,
     graphSource,
     loadTables,
   });
+  trackDevices();
+  const webgpu = await probeWebgpu();
+  let readbackMs = await measureReadbackMs();
+  let slowReadbackMs = null;
+  if (readbackMs != null && readbackMs > SLOW_READBACK_MS) {
+    slowReadbackMs = readbackMs;
+    startReadbackPump();
+    readbackMs = await measureReadbackMs();
+  }
   return {
-    webgpu: await probeWebgpu(),
-    readbackMs: await measureReadbackMs(),
+    webgpu,
+    readbackMs,
+    slowReadbackMs,
     crossOriginIsolated: Boolean(globalThis.crossOriginIsolated),
   };
 }
-
-// Above this round trip, decoding on the CPU beats waiting on the GPU every token.
-const SLOW_READBACK_MS = 20;
 
 // The transcriber's device: the run's device, except CPU where reading back
 // from the GPU is slow. A run asking for "webgpu" explicitly keeps it.
@@ -162,15 +218,6 @@ export function transcriberDevice(requested, runtime) {
   const dev = normalizeDevice(requested);
   if (dev !== "auto") return dev;
   return runtime.readbackMs != null && runtime.readbackMs > SLOW_READBACK_MS ? "cpu" : dev;
-}
-
-export async function loadManifest(folderUrl) {
-  const baseUrl = new URL(folderUrl.endsWith("/") ? folderUrl : `${folderUrl}/`, globalThis.location?.href);
-  const response = await fetch(new URL("manifest.json", baseUrl));
-  if (!response.ok) throw new Error(`Couldn't load the model manifest (${response.status})`);
-  const manifest = await response.json();
-  manifest.baseUrl = baseUrl.href;
-  return manifest;
 }
 
 export { resolveDevice };

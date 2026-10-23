@@ -2362,7 +2362,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     ? ""
     : !inpaintGenerator || (inpaintGenerator.setup && !inpaintGenerator.setup.ready)
       ? "Inpaint needs Fretformer 2"
-      : !importedSong?.audioSource
+      : !(requiresPathBackedAudio() ? importedSong?.audioSource : importedSong?.audioFile)
         ? "Save the song first"
         : "";
   const startInpaint = ({ regions, knobs, tries, seed, onProgress }) => {
@@ -2382,6 +2382,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         jobId,
         generatorId: INPAINT_GENERATOR_ID,
         audioSource: importedSong.audioSource,
+        audioFile: importedSong.audioFile,
         sourceTransform: source?.provenance?.sourceTransform || null,
         demucsSeparation: source?.provenance?.sourceSeparation || null,
         metadata: { title: details.title, artist: details.artist },

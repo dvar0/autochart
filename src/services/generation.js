@@ -4,6 +4,7 @@ import {
   electronEngine,
   electronFiles,
   electronLibrary,
+  getAutochartBridge,
   hasElectronEngine as bridgeHasElectronEngine,
   hasElectronLibrary as bridgeHasElectronLibrary,
 } from "./runtimeBridge.js";
@@ -16,12 +17,31 @@ function hasElectronEngine() {
   return bridgeHasElectronEngine();
 }
 
-export function requiresPathBackedAudio() {
-  return hasElectronEngine();
+// The browser version's engine takes the audio file itself; the desktop
+// engine reads files from disk, so it needs the audio saved or picked.
+function engineAcceptsAudioBlobs() {
+  return Boolean(electronEngine()?.acceptsAudioBlobs);
 }
 
+export function requiresPathBackedAudio() {
+  return hasElectronEngine() && !engineAcceptsAudioBlobs();
+}
+
+function webExport() {
+  return getAutochartBridge()?.webExport || null;
+}
 
 async function audioPayloadFromInput(input) {
+  if (engineAcceptsAudioBlobs()) {
+    const blob = input.audioFile;
+    if (!(blob instanceof Blob)) throw new Error("Choose a song file first.");
+    return {
+      kind: "blob",
+      blob,
+      name: blob.name || input.audioName || "audio",
+      mime: blob.type || "application/octet-stream",
+    };
+  }
   const stored = input.audioSource?.kind === "project-asset" ? input.audioSource : null;
   if (stored) {
     return {
@@ -193,6 +213,7 @@ async function invokeLibraryExport(action, payload) {
  */
 export async function exportChart(songId, versionId = null) {
   if (!songId) throw new Error("No project selected to export.");
+  if (webExport()) return webExport().downloadZip(songId, versionId);
 
   if (hasElectronLibrary()) {
     const rec = await getSongRecord(songId);
@@ -227,6 +248,7 @@ export async function exportChart(songId, versionId = null) {
 
 export async function saveChartToCloneHeroLibrary(songId, versionId = null) {
   if (!songId) throw new Error("No project selected to save.");
+  if (webExport()) return webExport().saveToFolder(songId, versionId);
   if (!hasElectronLibrary() || !electronLibrary()?.saveSongToCloneHeroLibrary) {
     throw new Error(`Saving to a ${GAME_LIBRARY_NAME} library folder requires the Electron app.`);
   }

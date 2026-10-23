@@ -6,6 +6,11 @@ export function electronPlatform() {
   return String(getAutochartBridge()?.platform || "").trim();
 }
 
+// The browser version (src/web): the engine runs in the page, not in Electron.
+export function isWebApp() {
+  return electronPlatform() === "web";
+}
+
 export function electronLibrary() {
   return getAutochartBridge()?.library || null;
 }
