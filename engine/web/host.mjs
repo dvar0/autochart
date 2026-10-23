@@ -113,6 +113,32 @@ function startReadbackPump() {
   bufferProto.__autochartPumped = true;
 }
 
+// ONNX Runtime names the index type of each tensor over 4 dimensions as an
+// alias of the same array type (alias input_0_indices_t = array<u32, 5>).
+// Firefox's shader translator turns each alias into its own Metal type, so
+// handing one to a function that takes another fails to compile on a Mac.
+// Spelling the array type out instead keeps the shader identical in meaning.
+const ARRAY_ALIAS = /\balias\s+(\w+)\s*=\s*(array<[^;]+>)\s*;/g;
+
+function inlineArrayAliases(code) {
+  const aliases = [...code.matchAll(ARRAY_ALIAS)];
+  if (!aliases.length) return code;
+  let out = code.replace(ARRAY_ALIAS, "");
+  for (const [, name, type] of aliases) out = out.replace(new RegExp(`\\b${name}\\b`, "g"), type);
+  return out;
+}
+
+function rewriteShaders() {
+  const deviceProto = globalThis.GPUDevice?.prototype;
+  if (!deviceProto || deviceProto.__autochartShaders) return;
+  const createShaderModule = deviceProto.createShaderModule;
+  deviceProto.createShaderModule = function (descriptor, ...rest) {
+    const code = descriptor?.code;
+    return createShaderModule.call(this, typeof code === "string" ? { ...descriptor, code: inlineArrayAliases(code) } : descriptor, ...rest);
+  };
+  deviceProto.__autochartShaders = true;
+}
+
 async function resolveDevice(requested) {
   const dev = normalizeDevice(requested);
   if (dev === "cpu") return "cpu";
@@ -126,12 +152,23 @@ function latchCpu(reason, log) {
   if (fallbackCallback) fallbackCallback({ from: "webgpu", reason });
 }
 
+// A model that loaded on WebGPU can still fail when it runs (Firefox on a Mac
+// can't build some of ONNX Runtime's shaders). The worker then runs the job
+// again on the CPU (engine.worker.mjs).
+export function isWebgpuRunFailure(err) {
+  return webgpuState === "ok" && /webgpu|gpu/i.test(String(err?.message || err));
+}
+
+export function fallBackToCpu(reason) {
+  latchCpu(reason, null);
+}
+
 function providers(device) {
   return device === "webgpu" ? ["webgpu"] : ["wasm"];
 }
 
 async function createSession(source, options = {}) {
-  const device = await resolveDevice(options.device);
+  const device = cpuSources.has(source) ? "cpu" : await resolveDevice(options.device);
   const key = `${source}|${device}|${JSON.stringify(options.preferredOutputLocation || {})}`;
   if (sessions.has(key)) return sessions.get(key);
   const sessionOptions = {
@@ -141,10 +178,16 @@ async function createSession(source, options = {}) {
   if (device === "webgpu" && options.preferredOutputLocation) {
     sessionOptions.preferredOutputLocation = options.preferredOutputLocation;
   }
+  const log = options.log || null;
+  const file = source.split("/").pop();
+  const t0 = performance.now();
+  const bytes = await fetchModelFile(source);
+  if (log) log(`    read ${file} (${Math.round(bytes.length / 1e6)} MB) in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
   let session;
   try {
-    session = await ort.InferenceSession.create(await fetchModelFile(source), sessionOptions);
+    session = await ort.InferenceSession.create(bytes, sessionOptions);
     session.__resolvedDevice = device;
+    session.__cpuByDesign = cpuSources.has(source);
   } catch (err) {
     if (device !== "webgpu") throw err;
     latchCpu(String(err?.message || err).split("\n")[0], options.log || null);
@@ -158,8 +201,17 @@ function sessionDevice(session, fallback = null) {
   return session?.__resolvedDevice || fallback;
 }
 
+// Graphs that run faster on the CPU than on WebGPU. Demucs' inverse STFT is
+// one huge transposed convolution, which onnxruntime-web's WebGPU kernel runs
+// slowly: on an M2, 4.8 s per chunk on WebGPU against 1.0 s on the CPU. Its
+// input is built on the CPU anyway.
+const CPU_ROLES = new Set(["demucs-synthesis-istft"]);
+const cpuSources = new Set();
+
 function graphSource(manifest, role) {
-  return new URL(graphEntry(manifest, role).file, manifest.baseUrl).href;
+  const source = new URL(graphEntry(manifest, role).file, manifest.baseUrl).href;
+  if (CPU_ROLES.has(role)) cpuSources.add(source);
+  return source;
 }
 
 // Prefix tables ship stored (uncompressed) in the npz, so no inflater is needed.
@@ -196,6 +248,7 @@ export async function installWebHost({ wasmPaths = null, threads = null } = {}) 
     loadTables,
   });
   trackDevices();
+  rewriteShaders();
   const webgpu = await probeWebgpu();
   let readbackMs = await measureReadbackMs();
   let slowReadbackMs = null;
@@ -205,6 +258,7 @@ export async function installWebHost({ wasmPaths = null, threads = null } = {}) 
     readbackMs = await measureReadbackMs();
   }
   return {
+    userAgent: globalThis.navigator?.userAgent || "",
     webgpu,
     readbackMs,
     slowReadbackMs,

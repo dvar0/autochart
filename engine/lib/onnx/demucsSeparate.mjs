@@ -1,11 +1,22 @@
 import { createSession, graphPath, sessionDevice, tensor, runSession } from "./runtime.mjs";
 
-async function loadDemucsSessions(manifest, device = "cpu") {
-  const opts = { device };
-  const analysis = await createSession(graphPath(manifest, "demucs-analysis-stft"), opts);
-  const core = await createSession(graphPath(manifest, "demucs-core-network"), opts);
-  const synthesis = await createSession(graphPath(manifest, "demucs-synthesis-istft"), opts);
-  const devices = [analysis, core, synthesis].map((session) => sessionDevice(session, device));
+async function loadDemucsSessions(manifest, device = "cpu", log = null) {
+  const opts = { device, log };
+  const load = async (role) => {
+    const t0 = Date.now();
+    if (log) log(`  loading ${role}`);
+    const session = await createSession(graphPath(manifest, role), opts);
+    if (log) log(`  ${role} ready on ${sessionDevice(session, device)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    return session;
+  };
+  const analysis = await load("demucs-analysis-stft");
+  const core = await load("demucs-core-network");
+  const synthesis = await load("demucs-synthesis-istft");
+  // A host can keep a graph on the CPU because it runs faster there (the
+  // browser's inverse STFT); that isn't a fallback.
+  const devices = [analysis, core, synthesis]
+    .filter((session) => !session.__cpuByDesign)
+    .map((session) => sessionDevice(session, device));
   return {
     analysis,
     core,
@@ -241,6 +252,7 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
   const offsets = [];
   for (let off = 0; off < totalLength; off += stride) offsets.push(off);
   const nTotal = offsets.length;
+  if (log) log(`  separating ${nTotal} chunks`);
   const t0 = Date.now();
   for (let i = 0; i < nTotal; i += 1) {
     const offset = offsets[i];

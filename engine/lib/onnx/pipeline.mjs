@@ -19,8 +19,11 @@ const VOCAB_KEYS = ["DIFF_BASE", "DESC_BASE", "N_DESCRIPTORS", "DESCRIPTOR_BIN_C
 export async function separateStems({ manifest, device, left, right, log = null, onDevice = null, onProgress = null }) {
   const orch = demucsOrchestration(manifest);
   const length = left.length;
-  const sessions = await loadDemucsSessions(manifest, device);
+  if (log) log("loading separation models");
+  const t0 = Date.now();
+  const sessions = await loadDemucsSessions(manifest, device, log);
   const executionProvider = sessions.device || device;
+  if (log) log(`separation models loaded on ${executionProvider} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   if (onDevice) onDevice(executionProvider);
   const planar = new Float32Array(2 * length);
   planar.set(left, 0);

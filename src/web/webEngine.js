@@ -99,6 +99,17 @@ async function hardwareDevice(payload) {
   return mode === "cpu" ? "cpu" : mode === "webgpu" ? "webgpu" : "auto";
 }
 
+// "Safari 26.1 on Mac" and the like, for the engine log.
+function browserName(ua = "") {
+  const browser = [[/Edg\/([\d.]+)/, "Edge"], [/Firefox\/([\d.]+)/, "Firefox"], [/FxiOS\/([\d.]+)/, "Firefox"], [/CriOS\/([\d.]+)/, "Chrome"],
+    [/Chrome\/([\d.]+)/, "Chrome"], [/Version\/([\d.]+).*Safari/, "Safari"]]
+    .map(([re, name]) => { const m = re.exec(ua); return m && `${name} ${m[1].split(".").slice(0, 2).join(".")}`; })
+    .find(Boolean) || "unknown browser";
+  const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac"
+    : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "unknown OS";
+  return `${browser} on ${os}`;
+}
+
 // ----- the worker and its job queue -----
 
 let worker = null;
@@ -111,7 +122,12 @@ function startWorker() {
     if (!active || data?.id !== active.id) return;
     if (data.type === "event") {
       const event = data.event;
-      if (event.type === "runtime") return;
+      if (event.type === "runtime") {
+        const gpu = event.webgpu ? `WebGPU on (readback ${Math.round(event.readbackMs ?? 0)} ms)` : "WebGPU off";
+        const threads = event.crossOriginIsolated ? "multithreaded CPU" : "single-threaded CPU";
+        emit(active.id, { type: "log", stage: "queued", stream: "stdout", message: `Browser engine: ${gpu}, ${threads} (${browserName(event.userAgent)})` });
+        return;
+      }
       if (event.type === "stage" && event.status === "running") active.stage = event.stage;
       emit(active.id, event);
     } else if (data.type === "result") {
