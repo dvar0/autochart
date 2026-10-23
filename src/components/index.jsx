@@ -1,4 +1,5 @@
 import { I } from "../icons.jsx";
+import { isWebApp } from "../services/runtimeBridge.js";
 
 export function AlbumArt({ art, label, showLabel }) {
   const grad = `linear-gradient(150deg, ${art.bg[0]}, ${art.bg[1]})`;
@@ -302,10 +303,17 @@ export function Rail({
   libCounts,
   collapsed,
   onToggleCollapse,
+  songTitle = "",
 }) {
+  // The browser version has no library and works on one song at a time:
+  // Start takes the library's place, and the open song gets its own slot.
+  const web = isWebApp();
+  const home = web
+    ? { id: "start", name: "Start", icon: <I.home /> }
+    : { id: "library", name: "Library", icon: <I.music /> };
   const pages = [
-    { id: "library", name: "Library", icon: <I.music /> },
-    { id: "generate", name: "Generate", icon: <I.bolt /> },
+    home,
+    ...(web ? [] : [{ id: "generate", name: "Generate", icon: <I.bolt /> }]),
     { id: "settings", name: "Settings", icon: <I.gear /> },
   ];
   const themeLabel = theme === "system" ? "System theme" : theme === "light" ? "Light mode" : "Dark mode";
@@ -315,9 +323,9 @@ export function Rail({
         <button
           type="button"
           className="brand-row"
-          onClick={() => onNav("library")}
-          title="Autochart — Library"
-          aria-label="Autochart — Library"
+          onClick={() => onNav(home.id)}
+          title={`Autochart — ${home.name}`}
+          aria-label={`Autochart — ${home.name}`}
         >
           <span className="logo-star">
             <I.star />
@@ -368,6 +376,23 @@ export function Rail({
               <span className="rail-count">{libCounts?.[f.id] ?? 0}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {web && (
+        <div className="rail-section">
+          <div className="rail-label">SONG</div>
+          <button
+            type="button"
+            className={"rail-item rail-song" + (page === "generate" ? " active" : "")}
+            onClick={() => onNav("generate")}
+            disabled={!songTitle}
+            title={songTitle || "No song open"}
+            aria-current={page === "generate" ? "page" : undefined}
+          >
+            <I.music />
+            <span className="rail-item-label">{songTitle || "No song open"}</span>
+          </button>
         </div>
       )}
 

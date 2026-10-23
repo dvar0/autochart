@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Rail } from "./components/index.jsx";
 import { getAppSettings, updateAppSettings } from "./services/appSettings.js";
-import { browserHasLocalSongRecords, getSongRecord, recordToImported } from "./services/songLibrary.js";
+import {
+  browserHasLocalSongRecords, forgetProject, getSongRecord, hasUnexportedWork, recordToImported,
+} from "./services/songLibrary.js";
 import { subscribeGenerationEvents } from "./services/generation.js";
 import Generate from "./pages/generate/GeneratePage.jsx";
 import Library from "./pages/Library.jsx";
+import Start from "./pages/Start.jsx";
 import SetupWizard from "./pages/SetupWizard.jsx";
 import Settings from "./pages/Settings.jsx";
 import useResolvedTheme from "./hooks/useResolvedTheme.js";
@@ -13,8 +16,8 @@ import { isWebApp } from "./services/runtimeBridge.js";
 export default function App() {
   const [themePreference, setThemePreference] = useState("system");
   const theme = useResolvedTheme(themePreference);
-  // The browser version opens on a new project; its models download on first use.
-  const [page, setPage] = useState(isWebApp() ? "generate" : "library");
+  // The browser version has no library: it opens on Start, where a project begins.
+  const [page, setPage] = useState(isWebApp() ? "start" : "library");
   // Stable workspace keys keep in-flight jobs attached to their project even
   // when a new project's saved song id arrives, or another song is opened.
   const [workspace, setWorkspace] = useState({
@@ -54,6 +57,32 @@ export default function App() {
   useEffect(() => {
     mainRef.current?.focus({ preventScroll: true });
   }, [page]);
+
+  // Nothing is kept on the web: closing the tab with an unexported chart, or
+  // while one is generating, asks first.
+  const hasWorkToLose = () => hasUnexportedWork() || workspaceRef.current.projects.some((project) => project.busy);
+  useEffect(() => {
+    if (!isWebApp()) return undefined;
+    const onBeforeUnload = (event) => {
+      if (!hasWorkToLose()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // The web works on one song at a time, so opening another closes this one.
+  const confirmCloseSong = () => !hasWorkToLose()
+    || window.confirm("Close this song? Anything you haven't exported will be lost.");
+
+  // Web: the projects a new song replaces (running ones keep going), and the
+  // memory they held.
+  const closeIdleProjects = (projects) => {
+    const closed = projects.filter((project) => !project.busy);
+    closed.forEach((project) => project.songId && forgetProject(project.songId));
+    return projects.filter((project) => project.busy);
+  };
 
   useEffect(() => subscribeGenerationEvents(async (event) => {
     if (event?.type !== "project_saved") return;
@@ -95,6 +124,9 @@ export default function App() {
     // Library loading is asynchronous: resolve against the current workspace,
     // not the project list captured before its media finished loading.
     setWorkspace((current) => {
+      if (isWebApp()) {
+        return { activeProject: key, projects: [...closeIdleProjects(current.projects), { key, songId: data.id, importedSong: data }] };
+      }
       const existing = current.projects.find((project) => project.songId === data.id);
       return {
         activeProject: existing?.key || key,
@@ -111,6 +143,23 @@ export default function App() {
     setWorkspace((current) => ({ projects: [...current.projects, { key, songId: null, importedSong: null }], activeProject: key }));
     setPage("generate");
   };
+
+  // Start hands over the picked file; the new project reads it as if it had
+  // been dropped on its stage.
+  const handleStartSong = (file) => {
+    const key = crypto.randomUUID();
+    setWorkspace((current) => ({
+      projects: [...closeIdleProjects(current.projects), { key, songId: null, importedSong: null, pendingFile: file }],
+      activeProject: key,
+    }));
+    setPage("generate");
+  };
+
+  const handleSongTitle = useCallback((key, title) => {
+    setWorkspace((current) => current.projects.some((project) => project.key === key && project.title !== title)
+      ? { ...current, projects: current.projects.map((project) => project.key === key ? { ...project, title } : project) }
+      : current);
+  }, []);
 
   const handleProjectIdentified = (key, songId) => {
     setWorkspace((current) => ({ ...current, projects: current.projects.map((project) =>
@@ -166,9 +215,11 @@ export default function App() {
           libCounts={libCounts}
           collapsed={railCollapsed}
           onToggleCollapse={handleToggleRail}
+          songTitle={projects.find((project) => project.key === activeProject)?.title || ""}
         />}
         <div className="ac-main" ref={mainRef} tabIndex="-1" aria-label={`${page} page`}>
-          {page === "library" && (
+          {page === "start" && <Start onSong={handleStartSong} onOpenChart={handleImport} confirmCloseSong={confirmCloseSong} />}
+          {page === "library" && !isWebApp() && (
             <Library
               setPage={setPage}
               onImport={handleImport}
@@ -186,6 +237,8 @@ export default function App() {
               onBusyChange={handleProjectBusyChange}
               active={page === "generate" && activeProject === project.key}
               importedSong={project.importedSong}
+              initialFile={project.pendingFile}
+              onSongTitle={handleSongTitle}
               onSaved={handleLibrarySaved}
               onGeneratedSong={(data) => handleGeneratedSong(project.key, data)}
               onProjectIdentified={(songId) => handleProjectIdentified(project.key, songId)}

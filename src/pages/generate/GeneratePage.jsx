@@ -20,10 +20,23 @@ import { targetLabel } from "../../data/supportedTargets.js";
 // deck; Inpaint and Edit swap them for the editor panel and the song map +
 // piano roll. The stage stays put through every switch: one highway, one
 // playhead.
-export default function GeneratePage({ importedSong, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange }) {
+export default function GeneratePage({ importedSong, initialFile = null, onSongTitle, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange }) {
   const project = useGenerateProject({ importedSong, onSaved, onGeneratedSong, onProjectIdentified, visible: active });
   const highwayRef = useRef(null);
   const ws = useEditWorkspace(project, highwayRef, active);
+
+  // A project begun from the web Start page arrives with its song file. (Under
+  // StrictMode this runs twice; the second read supersedes the first.)
+  useEffect(() => {
+    if (initialFile) project.handleMediaFile(initialFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The web rail names the open song.
+  const songTitle = project.hasMedia ? project.details?.title || "Untitled song" : "";
+  useEffect(() => {
+    onSongTitle?.(workspaceKey, songTitle);
+  }, [workspaceKey, songTitle, onSongTitle]);
 
   useEffect(() => {
     onBusyChange?.(workspaceKey, project.busy);

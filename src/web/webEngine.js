@@ -16,6 +16,12 @@ import { getAppSettings } from "../services/appSettings.js";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
 
 const DEFAULT_DEMUCS_ID = "demucs_default";
+
+// The browser offers only the Fretformer 2 family; Fretformer 1 stays in the
+// desktop app.
+const WEB_FAMILY = MODEL_FAMILIES.find((family) => family.id === "fretformer-2");
+const WEB_GENERATORS = engineManifest.generators.filter((generator) =>
+  [WEB_FAMILY.generatorId, WEB_FAMILY.inpaintGeneratorId].includes(generator.id));
 const MAX_LEAD_IN_MS = 30_000;
 
 // Where model folders are served from: the dev server's /models/ (your
@@ -43,7 +49,7 @@ function modelUrl(generator) {
 }
 
 function generatorById(generatorId) {
-  return engineManifest.generators.find((g) => g.id === generatorId) || engineManifest.generators[0];
+  return WEB_GENERATORS.find((g) => g.id === generatorId) || WEB_GENERATORS[0];
 }
 
 function stemSetOf(generator) {
@@ -218,7 +224,7 @@ async function storeAnalysisAudio(jobId, blob, audio, audioSha256, sourceTransfo
 
 // Every stem set this song's separation has stored, as the app records them.
 async function separationStemSets(audioSha256, sourceTransform, separationId) {
-  const sets = [...new Set(engineManifest.generators.map(stemSetOf))];
+  const sets = [...new Set(WEB_GENERATORS.map(stemSetOf))];
   const stemSets = {};
   for (const stemSet of sets) {
     const key = stemKey({ audioSha256, sourceVariantKey: sourceTransform.key, separationId, stemSet });
@@ -393,7 +399,7 @@ let generatorStatusCache = null;
 
 async function generatorStatuses({ fresh = false } = {}) {
   if (generatorStatusCache && !fresh) return generatorStatusCache;
-  const entries = await Promise.all(engineManifest.generators.map(async (generator) => {
+  const entries = await Promise.all(WEB_GENERATORS.map(async (generator) => {
     let manifest = null;
     try {
       manifest = await loadModelManifest(modelUrl(generator));
@@ -420,7 +426,7 @@ async function generatorStatuses({ fresh = false } = {}) {
 async function getManifest() {
   const statuses = await generatorStatuses({ fresh: true });
   const settings = await getAppSettings().catch(() => ({}));
-  const generators = engineManifest.generators.map((generator) => ({
+  const generators = WEB_GENERATORS.map((generator) => ({
     ...generator,
     setup: statuses[generator.id],
   }));
@@ -437,20 +443,19 @@ async function getManifest() {
       status: ready ? "ready" : "missing",
       message: ready ? "At least one generator is ready." : "No model is reachable right now.",
     },
-    preferences: { defaultGeneratorId: settings.defaultGeneratorId || "" },
+    preferences: { defaultGeneratorId: settings.defaultGeneratorId || WEB_FAMILY.generatorId },
   };
 }
 
-// The family the Models card offers to download: the first one the model host has.
+// The family the Models card offers to download, when the model host has it.
 function downloadFamily(statuses) {
-  return MODEL_FAMILIES.find((family) => statuses[family.generatorId]?.status !== "unsupported") || null;
+  return statuses[WEB_FAMILY.generatorId]?.status !== "unsupported" ? WEB_FAMILY : null;
 }
 
 async function scanModels({ fresh = false } = {}) {
   const statuses = await generatorStatuses({ fresh });
   const family = downloadFamily(statuses);
   const { bytes } = await cachedModelSummary();
-  const familyIds = family ? [family.generatorId, family.inpaintGeneratorId].filter(Boolean) : [];
   return {
     schemaVersion: 1,
     scannedAt: Date.now(),
@@ -463,7 +468,7 @@ async function scanModels({ fresh = false } = {}) {
           id: family.id,
           label: family.label,
           defaultGeneratorId: family.generatorId,
-          ready: familyIds.every((id) => statuses[id]?.downloaded),
+          ready: Boolean(statuses[family.generatorId]?.downloaded),
         }
       : null,
     generatorReadiness: statuses,
@@ -482,12 +487,13 @@ function emitInstall(event) {
   }
 }
 
-// Downloads the offered family's models now instead of on first use.
-async function installModels() {
+// Downloads the chart model now instead of on first use. The Inpaint model is
+// a separate, opt-in download: pass inpaint to get it.
+async function installModels({ inpaint = false } = {}) {
   const statuses = await generatorStatuses({ fresh: true });
   const family = downloadFamily(statuses);
   if (!family) throw new Error("No model is reachable right now.");
-  const ids = [family.generatorId, family.inpaintGeneratorId].filter(Boolean);
+  const ids = [inpaint ? family.inpaintGeneratorId : family.generatorId];
   emitInstall({ phase: "starting", percent: 0, message: "Preparing download." });
   for (const [index, id] of ids.entries()) {
     const manifest = await loadModelManifest(modelUrl(generatorById(id)));

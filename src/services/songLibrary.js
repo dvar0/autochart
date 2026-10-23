@@ -12,6 +12,7 @@ import {
   electronFiles,
   electronLibrary,
   hasElectronLibrary as bridgeHasElectronLibrary,
+  isWebApp,
 } from "./runtimeBridge.js";
 
 const DB_NAME = "autochart";
@@ -131,6 +132,51 @@ function withStore(mode, op) {
   );
 }
 
+// The browser version keeps nothing between visits: its projects live in this
+// tab's memory, copied in and out like IndexedDB rows. (Firefox also can't
+// read an IndexedDB-backed audio blob again once its record is rewritten.)
+const memoryRows = new Map();
+// Saves since the last export, per project, so leaving the page can warn
+// about charts that would be lost. A project's first save is its baseline.
+const memoryRevisions = new Map();
+
+function memoryStore(op) {
+  const store = {
+    put: (row) => {
+      memoryRows.set(row.id, structuredClone(row));
+      const revision = memoryRevisions.get(row.id);
+      if (revision) revision.saved += 1;
+      else memoryRevisions.set(row.id, { saved: 0, exported: 0 });
+      return row.id;
+    },
+    get: (id) => (memoryRows.has(id) ? structuredClone(memoryRows.get(id)) : undefined),
+    getAll: () => [...memoryRows.values()].map((row) => structuredClone(row)),
+    delete: (id) => { memoryRows.delete(id); memoryRevisions.delete(id); },
+  };
+  return Promise.resolve().then(() => op(store));
+}
+
+/** Browser version: whether any open project changed since it was last exported. */
+export function hasUnexportedWork() {
+  return [...memoryRevisions.values()].some((revision) => revision.saved > revision.exported);
+}
+
+/** Browser version: the project's chart was just exported as it stands. */
+export function markProjectExported(id) {
+  const revision = memoryRevisions.get(id);
+  if (revision) revision.exported = revision.saved;
+}
+
+/** Browser version: drop a project that was closed for another song. */
+export function forgetProject(id) {
+  memoryRows.delete(id);
+  memoryRevisions.delete(id);
+}
+
+function rowStore(mode, op) {
+  return isWebApp() ? memoryStore(op) : withStore(mode, op);
+}
+
 function idbPut(record) {
   const migrated = migrateRecord(record);
   const toStore = stripBlobs(migrated);
@@ -139,11 +185,11 @@ function idbPut(record) {
   } else if (record._idbBlobs) {
     toStore._idbBlobs = record._idbBlobs;
   }
-  return withStore("readwrite", (s) => s.put(toStore));
+  return rowStore("readwrite", (s) => s.put(toStore));
 }
 
 function idbGetAll() {
-  return withStore("readonly", (s) => s.getAll()).then((rows) =>
+  return rowStore("readonly", (s) => s.getAll()).then((rows) =>
     (rows || []).map((row) => {
       const rec = migrateRecord(row);
       if (row._idbBlobs) rec._blobs = row._idbBlobs;
@@ -153,7 +199,7 @@ function idbGetAll() {
 }
 
 function idbGet(id) {
-  return withStore("readonly", (s) => s.get(id)).then((row) => {
+  return rowStore("readonly", (s) => s.get(id)).then((row) => {
     if (!row) return null;
     const rec = migrateRecord(row);
     if (row._idbBlobs) rec._blobs = row._idbBlobs;
@@ -162,7 +208,7 @@ function idbGet(id) {
 }
 
 function idbDelete(id) {
-  return withStore("readwrite", (s) => s.delete(id));
+  return rowStore("readwrite", (s) => s.delete(id));
 }
 
 // --- Public API ---

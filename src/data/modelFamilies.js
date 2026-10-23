@@ -11,6 +11,8 @@ export const MODEL_FAMILIES = Object.freeze([
     shortLabel: "Fretformer 2",
     generatorId: "autochart.fretformer.v2-dpo-onnx",
     inpaintGeneratorId: "autochart.fretformer.v2-dpo-fim-onnx",
+    // What the browser version downloads for Generate (the Inpaint model is extra).
+    downloadMb: 630,
   }),
   Object.freeze({
     id: "fretformer-1",

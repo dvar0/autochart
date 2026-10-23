@@ -72,6 +72,7 @@ import useLibraryFolderGate, { isMissingLibraryFolderError } from "../../hooks/u
 import {
   getSongRecord,
   getStoredAssetSource,
+  markProjectExported,
   playableVersionsFromRecord,
   recordToImported,
   saveSongRecord,
@@ -1854,6 +1855,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         setStatusMsg(result.message || "Export canceled.");
         return;
       }
+      markProjectExported(songId);
       setStatusMsg(result.message || `Exported final chart to ${result.path}`);
     } catch (err) {
       setStatusMsg(err.message || "Final chart export failed");
@@ -1868,6 +1870,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     try {
       const finalVersion = await ensureFinalVersionSaved();
       const result = await saveChartToCloneHeroLibrary(songId, finalVersion.id);
+      if (!result?.canceled) markProjectExported(songId);
       setStatusMsg(result.message || `Saved final chart to ${GAME_LIBRARY_NAME}: ${result.path}`);
       setLibrarySavedAt(Date.now());
     } catch (err) {
