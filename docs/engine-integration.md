@@ -43,8 +43,10 @@ resample), `host.mjs` (runtime host, device choice, model manifest over HTTP),
 cross-origin isolated (COOP `same-origin`, COEP `require-corp`) so the wasm
 backend can use threads. On WebGPU, charts match the desktop byte for byte. In
 `auto` mode the transcriber moves to CPU when a GPU readback takes longer than
-20 ms (Firefox polls GPU work about every 100 ms, which makes per-token decoding
-roughly ten times slower than on CPU). The CPU backend's separation differs
+20 ms. Firefox polls GPU work about every 100 ms; the readback pump in
+`host.mjs` brings that down to a few milliseconds, but per-token decoding still
+runs about three times slower than on CPU, so a browser that needed the pump
+decodes on CPU. The CPU backend's separation differs
 slightly from native CPU, so CPU-only browser charts are valid but not identical
 to the desktop's.
 

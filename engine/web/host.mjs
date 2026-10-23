@@ -257,11 +257,15 @@ export async function installWebHost({ wasmPaths = null, threads = null } = {}) 
 }
 
 // The transcriber's device: the run's device, except CPU where reading back
-// from the GPU is slow. A run asking for "webgpu" explicitly keeps it.
+// from the GPU is slow, even if the pump fixed the probe. The decoder reads
+// back every token, and the pump only gets Firefox from 100 ms to a few: on
+// an M2, Zen decodes a 2:30 song in 101 s on WebGPU and 33 s on the CPU
+// (Chrome: 37 s). A run asking for "webgpu" explicitly keeps it.
 export function transcriberDevice(requested, runtime) {
   const dev = normalizeDevice(requested);
   if (dev !== "auto") return dev;
-  return runtime.readbackMs != null && runtime.readbackMs > SLOW_READBACK_MS ? "cpu" : dev;
+  const slow = runtime.slowReadbackMs != null || (runtime.readbackMs != null && runtime.readbackMs > SLOW_READBACK_MS);
+  return slow ? "cpu" : dev;
 }
 
 export { resolveDevice };
