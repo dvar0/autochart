@@ -33,7 +33,7 @@ export const BETA_MODELS = Object.freeze([
     label: "Fill-in",
     badge: "F",
     familyId: "fretformer-2",
-    about: "Redoes the parts you pick in Inpaint.",
+    about: "Redoes the parts you pick.",
     shortLabel: "Fill-in",
     generatorId: "autochart.fretformer.v2-inpaint-onnx",
   }),

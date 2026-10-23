@@ -491,51 +491,54 @@ export default function Settings() {
                 const selected = defaultGeneratorId === row.generatorId;
                 return (
                   <div className={"model-row" + (selected ? " selected" : "")} key={row.id}>
+                    {/* Covers the whole row so a click anywhere picks it; the
+                        switch and the action sit above it. */}
                     <button
                       type="button"
                       role="radio"
                       aria-checked={selected}
+                      aria-label={row.label}
                       className="model-pick"
                       onClick={() => updateModelPreference({ defaultGeneratorId: row.generatorId })}
                       disabled={!row.pickable}
                       title={row.pickable ? `Start new projects with ${row.label}` : row.reason}
-                    >
-                      <span className="model-radio" aria-hidden="true" />
-                      <span className={`model-badge ${row.id}`} aria-hidden="true">{row.badge}</span>
-                      <span className="model-row-copy">
-                        <span className="model-row-name">
-                          <b>{row.label}</b>
-                          {row.recommended && <span className="model-tag recommended">Recommended</span>}
-                        </span>
-                        <small>{row.about}</small>
-                      </span>
-                    </button>
-                    <div className="model-row-action">{row.action}</div>
-                    {isBetaGenerator(row.generatorId) && (
-                      <div className="model-row-option">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={settings.fillInDrafts}
-                          aria-labelledby="settings-fill-in-drafts"
-                          className={"ms-toggle" + (settings.fillInDrafts ? " on" : "")}
-                          onClick={() => setFillInDrafts(!settings.fillInDrafts)}
-                        >
-                          <span className="ms-toggle-knob" aria-hidden="true" />
-                          {settings.fillInDrafts ? "On" : "Off"}
-                        </button>
-                        <span id="settings-fill-in-drafts">Write whole charts</span>
-                        <span className="model-tag beta">Beta</span>
-                        <i
-                          className="ms-info"
-                          role="img"
-                          aria-label={FILL_IN_DRAFTS_HELP}
-                          title={FILL_IN_DRAFTS_HELP}
-                        >
-                          <I.info />
-                        </i>
+                    />
+                    <span className="model-radio" aria-hidden="true" />
+                    <span className={`model-badge ${row.id}`} aria-hidden="true">{row.badge}</span>
+                    <div className="model-row-copy">
+                      <div className="model-row-name">
+                        <b>{row.label}</b>
+                        {row.recommended && <span className="model-tag recommended">Recommended</span>}
                       </div>
-                    )}
+                      <small>{row.about}</small>
+                    </div>
+                    <div className="model-row-action">
+                      {isBetaGenerator(row.generatorId) && (
+                        <div className="model-row-option">
+                          <span id="settings-fill-in-drafts">Write whole charts</span>
+                          <span className="model-tag beta">Beta</span>
+                          <i
+                            className="ms-info"
+                            role="img"
+                            aria-label={FILL_IN_DRAFTS_HELP}
+                            title={FILL_IN_DRAFTS_HELP}
+                          >
+                            <I.info />
+                          </i>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={settings.fillInDrafts}
+                            aria-labelledby="settings-fill-in-drafts"
+                            className={"model-switch" + (settings.fillInDrafts ? " on" : "")}
+                            onClick={() => setFillInDrafts(!settings.fillInDrafts)}
+                          >
+                            <span className="model-switch-knob" aria-hidden="true" />
+                          </button>
+                        </div>
+                      )}
+                      {row.action}
+                    </div>
                   </div>
                 );
               })}
