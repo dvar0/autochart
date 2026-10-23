@@ -91,8 +91,8 @@ async function main() {
       await waitFor(() => evaluate(`Boolean(${selector})`), `button ${text}`);
       await evaluate(`(() => { ${selector}.click(); return true; })()`);
     };
-    const running = () => evaluate(`Boolean([...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'STOP'))`);
-    await click("OPEN PROJECT");
+    const running = () => evaluate(`Boolean([...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Stop'))`);
+    await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector("img.bg-layer"))'), "saved background visible");
     await click("Media");
     await click("Remove background");
@@ -101,7 +101,7 @@ async function main() {
     await waitFor(async () => (await library.getSong(context, seed.id)).assets.background === null, "background removal saved");
     await waitFor(() => evaluate('document.body.innerText.includes("Project saved.")'), "save completed");
     await click("Library");
-    await click("OPEN PROJECT");
+    await click("Open project");
     await click("Media");
     assert.equal(await evaluate('document.body.innerText.includes("Remove background")'), false, "background restored after reopening");
     // Picking another image after clearing is allowed; clearing it before
@@ -116,22 +116,22 @@ async function main() {
     await waitFor(() => evaluate('Boolean(document.querySelector("img.bg-layer"))'), "replacement image visible");
     await click("Remove background");
     await waitFor(() => evaluate('!document.querySelector(".bg-layer")'), "pending background cleared");
-    await click("GENERATE CHART");
+    await click("Generate chart");
     await waitFor(() => jobs.length === 1, "job started");
     assert.equal((await library.getSong(context, seed.id)).assets.background, null, "generation restored the removed background");
     for (let i = 0; i < 4; i++) {
       win.webContents.send("engine:jobEvent", { jobId: jobs[0].payload.jobId, type: "stage", stage: "transcription", status: "running", progress: (i + 1) / 5 });
       await click("Library");
-      await click("OPEN PROJECT");
+      await click("Open project");
       await waitFor(running, `run survives round trip ${i + 1}`);
     }
     await click("Library");
     jobs[0].resolve({ jobId: jobs[0].payload.jobId, status: "completed", chartText });
     await waitFor(async () => (await library.getSong(context, seed.id)).versions.length === 2, "second take saved while in library");
-    await click("OPEN PROJECT");
+    await click("Open project");
     await waitFor(() => evaluate('document.querySelectorAll(".take-card[role=button]").length === 2'), "second take visible");
     await click("Library");
-    await click("OPEN PROJECT");
+    await click("Open project");
     await waitFor(() => evaluate('document.querySelectorAll(".take-card[role=button]").length === 2'), "second take survives reopening");
     assert.equal((await library.getSong(context, seed.id)).versions.length, 2);
     // Opening compare during playback must not unmount the app with a render
@@ -163,12 +163,12 @@ async function main() {
     await waitFor(() => evaluate('document.querySelector(".single-preview .transport-btn")?.textContent.includes("Pause") && Number(document.querySelector(".single-preview .seekbar")?.value) > 10.2'), "single preview keeps playing from compare's time");
     await evaluate('document.querySelector(".single-preview .transport-btn").click()');
     assert.deepEqual(errors, [], "renderer errors during compare");
-    await click("GENERATE CHART");
+    await click("Generate chart");
     await waitFor(() => jobs.length === 2, "second job started");
     // The completion promise in the old document is now gone. Electron must
     // still save the take before there is any renderer to receive its result.
     await win.loadFile(path.join(temp, "index.html"));
-    await click("OPEN PROJECT");
+    await click("Open project");
     await waitFor(() => evaluate('document.querySelectorAll(".take-card[role=button]").length === 2'), "project reopened during detached generation");
     const result = { jobId: jobs[1].payload.jobId, status: "completed", chartText };
     jobs[1].resolve(result);
@@ -184,7 +184,7 @@ async function main() {
     assert.equal(saved.meta.favorite, true);
     await waitFor(() => evaluate('document.querySelectorAll(".take-card[role=button]").length === 3'), "all takes visible after reload");
     assert.deepEqual(errors, [], "renderer errors during navigation");
-    await click("GENERATE CHART");
+    await click("Generate chart");
     await waitFor(() => jobs.length === 3, "accelerated job started");
     const failedPayload = jobs[2].payload;
     jobs[2].reject(new Error("WebGPU device lost: execution failed"));
@@ -207,10 +207,10 @@ async function main() {
     await waitFor(async () => (await library.getSong(context, seed.id)).versions.length === 4, "retry take saved once");
     await waitFor(() => evaluate('document.querySelectorAll(".take-card[role=button]").length === 4'), "retry take visible");
     assert.equal(jobs.length, 4, "duplicate retry submitted");
-    await click("GENERATE CHART");
+    await click("Generate chart");
     await waitFor(() => jobs.length === 5, "unrelated failure job started");
     jobs[4].reject(new Error("Audio file is missing"));
-    await waitFor(() => evaluate('document.body.innerText.includes("Audio file is missing") && !document.body.innerText.includes("STOPPING")'), "unrelated failure visible");
+    await waitFor(() => evaluate('document.body.innerText.includes("Audio file is missing") && !document.body.innerText.includes("Stopping")'), "unrelated failure visible");
     assert.equal(await evaluate('document.body.innerText.includes("Retry using CPU")'), false, "file error offered hardware recovery");
     assert.equal((await library.getSong(context, seed.id)).versions.length, 4, "failed run added a take");
     assert.deepEqual(errors, [], "renderer errors during CPU retry");

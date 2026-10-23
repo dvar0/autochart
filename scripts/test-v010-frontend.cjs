@@ -35,15 +35,15 @@ function assert(condition, message) {
     const gameLibrary = await bundle("src/data/gameLibrary.js", temp);
     assert(gameLibrary.GAME_LIBRARY_NAME === "Clone Hero / YARG", "game-library destination is ambiguous");
     assert(
-      gameLibrary.GAME_LIBRARY_SAVE_LABEL === "SAVE TO CLONE HERO / YARG",
+      gameLibrary.GAME_LIBRARY_SAVE_LABEL === "Save to Clone Hero / YARG",
       "game-library save action does not name Clone Hero / YARG"
     );
     assert(
-      gameLibrary.GAME_LIBRARY_SAVING_LABEL === "SAVING TO CLONE HERO / YARG…",
+      gameLibrary.GAME_LIBRARY_SAVING_LABEL === "Saving to Clone Hero / YARG…",
       "game-library busy action does not name Clone Hero / YARG"
     );
     assert(
-      gameLibrary.GAME_LIBRARY_SAVED_LABEL === "SAVED TO CLONE HERO / YARG",
+      gameLibrary.GAME_LIBRARY_SAVED_LABEL === "Saved to Clone Hero / YARG",
       "game-library success action does not name Clone Hero / YARG"
     );
     const chartVersions = await bundle("src/services/chartVersions.js", temp);

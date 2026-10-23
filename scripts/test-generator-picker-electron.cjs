@@ -180,7 +180,7 @@ async function main() {
     };
 
     // Not installed: v1 only, plain plate, v1 faders, solos disabled.
-    await click("OPEN PROJECT");
+    await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-name"))'), "model plate");
     assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-picker"))'), false, "no picker while test models are missing");
     assert.equal(await evaluate('document.querySelector(".model-plate-name").textContent.trim()'), "Fretformer");
@@ -196,7 +196,7 @@ async function main() {
     // Installed: reload the manifest (navigate away and back).
     installedReady = true;
     await click("Library");
-    await click("OPEN PROJECT");
+    await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
     const options = await evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
     assert.deepEqual(options, engineManifest.generators.map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]));
@@ -246,7 +246,7 @@ async function main() {
     const tooltip = await evaluate('document.querySelector(".ms-info")?.getAttribute("title") || ""');
     assert.match(tooltip, /takes longer/, "Force a solo has its info tooltip");
 
-    await click("GENERATE CHART");
+    await click("Generate chart");
     await waitFor(() => payloads.length === 1, "generate payload");
     const payload = payloads[0];
     assert.equal(payload.generatorId, SIX_STEM.id);
@@ -260,7 +260,7 @@ async function main() {
     await evaluate(`(() => { ${forceButton}.click(); return true; })()`);
     await waitFor(async () => (await evaluate(`${forceButton}.textContent.trim()`)) === "On", "Force a solo on");
     await screenshot("6-force-solo", ".more-settings");
-    await click("GENERATE CHART");
+    await click("Generate chart");
     await waitFor(() => payloads.length === 2, "force-solo generate payload");
     assert.equal(payloads[1].generatorId, SIX_STEM.id);
     assert.equal(payloads[1].generation.controls.forceSolo, true, "payload carries forceSolo=true");
@@ -272,7 +272,7 @@ async function main() {
     await evaluate(`(() => { ${solosButton}.click(); return true; })()`);
     await waitFor(async () => (await evaluate(`${solosButton}.textContent.trim()`)) === "Off", "Mark solos off");
     assert.equal(await evaluate(`${forceButton}.disabled`), true, "Force a solo is disabled while Mark solos is off");
-    await click("GENERATE CHART");
+    await click("Generate chart");
     await waitFor(() => payloads.length === 3, "solos-off payload");
     assert.equal(payloads[2].generation.controls.solos, false, "payload carries solos=false");
     assert.equal(payloads[2].generation.resolved.forceSolo, false, "Force a solo is off while Mark solos is off");

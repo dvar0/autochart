@@ -316,18 +316,18 @@ export default function Console({ project }) {
                 title={generateDisabledReason || "Generate a chart"}
               >
                 {!generatorId && !runActive ? (
-                  "ENGINE UNAVAILABLE"
+                  "Engine unavailable"
                 ) : selectedGeneratorSetup?.ready === false && !runActive ? (
-                  "SETUP REQUIRED"
+                  "Setup required"
                 ) : stopping ? (
                   <>
-                    <span className="cta-spinner" aria-hidden="true" /> STOPPING…
+                    <span className="cta-spinner" aria-hidden="true" /> Stopping…
                   </>
                 ) : runActive ? (
-                  "STOP"
+                  "Stop"
                 ) : (
                   <>
-                    GENERATE CHART <I.boltFill />
+                    Generate chart <I.boltFill />
                   </>
                 )}
               </button>

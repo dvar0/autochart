@@ -427,7 +427,7 @@ function DetailPanel({
           className="act fill"
           onClick={() => onOpen(song.id)}
         >
-          <I.open /> OPEN PROJECT
+          <I.open /> Open project
         </button>
         <div className="detail-action-row">
           <button
@@ -436,7 +436,7 @@ function DetailPanel({
             disabled={actionDisabled}
             title={summary.canExportFinal ? "Export final chart" : summary.finalBlocker}
           >
-            <I.upload /> <span>{actionBusy === "exporting" ? "EXPORTING" : "EXPORT"}</span>
+            <I.upload /> <span>{actionBusy === "exporting" ? "Exporting…" : "Export"}</span>
           </button>
           <button
             className="act slim purple"
@@ -457,7 +457,7 @@ function DetailPanel({
           onClick={() => onDeleteProject(song.id)}
           title="Delete this project and move its directory to the operating system Trash"
         >
-          <I.trash /> DELETE PROJECT
+          <I.trash /> Delete project
         </button>
       </div>
     </div>
@@ -793,7 +793,7 @@ export default function Library({
             className="btn-primary"
             onClick={onCreate || (() => setPage("generate"))}
           >
-            <I.plus /> Create Project
+            <I.plus /> Create project
           </button>
         </div>
 

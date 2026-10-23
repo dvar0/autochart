@@ -216,7 +216,7 @@ async function main() {
 
     await waitFor(() => evaluate('Boolean(document.querySelector(".detail-actions .act.purple"))'), "library detail panel");
     await exerciseEntryPoint("library", ".detail-actions .act.purple");
-    await click("OPEN PROJECT");
+    await click("Open project");
     await exerciseEntryPoint("generate", ".deck-save-library");
     assert.deepEqual(errors, [], "renderer errors while saving");
 

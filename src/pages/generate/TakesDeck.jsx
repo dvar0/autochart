@@ -656,7 +656,7 @@ export default function TakesDeck({ project }) {
                     : finalTimingIssue || undefined
               }
             >
-              {busyAction === "exporting" ? "EXPORTING…" : "EXPORT"} <I.upload />
+              {busyAction === "exporting" ? "Exporting…" : "Export"} <I.upload />
             </button>
 
             <button

@@ -96,7 +96,7 @@ export default function EditInspector({ project, ws }) {
 }
 
 // Asks before a regenerate or a take switch writes over notes changed by
-// hand. It sits over the Inpaint card's buttons, so nothing moves.
+// hand. It covers Tries, Style and the Inpaint button, so nothing moves.
 function OverwriteConfirm({ confirm, bars, onConfirm, onCancel }) {
   const where = confirm.regions.map((region) => barNumberLabel(bars, region).toLowerCase()).join(", ");
   return (
@@ -158,8 +158,7 @@ function RegenTab({
 
   return (
     <>
-      <section className="insp-card insp-regen-card">
-        {confirm && <OverwriteConfirm confirm={confirm} bars={bars} onConfirm={onConfirm} onCancel={onCancelConfirm} />}
+      <section className="insp-card">
         <div
           key={nudge}
           className={"insp-target" + (hasSelection ? "" : " empty") + (nudge ? " nudge" : "")}
@@ -185,33 +184,11 @@ function RegenTab({
           )}
           <button className="insp-link" onClick={onClearAreas} disabled={!hasSelection}>Clear</button>
         </div>
-        {pending ? (
-          <div className="insp-running">
-            <div className="insp-progress" style={{ "--p": pending.total ? pending.done / pending.total : 0 }}>
-              <span />
-            </div>
-            <div className="insp-running-row">
-              <span>
-                {!pending.done ? "Loading the song" : pending.tries > 1 ? `Try ${pending.try + 1} of ${pending.tries} · ${percent}%` : `${percent}%`}
-              </span>
-              <button className="insp-link" onClick={onCancelRedo}>Cancel</button>
-            </div>
-          </div>
-        ) : (
-          <div className="insp-redo-buttons">
-            <button
-              className="btn-primary insp-redo"
-              onClick={needsSelection(hasSelection, onRedo)}
-              disabled={Boolean(blockedReason)}
-              title={blockedReason || "Inpaint (R)"}
-            >
-              <I.spark /> Inpaint
-            </button>
-          </div>
-        )}
       </section>
 
-      <section className="insp-card insp-settings">
+      {/* Settings, then the big button, as on the Generate tab. */}
+      <section className="insp-card insp-settings insp-regen-card">
+        {confirm && <OverwriteConfirm confirm={confirm} bars={bars} onConfirm={onConfirm} onCancel={onCancelConfirm} />}
         <div className="variant-field generation-field">
           <div className="field-line">
             <label>
@@ -257,6 +234,32 @@ function RegenTab({
               />
             ))}
           </div>
+        </div>
+        <div className="generation-actions">
+          {pending ? (
+            <div className="insp-running">
+              <div className="insp-progress" style={{ "--p": pending.total ? pending.done / pending.total : 0 }}>
+                <span />
+              </div>
+              <div className="insp-running-row">
+                <span>
+                  {!pending.done ? "Loading the song" : pending.tries > 1 ? `Try ${pending.try + 1} of ${pending.tries} · ${percent}%` : `${percent}%`}
+                </span>
+                <button className="insp-link" onClick={onCancelRedo}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="insp-redo-buttons">
+              <button
+                className="gen-cta insp-redo"
+                onClick={needsSelection(hasSelection, onRedo)}
+                disabled={Boolean(blockedReason)}
+                title={blockedReason || "Inpaint (R)"}
+              >
+                Inpaint <I.spark />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

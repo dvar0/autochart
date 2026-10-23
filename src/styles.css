@@ -1219,7 +1219,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .act {
   min-width: 0;
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
-  font-weight: 700; font-size: var(--fs-md); letter-spacing: .02em;
+  font-weight: 700; font-size: var(--fs-md);
   padding: 12px; border-radius: var(--r-box); cursor: pointer; transition: .12s; border: none;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -4150,7 +4150,7 @@ video.bg-layer {
 }
 .gen-cta {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 12px; white-space: nowrap;
-  font-weight: 700; font-size: var(--fs-base); letter-spacing: .03em;
+  font-weight: 700; font-size: var(--fs-base);
   padding: 14px; border-radius: var(--r-box); cursor: pointer;
   background: var(--orange); color: var(--orange-fg);
   border: none; margin-bottom: 10px;
@@ -5728,7 +5728,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
    the timeline starts. */
 .edit-inspector { border-left: 1px solid var(--border-soft); }
 .insp-regen-card { position: relative; }
-/* Asks before replacing hand edits. Covers the Inpaint card instead of
+/* Asks before replacing hand edits. Covers the settings card instead of
    pushing anything down. */
 .insp-confirm {
   position: absolute;
@@ -5826,8 +5826,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-help .insp-keys dt { font-size: var(--fs-xs); font-weight: 700; font-family: inherit; }
 .insp-link { border: none; background: none; padding: 0; color: var(--purple-bri); font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
 .insp-sub { margin: 0; font-size: var(--fs-sm); color: var(--text-faint); }
-.insp-redo { justify-content: center; font-size: var(--fs-base); padding: 13px 16px; }
-.insp-redo svg { width: 17px; height: 17px; }
+.insp-redo { margin-bottom: 0; }
 .insp-knob { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; }
 /* Tries and Style use the Generate rail's fields as they are. */
 .insp-settings { gap: 0; }
