@@ -44,6 +44,8 @@ function normalizeVersion(raw, fallback = {}) {
   if (raw?.metrics || fallback.metrics) {
     version.metrics = raw?.metrics || fallback.metrics;
   }
+  // An edited draft's Inpaint tries, so reopening it later keeps them.
+  if (raw?.editHistory) version.editHistory = raw.editHistory;
   return version;
 }
 

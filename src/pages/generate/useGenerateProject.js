@@ -9,6 +9,7 @@ import {
   makeEditedVersion,
   nextEditName,
   parseEditableChart,
+  restoreEditHistory,
   updateEditedVersion,
   notesFromNoteLines,
   writeEditableChart,
@@ -2149,7 +2150,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const EDITOR_MUTATING = new Set([
     "moveNotes", "deleteNotes", "addNote", "toggleTap", "toggleForce", "paintNoteFlag", "setSustain",
     "quantizeSelection", "splitChords", "eraseGesture", "addRange", "updateRange", "deleteRanges", "deleteSelection",
-    "applyRedo", "pickRedoTake", "undo", "redo",
+    "applyRedo", "pickRedoTakes", "undo", "redo",
   ]);
 
   const editorChangeCanMutate = (change) => {
@@ -2195,14 +2196,15 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       return;
     }
     const difficulty = version.settings?.difficulty || version.difficulty || "expert";
+    const editingExistingDraft = version.status === "draft" && version.meta?.edited;
     let doc;
     try {
       doc = parseEditableChart(version.chart.text, difficulty);
+      if (editingExistingDraft) doc = restoreEditHistory(doc, version.editHistory);
     } catch (err) {
       setStatusMsg(err.message || "Could not open this take in the editor.");
       return;
     }
-    const editingExistingDraft = version.status === "draft" && version.meta?.edited;
     dispatchEditor({ type: "replaceDoc", doc });
     setEditorSourceVersionId(editingExistingDraft ? version.parentId || version.id : version.id);
     setEditorDraftVersionId(editingExistingDraft ? version.id : "");

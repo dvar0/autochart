@@ -320,53 +320,63 @@ function applyOperation(state, action) {
     }
     // Redo records live on the doc so undo/redo restores which try is showing.
     // Star power and solo ranges inside an area are left alone.
-    // One record per regenerated area: { id, label, region, original, takes,
-    // seams, picked, active, matchedWith }. active -1 is the original; picked
-    // is the try Inpaint chose (matchedWith: the partners it was matched
-    // to, see alike.js). Regenerating an area's exact bars adds its tries to
-    // the record; an area over other records' bars replaces them, and its
-    // original keeps their originals.
+    // One record per section (or per unsectioned span): { id, label, region,
+    // original, takes, seams, takeRuns, runPicks, picked, active, matchedWith }.
+    // active -1 is the original. Each press of Inpaint is a run in `doc.runs`
+    // ({ id, at }); takeRuns names the run of each try, and runPicks[run] is
+    // { index, matchedWith }: the try that run chose (matchedWith: the
+    // partners it was matched to, see alike.js). An area is { region, entry, tries, ... }:
+    // the bars that were inpainted and the record they join. Its tries are
+    // added to that record, each one the record's current notes with the
+    // area's bars swapped in, so earlier tries are never lost. A record over
+    // other records' bars (older saves) replaces them; its original keeps
+    // their originals.
     case "applyRedo": {
       const areas = action.areas || [];
       if (!areas.length) return state;
       let redos = doc.redos || [];
       let notes = doc.notes;
+      const run = { id: `run_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, at: Date.now() };
       for (const area of areas) {
         const { region } = area;
-        const inArea = (note) => note.tick >= region.startTick && note.tick < region.endTick;
-        const existing = redos.find((r) => r.region.startTick === region.startTick && r.region.endTick === region.endTick);
-        let record;
-        if (existing) {
-          const at = existing.takes.length + area.pick;
-          record = {
-            ...existing,
-            takes: [...existing.takes, ...area.tries],
-            seams: [...existing.seams, ...area.seams],
-            picked: at,
-            active: at,
-            matchedWith: area.matchedWith || null,
-          };
-          redos = redos.map((r) => (r.id === existing.id ? record : r));
-        } else {
-          const older = redos.filter((r) => r.region.startTick < region.endTick && region.startTick < r.region.endTick);
+        const entry = area.entry || region;
+        const inRegion = (note) => note.tick >= region.startTick && note.tick < region.endTick;
+        const inEntry = (note) => note.tick >= entry.startTick && note.tick < entry.endTick;
+        let record = redos.find((r) => r.region.startTick === entry.startTick && r.region.endTick === entry.endTick);
+        if (!record) {
+          const older = redos.filter((r) => r.region.startTick < entry.endTick && entry.startTick < r.region.endTick);
           const underOlder = (note) => older.some((r) => note.tick >= r.region.startTick && note.tick < r.region.endTick);
           record = {
             id: `redo_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
             label: area.label || "",
-            region,
-            original: [...notes.filter((n) => inArea(n) && !underOlder(n)), ...older.flatMap((r) => r.original.filter(inArea))],
-            takes: area.tries,
-            seams: area.seams,
-            picked: area.pick,
-            active: area.pick,
-            matchedWith: area.matchedWith || null,
+            region: entry,
+            original: [...notes.filter((n) => inEntry(n) && !underOlder(n)), ...older.flatMap((r) => r.original.filter(inEntry))],
+            takes: [],
+            seams: [],
+            takeRuns: [],
+            runPicks: {},
           };
           redos = [...redos.filter((r) => !older.includes(r)), record];
         }
-        notes = [...notes.filter((n) => !inArea(n)), ...record.takes[record.active]];
+        const around = notes.filter((n) => inEntry(n) && !inRegion(n));
+        const tries = area.tries.map((tryNotes) => [...around, ...tryNotes.filter(inRegion)].sort((a, b) => a.tick - b.tick));
+        const at = record.takes.length + area.pick;
+        const next = {
+          ...record,
+          takes: [...record.takes, ...tries],
+          seams: [...record.seams, ...area.seams],
+          takeRuns: [...(record.takeRuns || []), ...tries.map(() => run.id)],
+          runPicks: { ...record.runPicks, [run.id]: { index: at, matchedWith: area.matchedWith || null } },
+          picked: at,
+          active: at,
+          matchedWith: area.matchedWith || null,
+        };
+        redos = redos.map((r) => (r === record ? next : r));
+        notes = [...notes.filter((n) => !inEntry(n)), ...next.takes[at]];
       }
       redos = [...redos].sort((a, b) => a.region.startTick - b.region.startTick);
-      const nextDoc = untouchRegions(withNotes({ ...doc, redos }, notes), areas.map((area) => area.region));
+      const runs = [...(doc.runs || []), run];
+      const nextDoc = untouchRegions(withNotes({ ...doc, redos, runs }, notes), areas.map((area) => area.region));
       return { ...commit(state, nextDoc), selectedNoteIds: [] };
     }
     // picks: [{ redoId, index }], applied as one step.

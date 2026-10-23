@@ -182,6 +182,7 @@ export function parseEditableChart(chartText, difficulty = "expert") {
     notes,
     ranges: [...starPower, ...solos],
     redos: [],
+    runs: [],
     durationSec,
   };
 }
@@ -209,6 +210,65 @@ export function notesFromNoteLines(noteLines) {
   return [...byTick.values()]
     .map((note) => ({ ...note, lanes: [...note.lanes].sort((a, b) => a - b) }))
     .sort((a, b) => a.tick - b.tick);
+}
+
+// Inpaint history saved on an edited draft: each area's original and tries
+// as compact "tick,fret,sustain" note lines, plus the hand-edited ticks, so a
+// draft reopened later still offers every try.
+function encodeNotes(notes) {
+  return notes
+    .flatMap((note) => noteLinesForTick(note, "").map((line) => line.replace(/ = N /, " ").split(" ").join(",")))
+    .join(" ");
+}
+
+function decodeNotes(text) {
+  const lines = String(text || "").split(" ").filter(Boolean).map((item) => item.split(",").map(Number));
+  return notesFromNoteLines(lines.filter((line) => line.length === 3 && line.every(Number.isFinite)));
+}
+
+export function editHistoryFromDoc(doc) {
+  if (!doc?.redos?.length && !doc?.touched?.length) return null;
+  return {
+    redos: (doc.redos || []).map((redo) => ({
+      ...redo,
+      original: encodeNotes(redo.original),
+      takes: redo.takes.map(encodeNotes),
+    })),
+    touched: doc.touched || [],
+    runs: doc.runs || [],
+  };
+}
+
+export function restoreEditHistory(doc, history) {
+  if (!history || !Array.isArray(history.redos)) return doc;
+  const runs = Array.isArray(history.runs) ? history.runs.filter((run) => run?.id) : [];
+  // Tries saved before presses were tracked count as one early press.
+  const early = { id: "run_early", at: 0 };
+  let needsEarly = false;
+  const redos = history.redos
+    .filter((redo) => redo?.region && Array.isArray(redo.takes))
+    .map((redo) => {
+      const takes = redo.takes.map(decodeNotes);
+      const inRange = (index) => Number.isInteger(index) && index >= -1 && index < takes.length;
+      const takeRuns = takes.map((_, i) => {
+        const id = redo.takeRuns?.[i];
+        if (runs.some((run) => run.id === id)) return id;
+        needsEarly = true;
+        return early.id;
+      });
+      return {
+        ...redo,
+        takeRuns,
+        runPicks: redo.runPicks || (inRange(redo.picked) && redo.picked >= 0 ? { [takeRuns[redo.picked]]: { index: redo.picked, matchedWith: redo.matchedWith || null } } : {}),
+        original: decodeNotes(redo.original),
+        takes,
+        seams: Array.isArray(redo.seams) ? redo.seams : [],
+        active: inRange(redo.active) ? redo.active : -1,
+        picked: inRange(redo.picked) ? redo.picked : 0,
+      };
+    });
+  const touched = Array.isArray(history.touched) ? history.touched.filter(Number.isFinite) : [];
+  return { ...doc, redos, runs: needsEarly ? [early, ...runs] : runs, ...(touched.length ? { touched } : {}) };
 }
 
 // Deep-clones an editor doc's mutable pieces (notes/ranges). The parsed
@@ -410,6 +470,7 @@ export function makeEditedVersion(sourceVersion, chartText, name, doc = null, ve
       editCreatedAt: now,
     },
     chart: { text: chartText },
+    editHistory: editHistoryFromDoc(doc),
   };
 }
 
@@ -424,5 +485,6 @@ export function updateEditedVersion(draftVersion, chartText, doc = null) {
       edited: true,
     },
     chart: { text: chartText },
+    editHistory: doc ? editHistoryFromDoc(doc) : draftVersion.editHistory || null,
   };
 }

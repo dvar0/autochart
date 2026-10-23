@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { I } from "../../../icons.jsx";
 import StyleFader, { KNOB_COLORS } from "../StyleFader.jsx";
 import WorkTabs from "../WorkTabs.jsx";
-import { barNumberLabel, regionsCover } from "./editRegions.js";
+import { barNumberLabel, inpaintRuns, redoLabel, regionsCover, tryName } from "./editRegions.js";
 import { TRIES_OPTIONS } from "./useEditWorkspace.js";
 
 // The right rail on the Inpaint (pick bars, make new takes of them) and
@@ -24,6 +24,15 @@ const NOTE_ACTIONS = [
 ];
 
 const SNAP_OPTIONS = ["off", "1/4", "1/8", "1/12", "1/16", "1/24", "1/32"];
+
+// When a press of Inpaint ran: the time today, else the date and time.
+function runTime(at) {
+  if (!at) return "Earlier";
+  const date = new Date(at);
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (date.toDateString() === new Date().toDateString()) return time;
+  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+}
 
 function fmtTime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
@@ -48,7 +57,7 @@ export default function EditInspector({ project, ws }) {
           doc={ws.doc}
           bars={ws.bars}
           regions={ws.regions}
-          selectionName={ws.selectionName}
+          sections={ws.sections}
           pending={ws.pending}
           blockedReason={ws.regenBlockedReason}
           styleKnobs={ws.styleKnobs}
@@ -114,7 +123,7 @@ function RegenTab({
   doc,
   bars,
   regions,
-  selectionName,
+  sections,
   pending,
   blockedReason,
   styleKnobs,
@@ -145,26 +154,25 @@ function RegenTab({
   const busy = Boolean(pending);
   const [nudge, needsSelection] = useNudge();
   const timeSpan = (region) => `${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`;
-  const spotLabel = (region) => (regions.length === 1 ? `${barNumberLabel(bars, region)} · ${timeSpan(region)}` : barNumberLabel(bars, region));
   const percent = pending?.total ? Math.round((100 * pending.done) / pending.total) : 0;
 
   return (
     <>
       <section className="insp-card insp-regen-card">
         {confirm && <OverwriteConfirm confirm={confirm} bars={bars} onConfirm={onConfirm} onCancel={onCancelConfirm} />}
-        <div key={nudge} className={"insp-target" + (hasSelection ? "" : " empty") + (nudge ? " nudge" : "")}>
-          <div className="insp-target-head">
-            <b>{hasSelection ? selectionName : "Nothing selected"}</b>
-            <button className="insp-link" onClick={onClearAreas} disabled={!hasSelection}>Clear</button>
-          </div>
-          {/* One fixed-height row holds the hint or the area chips, so the box
-              keeps its size; extra chips scroll sideways instead of wrapping. */}
+        <div
+          key={nudge}
+          className={"insp-target" + (hasSelection ? "" : " empty") + (nudge ? " nudge" : "")}
+          title={hasSelection ? undefined : "Drag across the roll or click a section"}
+        >
+          {/* Extra chips scroll sideways instead of wrapping, so the box
+              keeps its size. */}
           {hasSelection ? (
             <div className="insp-target-row insp-spots">
               {regions.map((region) => (
                 <span className="insp-spot" key={region.startTick}>
-                  <button onClick={() => onFocusRegion(region)} title="Show it">
-                    {spotLabel(region)}
+                  <button onClick={() => onFocusRegion(region)} title={`Show it · ${timeSpan(region)}`}>
+                    {redoLabel(bars, [region], sections)}
                   </button>
                   <button className="insp-spot-x" onClick={() => onRemoveArea(region)} title="Remove" aria-label="Remove">
                     ×
@@ -173,8 +181,9 @@ function RegenTab({
               ))}
             </div>
           ) : (
-            <div className="insp-target-row"><span>Drag across the roll or click a section.</span></div>
+            <div className="insp-target-row"><span>Nothing selected</span></div>
           )}
+          <button className="insp-link" onClick={onClearAreas} disabled={!hasSelection}>Clear</button>
         </div>
         {pending ? (
           <div className="insp-running">
@@ -265,49 +274,62 @@ function RegenTab({
           </button>
         </div>
         {redos.length ? (
-          <ul>
-            {redos.map((redo) => (
-              <li key={redo.id} className={regionsCover(regions, redo.region) ? "on" : ""}>
-                <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title="Select it">
-                  <b>{redo.label}</b>
-                  <span>{timeSpan(redo.region)}</span>
-                </button>
-                {/* One chip per version, like the take cards: click plays it in
-                    the take, the box marks it for Compare. */}
-                <div className="insp-versions">
-                  {[-1, ...redo.takes.map((_, index) => index)].map((index) => {
-                    const mark = `${redo.id}:${index}`;
-                    const marked = compareMarks.includes(mark);
-                    const name = index < 0 ? "Original" : `Try ${index + 1}`;
-                    const ourPick = index >= 0 && index === redo.picked;
-                    return (
-                      <div
-                        key={index}
-                        className={"insp-version" + (redo.active === index ? " active" : "") + (marked ? " in-compare" : "")}
-                      >
-                        <button
-                          onClick={(e) => (e.shiftKey ? onMark(redo, index) : onPickRedo(redo, index))}
-                          disabled={busy}
-                          title={ourPick ? (redo.matchedWith ? `Our pick: most like ${redo.matchedWith}` : "Our pick") : `Use ${name.toLowerCase()}`}
-                        >
-                          {index < 0 ? "Original" : index + 1}
-                          {ourPick && <I.star />}
-                        </button>
-                        <label className="take-check" title="Mark for compare">
-                          <input
-                            type="checkbox"
-                            checked={marked}
-                            onChange={() => onMark(redo, index)}
-                            aria-label={`Compare ${redo.label} ${name}`}
-                          />
-                        </label>
-                      </div>
-                    );
-                  })}
+          // A timeline, newest press of Inpaint first: each group lists the
+          // areas that press wrote and its tries of them, numbered from 1.
+          <ol className="insp-runs">
+            {inpaintRuns(doc).map(({ run, number, rows }) => (
+              <li key={run.id}>
+                <div className="insp-run-head">
+                  INPAINT <b>{number}</b>
+                  <time>{runTime(run.at)}</time>
                 </div>
+                <ul>
+                  {rows.map(({ redo, indices }) => (
+                    <li key={redo.id} className={regionsCover(regions, redo.region) ? "on" : ""}>
+                      <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title="Select it">
+                        <b>{redo.label}</b>
+                        <span>{timeSpan(redo.region)}</span>
+                      </button>
+                      {/* One chip per version, like the take cards: click plays it in
+                          the take, the box marks it for Compare. */}
+                      <div className="insp-versions">
+                        {[-1, ...indices].map((index, at) => {
+                          const mark = `${redo.id}:${index}`;
+                          const marked = compareMarks.includes(mark);
+                          const name = index < 0 ? "Original" : `Try ${at}`;
+                          const runPick = redo.runPicks?.[run.id];
+                          const ourPick = index >= 0 && index === runPick?.index;
+                          return (
+                            <div
+                              key={index}
+                              className={"insp-version" + (redo.active === index ? " active" : "") + (marked ? " in-compare" : "")}
+                            >
+                              <button
+                                onClick={(e) => (e.shiftKey ? onMark(redo, index) : onPickRedo(redo, index))}
+                                disabled={busy}
+                                title={ourPick ? (runPick.matchedWith ? `Our pick: most like ${runPick.matchedWith}` : "Our pick") : `Use ${name.toLowerCase()}`}
+                              >
+                                {index < 0 ? "Original" : at}
+                                {ourPick && <I.star />}
+                              </button>
+                              <label className="take-check" title="Mark for compare">
+                                <input
+                                  type="checkbox"
+                                  checked={marked}
+                                  onChange={() => onMark(redo, index)}
+                                  aria-label={`Compare ${redo.label} ${tryName(doc, redo, index)}`}
+                                />
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
-          </ul>
+          </ol>
         ) : (
           <p className="insp-sub">Nothing inpainted yet.</p>
         )}
@@ -329,9 +351,15 @@ function NotesTab({ bars, selectedNotes, snap, onSnap, onNoteAction }) {
 
   return (
     <section className="insp-card">
-      <div key={nudge} className={"insp-target" + (count ? "" : " empty") + (nudge ? " nudge" : "")}>
-        <b>{count ? `${count} note${count === 1 ? "" : "s"}` : "Nothing selected"}</b>
-        <span>{count ? span : "Click to add a note, drag to select."}</span>
+      <div
+        key={nudge}
+        className={"insp-target" + (count ? "" : " empty") + (nudge ? " nudge" : "")}
+        title={count ? undefined : "Click to add a note, drag to select"}
+      >
+        <div className="insp-target-row">
+          <span>{count ? `${count} note${count === 1 ? "" : "s"}` : "Nothing selected"}</span>
+          <span className="insp-target-meta">{count ? span : ""}</span>
+        </div>
       </div>
       <div className="insp-note-grid">
         {NOTE_ACTIONS.map((action) => {

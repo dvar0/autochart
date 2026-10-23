@@ -227,8 +227,55 @@ export function sectionsFromDoc(doc, endTick, bars = []) {
   });
 }
 
-// Short human label for a selection, used on the Redo button: section names
-// when the selection is exactly whole sections, otherwise a bar count.
+// The Inpaint history as a timeline: one group per press of Inpaint, newest
+// first, each listing the records it added tries to and which of their tries
+// it made. Returns [{ run, number, rows: [{ redo, indices }] }].
+export function inpaintRuns(doc) {
+  const redos = doc?.redos || [];
+  return (doc?.runs || [])
+    .map((run, i) => ({
+      run,
+      number: i + 1,
+      rows: redos
+        .map((redo) => ({ redo, indices: redo.takes.map((_, index) => index).filter((index) => redo.takeRuns?.[index] === run.id) }))
+        .filter((row) => row.indices.length),
+    }))
+    .filter((group) => group.rows.length)
+    .reverse();
+}
+
+// A try's name: its number within its press, and the press number.
+export function tryName(doc, redo, index) {
+  if (index < 0) return "Original";
+  const runId = redo.takeRuns?.[index];
+  const runIndex = (doc?.runs || []).findIndex((run) => run.id === runId);
+  const number = redo.takeRuns ? redo.takeRuns.slice(0, index + 1).filter((id) => id === runId).length : index + 1;
+  return runIndex < 0 ? `Try ${number}` : `Try ${number} (#${runIndex + 1})`;
+}
+
+// Splits an inpainted span along section lines. Each piece names the span
+// whose history it joins: its whole section, or itself where no section
+// covers it. Returns [{ span, entry, section }].
+export function historyPieces(region, sections) {
+  const pieces = [];
+  let at = region.startTick;
+  for (const section of sections) {
+    if (section.endTick <= at || section.startTick >= region.endTick) continue;
+    if (section.startTick > at) {
+      const gap = { startTick: at, endTick: section.startTick };
+      pieces.push({ span: gap, entry: gap, section: null });
+    }
+    const span = { startTick: Math.max(at, section.startTick), endTick: Math.min(region.endTick, section.endTick) };
+    pieces.push({ span, entry: { startTick: section.startTick, endTick: section.endTick }, section });
+    at = span.endTick;
+  }
+  if (at < region.endTick) {
+    const rest = { startTick: at, endTick: region.endTick };
+    pieces.push({ span: rest, entry: rest, section: null });
+  }
+  return pieces;
+}
+
 // Section names when the regions are exactly whole sections, else null.
 function wholeSectionNames(regions, sections) {
   const names = [];
@@ -239,17 +286,6 @@ function wholeSectionNames(regions, sections) {
     names.push(...inside.map((s) => s.name));
   }
   return names;
-}
-
-export function selectionLabel(bars, regions, sections) {
-  if (!regions.length) return "";
-  const names = wholeSectionNames(regions, sections);
-  if (names) return names.length <= 2 ? names.join(" + ") : `${names.length} sections`;
-  if (regions.length === 1) {
-    const count = regionBarCount(bars, regions[0]);
-    return `${count} bar${count === 1 ? "" : "s"}`;
-  }
-  return `${regions.length} areas`;
 }
 
 // A redo's name in the history list says where it is: "Chorus 2", "Bars 9–12".

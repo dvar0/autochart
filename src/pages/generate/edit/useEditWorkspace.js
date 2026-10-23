@@ -6,12 +6,13 @@ import {
   barEndTick,
   barIndexAt,
   buildBarGrid,
+  historyPieces,
   normalizeRegions,
   redoLabel,
   regionsCover,
-  selectionLabel,
   sectionsFromDoc,
   subtractSpan,
+  tryName,
 } from "./editRegions.js";
 import { startRedo } from "./inpaintService.js";
 import { MAX_COMPARE_CHARTS, MIN_COMPARE_CHARTS } from "../useGenerateProject.js";
@@ -99,7 +100,6 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     const ids = new Set(editor.selectedNoteIds);
     return doc.notes.filter((note) => ids.has(note.id));
   }, [doc, editor.selectedNoteIds]);
-  const selectionName = selectionLabel(bars, regions, sections);
   // While a regenerate runs, the highway plays the take with the areas being
   // written showing only the notes streamed so far, like the roll.
   const previewTrack = useMemo(() => {
@@ -133,7 +133,7 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
       return {
         id: mark,
         updatedAt: rev,
-        name: `${redo.label} · ${index < 0 ? "Original" : `Try ${index + 1}`}`,
+        name: `${redo.label} · ${tryName(doc, redo, index)}`,
         track: buildEditorPreviewTrack({ ...doc, notes }),
       };
     });
@@ -318,7 +318,16 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
           const region = { startTick: result.startTick, endTick: result.endTick };
           return { region, label: redoLabel(bars, [region], sections), tries: result.tries, seams: result.seams, pick: result.chosen };
         });
-        applyEditorChange({ type: "applyRedo", areas: alikeRegenPicks(areas, doc, sections) });
+        // Touching sections are inpainted in one pass so their seam stays
+        // smooth, then each section's part joins that section's own history.
+        const pieces = alikeRegenPicks(areas, doc, sections).flatMap((area) =>
+          historyPieces(area.region, sections).map(({ span, entry, section }) => ({
+            ...area,
+            region: span,
+            entry,
+            label: section ? section.name : redoLabel(bars, [entry], sections),
+          })));
+        applyEditorChange({ type: "applyRedo", areas: pieces });
         // The bars stay selected, so Inpaint again tries another take.
         setRegions(targetRegions);
         setLoopOn(true);
@@ -505,7 +514,6 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
     regions,
     redos,
     selectedNotes,
-    selectionName,
     previewTrack,
     songEndTick,
     pending,

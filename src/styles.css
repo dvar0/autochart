@@ -3692,7 +3692,13 @@ video.bg-layer {
   height: 16px;
   background: linear-gradient(var(--window), transparent);
   pointer-events: none;
+  /* only once the rail scrolls: at rest it would fog the first card */
+  opacity: 0;
+  animation: work-tabs-fade linear both;
+  animation-timeline: scroll(nearest block);
+  animation-range: 0 16px;
 }
+@keyframes work-tabs-fade { to { opacity: 1; } }
 /* No track: the open tab gets the same soft pill as the sidebar's pages. */
 .work-tabs {
   display: grid;
@@ -5758,20 +5764,17 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-card + .insp-card { border-top: 1px solid var(--border-soft); }
 .insp-eyebrow { display: flex; align-items: center; gap: 8px; font: 800 var(--fs-xs) var(--font-mono); letter-spacing: .06em; color: var(--text-faint); }
 .insp-count { margin-left: auto; letter-spacing: 0; color: var(--purple-bri); }
+/* One row: the picked areas as chips (or "Nothing selected") and Clear. */
 .insp-target {
-  display: flex; flex-direction: column; justify-content: center; gap: 2px;
-  min-height: 56px;
-  padding: 9px 12px;
+  display: flex; align-items: center; gap: 8px;
+  height: 40px;
+  padding: 0 10px 0 8px;
   border-radius: var(--r-box);
   background: var(--purple-bg);
 }
-.insp-target b { font: 700 var(--fs-lg) var(--font-display); color: var(--purple); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.insp-target span { font: 600 var(--fs-xs) var(--font-mono); color: var(--text-dim); }
-.insp-target-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.insp-target-head b { flex: 1; min-width: 0; }
-.insp-target-head .insp-link:disabled { color: var(--text-faint); opacity: .5; cursor: default; }
-.insp-target-row { display: flex; align-items: center; height: 22px; min-width: 0; }
-.insp-target-row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insp-target .insp-link:disabled { color: var(--text-faint); opacity: .5; cursor: default; }
+.insp-target-row { flex: 1; display: flex; align-items: center; height: 22px; min-width: 0; }
+.insp-target-row > span { padding-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); font-weight: 600; }
 .insp-spots {
   gap: 4px;
   overflow-x: auto;
@@ -5782,7 +5785,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-spot {
   flex: none;
   display: inline-flex; align-items: center;
-  height: 20px;
+  height: 22px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--purple-bri) 12%, transparent);
 }
@@ -5805,8 +5808,10 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   60% { transform: translateX(-3px); }
   80% { transform: translateX(2px); }
 }
-.insp-target.empty b { color: var(--text-dim); }
-.insp-target.empty span { font-family: inherit; font-weight: 500; color: var(--text-faint); }
+/* the Edit tab's box: "3 notes" in purple, where they sit on the right */
+.insp-target:not(.empty) .insp-target-row > span:first-child { color: var(--purple); }
+.insp-target-row > .insp-target-meta { margin-left: auto; font: 600 var(--fs-xs) var(--font-mono); color: var(--text-dim); }
+.insp-target.empty .insp-target-row > span { color: var(--text-faint); }
 .insp-redo-buttons, .insp-running { display: flex; flex-direction: column; gap: 6px; min-height: 48px; }
 .insp-running { justify-content: center; gap: 10px; }
 .insp-running-row { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm); color: var(--text-dim); }
@@ -5869,6 +5874,24 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .insp-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .insp-history li { display: flex; flex-direction: column; gap: 4px; border-radius: var(--r-box); }
 .insp-history li.on .insp-history-name { box-shadow: inset 0 0 0 var(--bw) var(--purple-bri); }
+/* the history timeline: one group per press of Inpaint, newest first,
+   headed like the deck's TAKES tab (label + count pill) with its time */
+.insp-runs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.insp-runs > li + li { padding-top: 12px; border-top: 1px solid var(--border-soft); }
+.insp-run-head {
+  display: flex; align-items: center; gap: 7px;
+  min-height: 22px;
+  font: 800 var(--fs-xs) var(--font-mono); letter-spacing: .06em;
+  color: var(--text-faint);
+}
+.insp-run-head b {
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-grid; place-items: center;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: 10px; color: var(--text-dim);
+}
+.insp-run-head time { margin-left: auto; font-weight: 600; letter-spacing: 0; }
 /* version chips: selected like a take card that's playing, checked like one
    marked for compare */
 .insp-versions { display: flex; flex-wrap: wrap; gap: 4px; }
