@@ -4,11 +4,11 @@ import ProjectBar from "./ProjectBar.jsx";
 import PreviewStage from "./PreviewStage.jsx";
 import TakesDeck from "./TakesDeck.jsx";
 import Console from "./Console.jsx";
-import LibraryFolderPrompt from "../../components/LibraryFolderPrompt.jsx";
 import MoreSettings from "./MoreSettings.jsx";
 import EditTimeline from "./edit/EditTimeline.jsx";
 import EditInspector from "./edit/EditInspector.jsx";
 import useEditWorkspace from "./edit/useEditWorkspace.js";
+import LibraryFolderPrompt from "../../components/LibraryFolderPrompt.jsx";
 
 import UnsupportedGenerationState from "./UnsupportedGenerationState.jsx";
 import { targetLabel } from "../../data/supportedTargets.js";

@@ -11,7 +11,7 @@ const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const esbuild = require("esbuild");
 const library = require("../electron/libraryStore.cjs");
-const chartWriter = require("../shared/chartWriter.cjs");
+const chartWriter = require("../shared/chartWriter.js");
 const ROOT = path.resolve(__dirname, "..");
 const MISSING_FOLDER = "Choose a Clone Hero / YARG library folder in Settings first.";
 
@@ -83,7 +83,7 @@ async function main() {
       absWorkingDir: ROOT,
       stdin: { contents: 'import React from "react"; import {createRoot} from "react-dom/client"; import App from "./src/App.jsx"; createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);', resolveDir: ROOT, loader: "jsx" },
       bundle: true, outfile: path.join(temp, "app.js"), format: "iife", platform: "browser", jsx: "automatic",
-      alias: { "@autochart/chart-writer": path.join(ROOT, "shared/chartWriter.cjs") },
+      alias: { "@autochart/chart-writer": path.join(ROOT, "shared/chartWriter.js") },
       define: { "process.env.NODE_ENV": '"development"', "import.meta.env.DEV": "true" }, logLevel: "silent",
     });
     await fs.copyFile(path.join(ROOT, "src/styles.css"), path.join(temp, "app.css"));

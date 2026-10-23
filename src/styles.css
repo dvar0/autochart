@@ -5939,109 +5939,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   .edit-toolbar { flex-wrap: wrap; }
   .song-map { order: 3; flex-basis: 100%; }
 }
-.editor-action svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-}
-.editor-action:disabled { opacity: .45; cursor: default; }
-.editor-action.ghost:not(:disabled):hover { color: var(--text); }
-.editor-action.primary {
-  background: var(--orange);
-  color: var(--orange-fg);
-}
-.editor-action.primary:not(:disabled):hover { filter: brightness(1.06); }
-.editor-action:not(:disabled):active { transform: translateY(1px); }
-
-.editor-validation { display: flex; flex-direction: column; gap: 4px; }
-.editor-warning {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  line-height: 1.35;
-  padding: 8px 10px;
-  border-radius: var(--r-box);
-  background: var(--amber-bg);
-  color: var(--amber-fg);
-}
-.editor-save-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 2px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-soft);
-}
-.editor-save-secondary { display: flex; gap: 7px; }
-.editor-save-secondary .editor-action { flex: 1; }
-
-/* ---------- Clone Hero / YARG library-folder prompt ----------
-   Modal shown when Save is pressed with no library folder set. A true
-   overlay, so it carries --shadow-pop. */
-.lib-prompt {
-  width: min(520px, calc(100vw - 2 * var(--sp-6)));
-  max-width: none;
-  padding: 0;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-card);
-  box-shadow: var(--shadow-pop);
-}
-.lib-prompt[open] { animation: ac-panel-reveal .16s cubic-bezier(.2,.7,.2,1); }
-.lib-prompt::backdrop {
-  background: color-mix(in srgb, var(--bg, #283045) 62%, transparent);
-  backdrop-filter: blur(3px);
-}
-.lib-prompt-panel {
-  padding: var(--sp-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-}
-.lib-prompt-icon {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--r-box);
-  background: var(--purple-bg);
-  color: var(--purple);
-}
-.lib-prompt-icon svg { width: 22px; height: 22px; }
-.lib-prompt-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  line-height: 1.2;
-  color: var(--text);
-}
-.lib-prompt-body {
-  margin: 0;
-  font-size: var(--fs-base);
-  line-height: 1.5;
-  color: var(--text-dim);
-}
-.lib-prompt-error {
-  margin: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-box);
-  background: var(--red-bg);
-  color: var(--red-fg);
-  font-size: var(--fs-md);
-}
-.lib-prompt-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
-}
-.lib-prompt-settings { margin-right: auto; }
-.lib-prompt-actions .btn-quiet svg { width: 15px; height: 15px; color: currentColor; }
-@media (prefers-reduced-motion: reduce) {
-  .lib-prompt[open] { animation: none; }
-}
 
 /* ============== GENERATE CONSOLE v4 — style faders, More settings ============== */
 .variant-field label .field-aside {
@@ -6716,4 +6613,72 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   .start-check { grid-template-columns: 26px minmax(0, 1fr) auto; }
   .start-check-label { display: none; }
   .start-actions > * { flex: 1 1 100%; justify-content: center; }
+}
+/* ---------- Clone Hero / YARG library-folder prompt ----------
+   Modal shown when Save is pressed with no library folder set. A true
+   overlay, so it carries --shadow-pop. */
+.lib-prompt {
+  width: min(520px, calc(100vw - 2 * var(--sp-6)));
+  max-width: none;
+  padding: 0;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-pop);
+}
+.lib-prompt[open] { animation: ac-panel-reveal .16s cubic-bezier(.2,.7,.2,1); }
+.lib-prompt::backdrop {
+  background: color-mix(in srgb, var(--bg, #283045) 62%, transparent);
+  backdrop-filter: blur(3px);
+}
+.lib-prompt-panel {
+  padding: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.lib-prompt-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-box);
+  background: var(--purple-bg);
+  color: var(--purple);
+}
+.lib-prompt-icon svg { width: 22px; height: 22px; }
+.lib-prompt-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+}
+.lib-prompt-body {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.lib-prompt-error {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-box);
+  background: var(--red-bg);
+  color: var(--red-fg);
+  font-size: var(--fs-md);
+}
+.lib-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.lib-prompt-settings { margin-right: auto; }
+.lib-prompt-actions .btn-quiet svg { width: 15px; height: 15px; color: currentColor; }
+@media (prefers-reduced-motion: reduce) {
+  .lib-prompt[open] { animation: none; }
 }
