@@ -1,4 +1,4 @@
-// "Force a solo" for structure-marker models (Fretformer v2 DPO). Port of the
+// "Force a solo" for structure-marker models (Fretformer 2). Port of the
 // training repo's --require-solo (scripts/generate_chart_transcriber_song.py:
 // marker_observer, force_marker_at_best, force_solo_passes); its parity gate
 // is scripts/check_fretformer_v1_2_app_parity.py.

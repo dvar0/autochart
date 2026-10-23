@@ -80,16 +80,16 @@ development symlinks.
 
 ## Installed-only Fretformer models
 
-`autochart.fretformer.v2-dpo-onnx` ("Fretformer v2 DPO") and
-`autochart.fretformer.v2-dpo-fim-onnx` ("Fretformer v2 DPO+FIM") are local
+`autochart.fretformer.v2-onnx` ("Fretformer 2") and
+`autochart.fretformer.v2-inpaint-onnx` ("Fretformer 2 Inpaint") are local
 test generators. Each manifest entry has `"availability": "installed"`: the
 Generate screen lists one only once its folder under
-`<settings.modelsFolder>/` is complete (`fretformer-v2-dpo/` or
-`fretformer-v2-dpo-fim/`), so installs without them see Fretformer exactly as
+`<settings.modelsFolder>/` is complete (`fretformer-v2/` or
+`fretformer-v2-inpaint/`), so installs without them see Fretformer exactly as
 before. There is no catalog component or download for them yet. When one is
 installed, the model plate becomes a picker with a NEW badge, its takes are
 named and tagged with its label, and a project reopens on the model it last
-generated with. Regenerate rewrites picked bars with Fretformer v2 DPO+FIM
+generated with. Inpaint rewrites picked bars with Fretformer 2 Inpaint
 (`capabilities.inpaint`); Generate stays on whichever model is selected.
 
 They use the same pipeline code as Fretformer, with every difference read
@@ -117,15 +117,11 @@ from the model folder's `manifest.json`:
   shows Mark solos and Force a solo for these generators. Fretformer does not
   mark solos, so those rows stay disabled.
 
-Gates: `engine/test/generator-switch-e2e.cjs` (Fretformer and Fretformer v2
-DPO on one song through `engineManager.generateChart`: shared beat map, stem
+Gates: `engine/test/generator-switch-e2e.cjs` (Fretformer and Fretformer 2
+on one song through `engineManager.generateChart`: shared beat map, stem
 sets, CFG gating, solo and section markers, legacy beat-map adoption;
 `--only v1 --app-root <checkout>` is the v1 regression check;
 `AUTOCHART_E2E_V2_ID` runs the marker steps against another generator),
-`engine/test/fretformer-v1-2-parity.cjs` (app features + greedy ONNX decode,
-default profile `fretformer-v2-dpo`, compared with the training recipe and
-PyTorch checkpoint by the training repo's
-`scripts/check_fretformer_v1_2_app_parity.py`), and
 `scripts/test-generator-picker-electron.cjs` (picker, knob swap, payload).
 
 ## Beat maps

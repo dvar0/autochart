@@ -48,9 +48,9 @@
       }
     },
     {
-      "id": "autochart.fretformer.v2-dpo-onnx",
-      "label": "Fretformer v2 DPO",
-      "titleTag": "Fretformer v2 DPO",
+      "id": "autochart.fretformer.v2-onnx",
+      "label": "Fretformer 2",
+      "titleTag": "Fretformer 2",
       "badge": "New",
       "description": "Six-stem separation, style knobs, and solo and section markers. Local test model until it ships.",
       "status": "experimental",
@@ -82,7 +82,7 @@
         "stems": ["drums", "bass", "vocals", "guitar", "other"]
       },
       "models": {
-        "onnxFolder": "fretformer-v2-dpo"
+        "onnxFolder": "fretformer-v2"
       },
       "runtime": {
         "backend": "onnxruntime-node",
@@ -95,9 +95,9 @@
       }
     },
     {
-      "id": "autochart.fretformer.v2-dpo-fim-onnx",
-      "label": "Fretformer v2 DPO+FIM",
-      "titleTag": "Fretformer v2 DPO+FIM",
+      "id": "autochart.fretformer.v2-inpaint-onnx",
+      "label": "Fretformer 2 Inpaint",
+      "titleTag": "Fretformer 2 Inpaint",
       "badge": "New",
       "description": "Fretformer 2's Inpaint model: rewrites picked bars, and can also write whole charts. Comes with Fretformer 2.",
       "status": "experimental",
@@ -130,7 +130,7 @@
         "stems": ["drums", "bass", "vocals", "guitar", "other"]
       },
       "models": {
-        "onnxFolder": "fretformer-v2-dpo-fim"
+        "onnxFolder": "fretformer-v2-inpaint"
       },
       "runtime": {
         "backend": "onnxruntime-node",

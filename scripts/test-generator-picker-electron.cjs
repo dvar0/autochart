@@ -22,16 +22,11 @@ const chartWriter = require("../shared/chartWriter.js");
 const engineManifest = require("../engine/manifest.json");
 const ROOT = path.resolve(__dirname, "..");
 const V1_ID = "autochart.fretformer.v1-onnx";
-const REMOVED_IDS = [
-  "autochart.fretformer.v1-2-onnx",
-  "autochart.fretformer.v2-onnx",
-  "autochart.fretformer.v2-dpo3-onnx",
-];
 const KEPT_IDS = [
-  "autochart.fretformer.v2-dpo-onnx",
-  "autochart.fretformer.v2-dpo-fim-onnx",
+  "autochart.fretformer.v2-onnx",
+  "autochart.fretformer.v2-inpaint-onnx",
 ];
-const BETA_ID = "autochart.fretformer.v2-dpo-fim-onnx";
+const BETA_ID = "autochart.fretformer.v2-inpaint-onnx";
 // The first six-stem generator outside beta is the one separation cards name,
 // and the one this test selects. It also marks solos.
 const SIX_STEM = engineManifest.generators.find((generator) => generator.separation?.stemSet === "htdemucs_6s" && generator.id !== BETA_ID);
@@ -55,12 +50,7 @@ async function main() {
   let installedReady = false;
   let win;
   try {
-    for (const id of REMOVED_IDS) {
-      assert.equal(engineManifest.generators.some((generator) => generator.id === id), false, `${id} is still a generator`);
-    }
-    for (const id of KEPT_IDS) {
-      assert.equal(engineManifest.generators.some((generator) => generator.id === id), true, `${id} should stay`);
-    }
+    assert.deepEqual(engineManifest.generators.map((generator) => generator.id), [V1_ID, ...KEPT_IDS]);
     const chartText = chartWriter.writeChartText([[0, 0, 0], [192, 1, 0]], {
       title: "Picker fixture", difficulty: "expert", resolution: 192, syncLines: ["0 = B 120000"],
     }).text;

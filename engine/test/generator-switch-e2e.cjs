@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// End-to-end check for running Fretformer and Fretformer v2 DPO on one song.
+// End-to-end check for running Fretformer and Fretformer 2 on one song.
 //
 // Drives electron/engineManager.cjs generateChart (the same path the app's IPC
 // handler uses) with a scratch user-data/cache directory, then asserts:
 //   1. Fretformer generates normally.
-//   2. Fretformer v2 DPO on the same audio runs its own htdemucs_6s separation
+//   2. Fretformer 2 on the same audio runs its own htdemucs_6s separation
 //      but reuses the beat map, so both charts carry the same [SyncTrack] and
 //      can share a final chart. The separation reports both stem sets. It
 //      writes section events and pairs its solo markers.
-//   3. A second v2 DPO run hits both caches; a set knob turns on CFG and lands
+//   3. A second Fretformer 2 run hits both caches; a set knob turns on CFG and lands
 //      in the prefix; all-Auto runs without CFG. Solos off asks for no solos.
 //   4. A beat map left in a separation workspace by an older app is adopted
 //      into the shared per-audio cache instead of being re-detected.
@@ -20,7 +20,7 @@
 //   node engine/test/generator-switch-e2e.cjs --only v1 --app-root <other checkout> ...
 // `--only v2` runs the marker-model steps on their own (it then separates and
 // detects itself). AUTOCHART_E2E_V2_ID points those steps at another marker
-// generator, such as autochart.fretformer.v2-dpo-fim-onnx.
+// generator, such as autochart.fretformer.v2-inpaint-onnx.
 //
 // Usage:
 //   node engine/test/generator-switch-e2e.cjs --audio <song> --scratch <dir>
@@ -37,8 +37,8 @@ const { pathToFileURL } = require("url");
 const DEFAULT_APP_ROOT = path.resolve(__dirname, "..", "..");
 const V1_ID = "autochart.fretformer.v1-onnx";
 // AUTOCHART_E2E_V2_ID runs the marker steps against another installed generator
-// (e.g. autochart.fretformer.v2-dpo-fim-onnx).
-const V2_ID = process.env.AUTOCHART_E2E_V2_ID || "autochart.fretformer.v2-dpo-onnx";
+// (e.g. autochart.fretformer.v2-inpaint-onnx).
+const V2_ID = process.env.AUTOCHART_E2E_V2_ID || "autochart.fretformer.v2-onnx";
 
 function parseArgs(argv) {
   const args = {

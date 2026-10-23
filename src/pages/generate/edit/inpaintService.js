@@ -1,6 +1,6 @@
 // Redo (inpainting) requests for the edit screen.
 //
-// The desktop app runs the engine's `inpaint` job (Fretformer v2 DPO+FIM, see
+// The desktop app runs the engine's `inpaint` job (Fretformer 2 Inpaint, see
 // useGenerateProject startInpaint): the edited chart as it stands, the picked
 // bar spans (filled left to right, so later fills see earlier ones), the
 // style knobs, the number of tries per area and a seed; timing is the take's

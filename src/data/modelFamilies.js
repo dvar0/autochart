@@ -9,8 +9,8 @@ export const MODEL_FAMILIES = Object.freeze([
     recommended: true,
     about: "Writes charts and redoes the parts you pick.",
     shortLabel: "Fretformer 2",
-    generatorId: "autochart.fretformer.v2-dpo-onnx",
-    inpaintGeneratorId: "autochart.fretformer.v2-dpo-fim-onnx",
+    generatorId: "autochart.fretformer.v2-onnx",
+    inpaintGeneratorId: "autochart.fretformer.v2-inpaint-onnx",
     // What the browser version downloads for Generate (the Inpaint model is extra).
     downloadMb: 630,
   }),
@@ -31,7 +31,7 @@ export const BETA_MODELS = Object.freeze([
     label: "Fretformer 2 Fill-in",
     shortLabel: "Fill-in",
     about: "Fretformer 2's Inpaint model writes the whole chart. Experimental.",
-    generatorId: "autochart.fretformer.v2-dpo-fim-onnx",
+    generatorId: "autochart.fretformer.v2-inpaint-onnx",
   }),
 ]);
 

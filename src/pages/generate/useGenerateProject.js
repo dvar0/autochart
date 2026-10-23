@@ -80,10 +80,10 @@ import {
 } from "../../services/songLibrary.js";
 import { DEFAULT_DEMUCS_ID, newSongId } from "../../services/songSchema.js";
 
-// Inpaint's model: Fretformer v2 DPO stays the Generate model; its FIM
+// Inpaint's model: Fretformer 2 stays the Generate model; its Inpaint
 // sibling rewrites picked bars.
-const INPAINT_GENERATOR_ID = "autochart.fretformer.v2-dpo-fim-onnx";
-// The FIM model's style knobs, for the browser preview where no generator is listed.
+const INPAINT_GENERATOR_ID = "autochart.fretformer.v2-inpaint-onnx";
+// The Inpaint model's style knobs, for the browser preview where no generator is listed.
 const INPAINT_FALLBACK_KNOBS = descriptorKnobsForGenerator({ capabilities: { descriptorKnobs: ["speed", "chords", "hopos", "taps", "movement"] } });
 const EMPTY_DETAILS = { title: "", artist: "", album: "", year: "", genre: "", charter: "Autochart" };
 export const MIN_COMPARE_CHARTS = 2;
