@@ -14,6 +14,8 @@ const DEFAULT_SETTINGS = {
   theme: "system",
   railCollapsed: false,
   assetBaseUrl: "",
+  defaultGeneratorId: "",
+  fillInDrafts: false,
   defaults: {},
 };
 

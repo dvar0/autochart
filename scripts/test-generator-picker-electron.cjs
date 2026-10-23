@@ -9,7 +9,7 @@
 //   them (three lead-in separations, only one separated for the six-stem set);
 // - a model that marks solos shows Mark solos and Force a solo in More
 //   settings, and the payload carries both;
-// - the fill-in model is listed as Beta.
+// - the fill-in model is listed as Beta only while "Write whole charts" is on.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -48,6 +48,7 @@ async function main() {
   const context = { userDataPath: temp, projectsFolder: path.join(temp, "projects") };
   const payloads = [];
   let installedReady = false;
+  let fillInDrafts = false;
   let win;
   try {
     assert.deepEqual(engineManifest.generators.map((generator) => generator.id), [V1_ID, ...KEPT_IDS]);
@@ -108,7 +109,7 @@ async function main() {
     ipcMain.handle("engine:getManifest", () => ({
       available: true,
       setup: { ready: true },
-      preferences: { defaultGeneratorId: "" },
+      preferences: { defaultGeneratorId: "", fillInDrafts },
       generators: engineManifest.generators.map((generator) => ({
         ...generator,
         setup: INSTALLED_ONLY.has(generator.id) && !installedReady
@@ -198,8 +199,19 @@ async function main() {
     await click("Library");
     await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
-    const options = await evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
-    assert.deepEqual(options, engineManifest.generators.map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]));
+    const pickerOptions = () => evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
+    assert.deepEqual(
+      await pickerOptions(),
+      engineManifest.generators.filter((g) => g.id !== BETA_ID).map((g) => [g.id, g.label]),
+      "fill-in is not offered while Write whole charts is off",
+    );
+
+    // Write whole charts on: fill-in joins the picker as Beta.
+    fillInDrafts = true;
+    await click("Library");
+    await click("Open project");
+    await waitFor(async () => (await pickerOptions()).some(([id]) => id === BETA_ID), "fill-in in the picker");
+    assert.deepEqual(await pickerOptions(), engineManifest.generators.map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]));
     assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), V1_ID, "v1 stays the default");
     assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge"))'), false, "no badge on v1");
     await waitFor(async () => (await faderNames()).length > 0, "style faders");

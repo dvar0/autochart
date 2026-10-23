@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS = {
   // Generator new projects start on; empty follows the catalog default.
   defaultGeneratorId: "",
   // Lists beta generators (drafting with the fill-in model) in the model picker.
+  fillInDrafts: false,
 };
 
 function settingsPath(userDataPath) {
@@ -87,6 +88,7 @@ function normalizeSettings(settings = {}, defaults = {}) {
   next.theme = ["system", "light", "dark"].includes(next.theme) ? next.theme : DEFAULT_SETTINGS.theme;
   next.assetBaseUrl = String(next.assetBaseUrl || "").trim();
   next.defaultGeneratorId = String(next.defaultGeneratorId || "").trim();
+  next.fillInDrafts = next.fillInDrafts === true;
 
   const storedVersion = Number(settings.cachePathVersion) || 0;
   const legacyCacheFolder = normalizePathSetting(settings.cacheFolder, "cacheFolder");

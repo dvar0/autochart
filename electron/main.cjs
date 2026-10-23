@@ -726,6 +726,7 @@ function registerIpcHandlers() {
       ...modelManager.decorateManifest(manifest, scan),
       preferences: {
         defaultGeneratorId: settings.defaultGeneratorId || "",
+        fillInDrafts: settings.fillInDrafts === true,
       },
     };
   });

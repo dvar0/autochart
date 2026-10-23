@@ -7,7 +7,7 @@ export const MODEL_FAMILIES = Object.freeze([
     label: "Fretformer 2",
     badge: "2",
     recommended: true,
-    about: "Writes charts and redoes the parts you pick.",
+    about: "Writes charts. Comes with Fill-in.",
     shortLabel: "Fretformer 2",
     generatorId: "autochart.fretformer.v2-onnx",
     inpaintGeneratorId: "autochart.fretformer.v2-inpaint-onnx",
@@ -18,19 +18,23 @@ export const MODEL_FAMILIES = Object.freeze([
     id: "fretformer-1",
     label: "Fretformer 1",
     badge: "1",
-    about: "The first model. Writes charts only.",
+    about: "The first model. Writes charts.",
     shortLabel: "Fretformer 1",
     generatorId: "autochart.fretformer.v1-onnx",
   }),
 ]);
 
-// Extra drafting models that come with a family's download, offered as Beta.
+// Models that come with a family's download and normally only redo picked
+// bars. With the "fillInDrafts" setting on they can also write whole charts,
+// offered as Beta.
 export const BETA_MODELS = Object.freeze([
   Object.freeze({
     id: "fretformer-2-fill-in",
-    label: "Fretformer 2 Fill-in",
+    label: "Fill-in",
+    badge: "F",
+    familyId: "fretformer-2",
+    about: "Redoes the parts you pick in Inpaint.",
     shortLabel: "Fill-in",
-    about: "Fretformer 2's Inpaint model writes the whole chart. Experimental.",
     generatorId: "autochart.fretformer.v2-inpaint-onnx",
   }),
 ]);
@@ -45,14 +49,17 @@ export function isBetaGenerator(generatorId) {
 
 // Generators marked availability "installed" (test models) are offered only
 // once their model folder is present; every other generator is always listed.
-export function selectableGeneratorsFrom(generators = []) {
-  return generators.filter((generator) => generator.availability !== "installed" || generator.setup?.ready);
+// Beta drafting models are offered only while the "fillInDrafts" setting is on.
+export function selectableGeneratorsFrom(generators = [], preferences = {}) {
+  return generators.filter((generator) =>
+    (generator.availability !== "installed" || generator.setup?.ready)
+    && (preferences.fillInDrafts || !isBetaGenerator(generator.id)));
 }
 
 // The generator new projects start on: the user's pick while it is usable,
 // then the catalog default, then the first usable generator.
 export function defaultGeneratorIdFrom(generators = [], preferences = {}) {
-  const usable = selectableGeneratorsFrom(generators);
+  const usable = selectableGeneratorsFrom(generators, preferences);
   const ids = new Set(usable.map((generator) => generator.id));
   const preferred = preferences.defaultGeneratorId;
   if (preferred && ids.has(preferred)) return preferred;

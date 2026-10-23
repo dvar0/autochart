@@ -12,7 +12,7 @@ import {
   humanizeSupportLabel,
   normalizeHardwareMode,
 } from "../data/hardwareModes.js";
-import { BETA_MODELS, MODEL_FAMILIES, defaultGeneratorIdFrom } from "../data/modelFamilies.js";
+import { BETA_MODELS, MODEL_FAMILIES, defaultGeneratorIdFrom, isBetaGenerator } from "../data/modelFamilies.js";
 import {
   chooseCacheFolder,
   chooseCloneHeroLibraryFolder,
@@ -39,6 +39,7 @@ const EMPTY_SETTINGS = {
   cacheFolder: "",
   hardwareMode: "auto",
   defaultGeneratorId: "",
+  fillInDrafts: false,
   pathDefaults: null,
   homeFolder: "",
   settingsRecovery: null,
@@ -50,6 +51,10 @@ const FOLDER_ROWS = [
   { key: "cacheFolder", title: "Cache", choose: chooseCacheFolder },
   { key: "modelsFolder", title: "Model files", choose: chooseModelsFolder },
 ];
+
+const FILL_IN_DRAFTS_HELP =
+  "Fill-in normally redoes the bars you pick in Inpaint. Turn this on to also use it in Generate to write "
+  + "a whole chart, and to pick it for new projects. It's still experimental.";
 
 const NOTICE_BUTTONS = [
   { key: "releaseNotes", label: "Release notes" },
@@ -317,7 +322,7 @@ export default function Settings() {
     }
   };
 
-  // Model preferences save quietly: the radio and switch show the result.
+  // Model preferences save quietly: the selected row and the switch show the result.
   const updateModelPreference = async (patch) => {
     const previous = settings;
     setSettings((current) => ({ ...current, ...patch }));
@@ -363,7 +368,7 @@ export default function Settings() {
   const generators = manifest?.generators || [];
   const generatorsById = new Map(generators.map((generator) => [generator.id, generator]));
   const manifestLoaded = Boolean(manifest);
-  const preferences = { defaultGeneratorId: settings.defaultGeneratorId };
+  const preferences = { defaultGeneratorId: settings.defaultGeneratorId, fillInDrafts: settings.fillInDrafts };
   const defaultGeneratorId = defaultGeneratorIdFrom(generators, preferences);
   const isReady = (generatorId) => Boolean(generatorsById.get(generatorId)?.setup?.ready);
 
@@ -410,25 +415,36 @@ export default function Settings() {
     );
   };
 
-  // The model new projects start on: each download's drafting model, then the
-  // beta drafting models that come with a download.
-  const defaultChoices = [
+  // One row per model; picking a row makes it the model new projects start
+  // with. Beta models come with a family's download and can only be picked
+  // while "Write whole charts" is on.
+  const modelRows = [
     ...MODEL_FAMILIES.map((family) => ({
-      id: family.generatorId,
-      label: family.shortLabel,
-      disabled: !isReady(family.generatorId),
-      title: family.label,
+      ...family,
+      action: familyAction(family),
+      pickable: isReady(family.generatorId),
       reason: `Download ${family.label} first`,
     })),
-    ...BETA_MODELS.map((model) => ({
-      id: model.generatorId,
-      label: model.shortLabel,
-      beta: true,
-      disabled: !isReady(model.generatorId),
-      title: model.about,
-      reason: "Comes with Fretformer 2",
-    })),
+    ...BETA_MODELS.map((model) => {
+      const family = MODEL_FAMILIES.find((item) => item.id === model.familyId);
+      const installed = isReady(model.generatorId);
+      return {
+        ...model,
+        action: installed ? <StatusPill status="ready" /> : <span className="model-row-note">With {family.label}</span>,
+        pickable: installed && settings.fillInDrafts,
+        reason: installed ? "Turn on Write whole charts first" : `Download ${family.label} first`,
+      };
+    }),
   ];
+
+  const setFillInDrafts = (on) => {
+    const patch = { fillInDrafts: on };
+    // Turning drafting off moves new projects back to the recommended model.
+    if (!on && isBetaGenerator(defaultGeneratorId)) {
+      patch.defaultGeneratorId = MODEL_FAMILIES.find((family) => family.recommended)?.generatorId || "";
+    }
+    void updateModelPreference(patch);
+  };
 
   return (
     <div className="ac-body settings-page">
@@ -462,50 +478,70 @@ export default function Settings() {
           <section className="settings-card settings-models" aria-labelledby="settings-models-title">
             <div className="settings-card-head">
               <h2 className="settings-card-title" id="settings-models-title">Models</h2>
+              <span className="settings-card-hint" id="settings-models-pick">Pick the one new projects start with</span>
             </div>
 
-            <div className="model-list">
-              {MODEL_FAMILIES.map((family) => (
-                <div className="model-row" key={family.id}>
-                  <span className={`model-badge ${family.id}`} aria-hidden="true">{family.badge}</span>
-                  <div className="model-row-copy">
-                    <div className="model-row-name">
-                      <b>{family.label}</b>
-                      {family.recommended && <span className="model-tag recommended">Recommended</span>}
-                    </div>
-                    <small>{family.about}</small>
+            <div
+              className="model-list"
+              role="radiogroup"
+              aria-labelledby="settings-models-title"
+              aria-describedby="settings-models-pick"
+            >
+              {modelRows.map((row) => {
+                const selected = defaultGeneratorId === row.generatorId;
+                return (
+                  <div className={"model-row" + (selected ? " selected" : "")} key={row.id}>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      className="model-pick"
+                      onClick={() => updateModelPreference({ defaultGeneratorId: row.generatorId })}
+                      disabled={!row.pickable}
+                      title={row.pickable ? `Start new projects with ${row.label}` : row.reason}
+                    >
+                      <span className="model-radio" aria-hidden="true" />
+                      <span className={`model-badge ${row.id}`} aria-hidden="true">{row.badge}</span>
+                      <span className="model-row-copy">
+                        <span className="model-row-name">
+                          <b>{row.label}</b>
+                          {row.recommended && <span className="model-tag recommended">Recommended</span>}
+                        </span>
+                        <small>{row.about}</small>
+                      </span>
+                    </button>
+                    <div className="model-row-action">{row.action}</div>
+                    {isBetaGenerator(row.generatorId) && (
+                      <div className="model-row-option">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={settings.fillInDrafts}
+                          aria-labelledby="settings-fill-in-drafts"
+                          className={"ms-toggle" + (settings.fillInDrafts ? " on" : "")}
+                          onClick={() => setFillInDrafts(!settings.fillInDrafts)}
+                        >
+                          <span className="ms-toggle-knob" aria-hidden="true" />
+                          {settings.fillInDrafts ? "On" : "Off"}
+                        </button>
+                        <span id="settings-fill-in-drafts">Write whole charts</span>
+                        <span className="model-tag beta">Beta</span>
+                        <i
+                          className="ms-info"
+                          role="img"
+                          aria-label={FILL_IN_DRAFTS_HELP}
+                          title={FILL_IN_DRAFTS_HELP}
+                        >
+                          <I.info />
+                        </i>
+                      </div>
+                    )}
                   </div>
-                  <div className="model-row-action">{familyAction(family)}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {(busy === "installing-models" || installProgress) && <InstallProgress progress={installProgress} />}
-
-            <div className="settings-subsection">
-              <h3 className="settings-card-title small" id="settings-default-title">New projects start with</h3>
-              <div
-                className="perf-modes"
-                role="radiogroup"
-                aria-labelledby="settings-default-title"
-                style={{ gridTemplateColumns: `repeat(${defaultChoices.length}, minmax(0, 1fr))` }}
-              >
-                {defaultChoices.map((choice) => (
-                  <button
-                    key={choice.id}
-                    role="radio"
-                    aria-checked={defaultGeneratorId === choice.id}
-                    className={defaultGeneratorId === choice.id ? "active" : ""}
-                    onClick={() => updateModelPreference({ defaultGeneratorId: choice.id })}
-                    disabled={choice.disabled}
-                    title={choice.disabled ? choice.reason : choice.title}
-                  >
-                    {choice.label}
-                    {choice.beta && <span className="model-tag beta">Beta</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
           </section>
 
           <section className="settings-card settings-folders" aria-labelledby="settings-folders-title">

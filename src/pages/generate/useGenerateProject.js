@@ -244,8 +244,8 @@ const EMPTY_PREVIEW_AUDIO = Object.freeze({ path: "", buffer: null });
 // Padded lead-in audio files kept in memory while switching between takes.
 const PREVIEW_AUDIO_CACHE_SIZE = 3;
 
-function effectiveGenerator(generators = [], generatorId = "") {
-  const selectable = selectableGeneratorsFrom(generators);
+function effectiveGenerator(generators = [], generatorId = "", preferences = {}) {
+  const selectable = selectableGeneratorsFrom(generators, preferences);
   return selectable.find((generator) => generator.id === generatorId) || selectable[0] || generators[0] || null;
 }
 
@@ -381,7 +381,7 @@ function generatorStateFromManifest(manifest) {
 }
 
 function pickGeneratorId(generators, current, preferences = {}) {
-  return selectableGeneratorsFrom(generators).some((generator) => generator.id === current)
+  return selectableGeneratorsFrom(generators, preferences).some((generator) => generator.id === current)
     ? current
     : defaultGeneratorIdFrom(generators, preferences);
 }
@@ -551,6 +551,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [reusedFrom, setReusedFrom] = useState(null);
   const [cachedGeneratorState] = useState(() => generatorStateFromManifest(lastGeneratorManifest));
   const [generators, setGenerators] = useState(cachedGeneratorState.generators);
+  // Model settings from Settings (default model, Fill-in drafting).
+  const [generatorPreferences, setGeneratorPreferences] = useState(cachedGeneratorState.preferences);
   const [generatorId, setGeneratorId] = useState(() => {
     const { generators: cached, preferences } = cachedGeneratorState;
     const saved = importedSong?.settings?.generation?.generatorId;
@@ -677,6 +679,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         lastGeneratorManifest = manifest;
         const next = generatorStateFromManifest(manifest);
         setGenerators(next.generators);
+        setGeneratorPreferences(next.preferences);
         setSetupStatus(next.setupStatus);
         setEngineError(next.engineError);
         // Keep a chosen model across manifest reloads; falls back to the
@@ -697,7 +700,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   }, [visible]);
 
   useEffect(() => {
-    const selected = effectiveGenerator(generators, generatorId);
+    const selected = effectiveGenerator(generators, generatorId, generatorPreferences);
     if (!selected) return;
     const supported = generatorDifficultyIds(selected);
     setGenerationControls((current) =>
@@ -705,7 +708,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         ? current
         : { ...current, difficulty: preferredGeneratorDifficulty(selected) }
     );
-  }, [generatorId, generators, generationControls.difficulty]);
+  }, [generatorId, generators, generatorPreferences, generationControls.difficulty]);
 
   useEffect(() => {
     return subscribeGenerationEvents((event) => {
@@ -1083,7 +1086,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   };
 
   const buildRunSettings = (activeId = null) => {
-    const selectedRunGenerator = effectiveGenerator(generators, generatorId);
+    const selectedRunGenerator = effectiveGenerator(generators, generatorId, generatorPreferences);
     const generationSettings = buildGenerationSettings({
       generatorId: selectedRunGenerator?.id || generatorId || DEFAULT_GENERATOR_ID,
       controls: generationControls,
@@ -1945,8 +1948,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const difficultyTone = DIFF[diff]?.color || "red";
   const activeCompareVersionId = selectedCompareVersions[1]?.id || selectedCompareVersions[0]?.id;
   const activeVersionId = previewMode === "single" ? singleVersion : activeCompareVersionId;
-  const selectedGenerator = effectiveGenerator(generators, generatorId);
-  const selectableGenerators = selectableGeneratorsFrom(generators);
+  const selectedGenerator = effectiveGenerator(generators, generatorId, generatorPreferences);
+  const selectableGenerators = selectableGeneratorsFrom(generators, generatorPreferences);
   const generatorForStemSet = (stemSetId) =>
     selectableGenerators.find((generator) => generatorStemSetId(generator) === stemSetId) || null;
   const selectGenerator = (id) => {

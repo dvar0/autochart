@@ -443,7 +443,10 @@ async function getManifest() {
       status: ready ? "ready" : "missing",
       message: ready ? "At least one generator is ready." : "No model is reachable right now.",
     },
-    preferences: { defaultGeneratorId: settings.defaultGeneratorId || WEB_FAMILY.generatorId },
+    preferences: {
+      defaultGeneratorId: settings.defaultGeneratorId || WEB_FAMILY.generatorId,
+      fillInDrafts: settings.fillInDrafts === true,
+    },
   };
 }
 
