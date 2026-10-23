@@ -2555,7 +2555,8 @@ video.bg-layer {
 }
 .preview .transport { gap: 10px; }
 .preview .transport-btn,
-.demucs-stage-transport .transport-btn {
+.demucs-stage-transport .transport-btn,
+.edit-transport .transport-btn {
   min-height: 36px;
   display: inline-flex;
   align-items: center;
@@ -2567,21 +2568,25 @@ video.bg-layer {
   white-space: nowrap;
 }
 .preview .transport-btn:first-child,
-.demucs-stage-transport .transport-btn:first-child {
+.demucs-stage-transport .transport-btn:first-child,
+.edit-transport .transport-btn:first-child {
   min-width: 88px;
 }
 .preview .transport-btn:hover:not(:disabled),
-.demucs-stage-transport .transport-btn:hover:not(:disabled) {
+.demucs-stage-transport .transport-btn:hover:not(:disabled),
+.edit-transport .transport-btn:hover:not(:disabled) {
   filter: brightness(1.06);
 }
 .preview .transport-btn.ghost:hover:not(:disabled),
-.demucs-stage-transport .transport-btn.ghost:hover:not(:disabled) {
+.demucs-stage-transport .transport-btn.ghost:hover:not(:disabled),
+.edit-transport .transport-btn.ghost:hover:not(:disabled) {
   background: var(--purple-bg);
   color: var(--purple);
   filter: none;
 }
 .preview .transport-btn:disabled,
-.demucs-stage-transport .transport-btn:disabled {
+.demucs-stage-transport .transport-btn:disabled,
+.edit-transport .transport-btn:disabled {
   opacity: .55;
   cursor: not-allowed;
 }
@@ -5468,19 +5473,18 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .edit-icon-btn svg { width: 16px; height: 16px; }
 .edit-icon-btn:hover:not(:disabled) { background: var(--purple-bg); color: var(--purple); }
 .edit-icon-btn:disabled { opacity: .4; cursor: default; }
-.edit-history { display: flex; gap: 3px; padding: 3px; border-radius: var(--r-box); background: var(--surface-2); }
+.edit-history { display: inline-flex; gap: 3px; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
 .edit-history button {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 12px;
-  border: none; border-radius: calc(var(--r-box) - 2px);
-  background: var(--surface); color: var(--purple);
+  height: 28px; padding: 0 10px;
+  border: none; border-radius: calc(var(--r-pill) - 2px);
+  background: transparent; color: var(--text);
   font-size: var(--fs-sm); font-weight: 700;
-  box-shadow: 0 1px 2px rgba(0,0,0,.12);
   cursor: pointer; transition: .12s;
 }
-.edit-history button svg { width: 16px; height: 16px; }
-.edit-history button:hover:not(:disabled) { background: var(--purple); color: var(--purple-fg); }
-.edit-history button:disabled { background: transparent; color: var(--text-faint); box-shadow: none; cursor: default; }
+.edit-history button svg { width: 14px; height: 14px; }
+.edit-history button:hover:not(:disabled) { background: var(--surface); color: var(--purple); }
+.edit-history button:disabled { color: var(--text-faint); cursor: default; }
 .edit-menu-wrap { position: relative; }
 .edit-menu {
   position: absolute; right: 0; top: calc(100% + 6px);
@@ -5646,28 +5650,9 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   background: var(--surface); color: var(--text);
   font: 600 var(--fs-sm) var(--font-mono);
 }
-.edit-play {
-  width: 40px; height: 40px;
-  display: grid; place-items: center;
-  border: none; border-radius: 50%;
-  background: var(--purple); color: var(--purple-fg);
-  cursor: pointer;
-  box-shadow: 0 3px 0 color-mix(in srgb, var(--purple) 60%, #000);
-  transition: transform .1s, box-shadow .1s;
-}
-.edit-play svg { width: 18px; height: 18px; }
-.edit-play:active { transform: translateY(2px); box-shadow: 0 1px 0 color-mix(in srgb, var(--purple) 60%, #000); }
-.edit-time { font: 600 var(--fs-md) var(--font-mono); color: var(--text); white-space: nowrap; }
-.edit-time i { font-style: normal; color: var(--text-faint); }
-.edit-loop {
-  min-height: 32px; padding: 0 12px;
-  border: var(--bw) solid transparent; border-radius: var(--r-pill);
-  background: var(--surface-2); color: var(--text-dim);
-  font-size: var(--fs-sm); font-weight: 700;
-  cursor: pointer;
-}
-.edit-loop.on { background: var(--orange-bg); color: var(--text); border-color: var(--orange); }
-.edit-loop:disabled { opacity: .45; cursor: default; }
+.edit-transport .edit-loop.on { background: var(--orange-bg); color: var(--text); box-shadow: inset 0 0 0 var(--bw) var(--orange); }
+.edit-map { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.edit-view-controls .edit-icon-btn { width: 34px; height: 34px; border-radius: 50%; }
 .edit-zoom { display: inline-flex; gap: 3px; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
 .edit-zoom button {
   width: 28px; height: 28px;
@@ -5937,7 +5922,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 
 @media (max-width: 1180px) {
   .edit-toolbar { flex-wrap: wrap; }
-  .song-map { order: 3; flex-basis: 100%; }
+  .edit-map { order: 3; flex-basis: 100%; }
 }
 
 /* ============== GENERATE CONSOLE v4 — style faders, More settings ============== */

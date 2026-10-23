@@ -7,7 +7,6 @@ import { activeLyricPhrase, resolveLyricPhrases } from "../../highway/noteFlags.
 import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
 import { I } from "../../icons.jsx";
 import { GenerationPreviewStage } from "./LiveGeneration.jsx";
-import EditHelp from "./edit/EditHelp.jsx";
 import { StemSeparationStage } from "./StageAnimations.jsx";
 import {
   COMPARE_LANE_COLORS,
@@ -943,7 +942,7 @@ export default function PreviewStage({ project, ws, highwayRef }) {
               </span>
             </div>
           )}
-          {editing && <EditStageActions project={project} ws={ws} />}
+          {editing && <EditStageActions project={project} />}
           {!showingDemucsStage && track && inCompare && (
             <>
               <div className="compare-layout-tabs" aria-label="Compare layout">
@@ -1178,31 +1177,13 @@ export default function PreviewStage({ project, ws, highwayRef }) {
   );
 }
 
-function EditStageActions({ project, ws }) {
-  const { editor, undoEditorChange, redoEditorChange } = project;
+function EditStageActions({ project }) {
+  const { editor } = project;
   const saveLabel = editor.dirty ? "Saving…" : editor.savedAt ? "Saved" : "";
   return (
-    <>
-      <span className="stage-edit-meta">
-        {editor.draftVersion && editor.sourceVersion && <span>from {editor.sourceVersion.name}</span>}
-        {saveLabel && <span className={editor.dirty ? "busy" : ""}>{saveLabel}</span>}
-      </span>
-      <div className="edit-history">
-        <button onClick={undoEditorChange} disabled={!editor.canUndo} title="Undo (Ctrl+Z)"><I.undo /> Undo</button>
-        <button onClick={redoEditorChange} disabled={!editor.canRedo} title="Redo (Ctrl+Shift+Z)"><I.redo /> Redo</button>
-      </div>
-      <div className="edit-menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
-        <button
-          className="edit-icon-btn"
-          onClick={() => ws.setHelpOpen((v) => !v)}
-          aria-expanded={ws.helpOpen}
-          aria-label="Mouse and keys"
-          title="Mouse and keys"
-        >
-          <I.info />
-        </button>
-        {ws.helpOpen && <EditHelp tab={ws.tab} />}
-      </div>
-    </>
+    <span className="stage-edit-meta">
+      {editor.draftVersion && editor.sourceVersion && <span>from {editor.sourceVersion.name}</span>}
+      {saveLabel && <span className={editor.dirty ? "busy" : ""}>{saveLabel}</span>}
+    </span>
   );
 }
