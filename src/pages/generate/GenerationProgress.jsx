@@ -110,6 +110,7 @@ export function describeRunStage(run) {
     const stage = GENERATION_STAGES[i];
     const info = stageInfoFor(run, stage.id);
     if (!info) continue;
+    if (info.status === "running" && info.downloading) return `Downloading the model… ${Math.round(run.stageProgress?.[stage.id] || 0)}%`;
     if (info.status === "running") return `${stage.label}…`;
     const next = GENERATION_STAGES[i + 1];
     return `${(next || stage).label}…`;
@@ -273,8 +274,10 @@ export default function GenerationProgress({ run }) {
             {GENERATION_STAGES.map((stage, index) => {
               const info = stageInfos[index];
               const splitting = stage.id === "demucs" && info.status === "running";
-              const label = stage.label;
-              const detail = stage.detail;
+              // The browser version's first run downloads the model while queued.
+              const downloading = info.status === "running" && info.downloading;
+              const label = downloading ? "Download model" : stage.label;
+              const detail = downloading ? "First run only, then it stays in this browser" : stage.detail;
               return (
                 <li key={stage.id} className={"gen-stage st-" + info.status}>
                   <span className="gen-stage-dot" aria-hidden="true" />

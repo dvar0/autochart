@@ -6183,6 +6183,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   background: var(--surface);
 }
 .ms-head h2 {
+.reused-name > svg { width: 12px; height: 12px; margin-right: 4px; vertical-align: -2px; }
   flex: 1;
   margin: 0;
   font-size: var(--fs-lg);

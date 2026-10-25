@@ -8,7 +8,7 @@ import GenerationProgress from "./GenerationProgress.jsx";
 import StyleFader, { KNOB_COLORS } from "./StyleFader.jsx";
 import { changedSettingsSummary } from "./MoreSettings.jsx";
 import WorkTabs from "./WorkTabs.jsx";
-import { isBetaGenerator } from "../../data/modelFamilies.js";
+import { BETA_MODELS, MODEL_FAMILIES, isBetaGenerator } from "../../data/modelFamilies.js";
 
 // The right rail: what to make (model, difficulty), how loose (sampling, style,
 // seed), lead-in, then a one-line summary of everything else, which lives in
@@ -58,6 +58,12 @@ export default function Console({ project }) {
   const allKnobsAuto = styleKnobs.every((knob) => (generationControls[knob.key] ?? "auto") === "auto");
   const generatorChoices = selectableGenerators || [];
   const changed = changedSettingsSummary(project);
+  // The browser version downloads a model the first time it runs; say so
+  // under Generate until it's in the browser.
+  const pendingDownloadMb = selectedGeneratorSetup?.ready && selectedGeneratorSetup.downloaded === false
+    ? (MODEL_FAMILIES.find((family) => family.generatorId === generatorId
+      || family.id === BETA_MODELS.find((model) => model.generatorId === generatorId)?.familyId)?.downloadMb || 0)
+    : null;
   const generateDisabledReason = runActive
     ? stopping
       ? "Stopping the current generation."
@@ -332,7 +338,12 @@ export default function Console({ project }) {
                 )}
               </button>
               <span id="generate-cta-reason" className="sr-only">{generateDisabledReason}</span>
-              <div className={"reused-line" + (reusedFrom ? "" : " is-empty")} aria-live="polite">
+              <div className={"reused-line" + (reusedFrom || pendingDownloadMb != null ? "" : " is-empty")} aria-live="polite">
+                {!reusedFrom && pendingDownloadMb != null && !runActive && (
+                  <span className="reused-name">
+                    <I.download /> {pendingDownloadMb ? `Downloads the model first (${pendingDownloadMb} MB, once)` : "Downloads the model first (once)"}
+                  </span>
+                )}
                 {reusedFrom && (
                   <>
                     <span className="version-badge">{reusedFrom.badge}</span>

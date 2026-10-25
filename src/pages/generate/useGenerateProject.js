@@ -739,7 +739,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
             ...run,
             stages: {
               ...run.stages,
-              [event.stage]: { status: event.status || "running", cache: event.cache === "hit" },
+              [event.stage]: { status: event.status || "running", cache: event.cache === "hit", downloading: Boolean(event.downloading) },
             },
           };
           // The ONNX demucs stage emits a `progress` field as an index/total
