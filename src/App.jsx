@@ -218,7 +218,7 @@ export default function App() {
           songTitle={projects.find((project) => project.key === activeProject)?.title || ""}
         />}
         <div className="ac-main" ref={mainRef} tabIndex="-1" aria-label={`${page} page`}>
-          {page === "start" && <Start onSong={handleStartSong} onOpenChart={handleImport} confirmCloseSong={confirmCloseSong} />}
+          {page === "start" && <Start onSong={handleStartSong} onOpenChart={handleImport} onOpenSettings={() => setPage("settings")} confirmCloseSong={confirmCloseSong} />}
           {page === "library" && !isWebApp() && (
             <Library
               setPage={setPage}

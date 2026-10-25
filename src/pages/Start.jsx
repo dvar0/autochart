@@ -1,28 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { I } from "../icons.jsx";
+import { DeviceReadout, UNCHECKED_DEVICE, deviceFact, deviceFromProbe } from "../components/DeviceFacts.jsx";
 import { FRET_COLORS } from "../data/notePalette.js";
-import { MODEL_FAMILIES } from "../data/modelFamilies.js";
 import { MEDIA_ACCEPT } from "../services/mediaMetadata.js";
 import { importSongFolder } from "../services/songImport.js";
 import { getSongRecord, recordFromImport, recordToImported, saveSongRecord } from "../services/songLibrary.js";
-import { electronHardware, electronModelSetup } from "../services/runtimeBridge.js";
+import { electronHardware } from "../services/runtimeBridge.js";
 
 // The browser version's home: where a project starts. There is no library on
 // the web, so this page is the way in: a new song, or a Clone Hero song folder
-// to keep working on. The list below says what a run needs (the model, a
-// capable device) before the user commits to one.
+// to keep working on. Above the buttons, a song strip scrolls past a playhead
+// that feeds a small highway: audio in, chart out. A pill says what this
+// device can do; the model itself downloads with the first song.
 
-const FAMILY = MODEL_FAMILIES.find((family) => family.id === "fretformer-2");
 const DESKTOP_APP_URL = "https://github.com/dvar0/autochart/releases";
-const FORMATS = ["MP3", "OGG", "WAV", "FLAC", "M4A", "MP4", "WEBM"];
 
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes)) return "";
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1)} GB`;
-  return `${Math.round(bytes / 1e6)} MB`;
-}
+const still = () => Boolean(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 
-// ---------- the highway illustration ----------
+// ---------- the highway ----------
 
 // A looping little riff: lane (0-4) and beat. Chords share a beat.
 const RIFF = [
@@ -33,38 +28,42 @@ const RIFF_BEATS = 16;
 const BEAT_SECONDS = 0.34;
 const TRAVEL_BEATS = 5; // how long a gem takes from the horizon to the strikeline
 
-const TOP_Y = 18;
-const STRIKE_Y = 214;
-const BOTTOM_Y = 252;
-const TOP_HALF = 46;
-const BOTTOM_HALF = 150;
-const CX = 160;
+const ROAD = { width: 320, top: 0, strike: 200, bottom: 236, topHalf: 40, bottomHalf: 150 };
 
 function halfWidthAt(y) {
-  return TOP_HALF + ((BOTTOM_HALF - TOP_HALF) * (y - TOP_Y)) / (BOTTOM_Y - TOP_Y);
+  return ROAD.topHalf + ((ROAD.bottomHalf - ROAD.topHalf) * (y - ROAD.top)) / (ROAD.bottom - ROAD.top);
 }
 
 function laneX(lane, y) {
   const half = halfWidthAt(y);
-  return CX - half + ((lane + 0.5) * 2 * half) / 5;
+  return ROAD.width / 2 - half + ((lane + 0.5) * 2 * half) / 5;
 }
 
 // 0 at the horizon, 1 at the strikeline; eased so gems speed up as they near.
 function yAt(progress) {
-  return TOP_Y + (STRIKE_Y - TOP_Y) * (progress * 0.55 + progress * progress * 0.45);
+  return ROAD.top + (ROAD.strike - ROAD.top) * (progress * 0.55 + progress * progress * 0.45);
 }
 
-function StartHighway({ hot }) {
+// Loud where the riff has a note, a low rumble in between.
+function waveAmplitude(beat) {
+  const at = ((beat % RIFF_BEATS) + RIFF_BEATS) % RIFF_BEATS;
+  const near = Math.min(...RIFF.map(([, noteAt]) => {
+    const d = Math.abs(at - noteAt);
+    return Math.min(d, RIFF_BEATS - d);
+  }));
+  const peak = near < 0.07 ? 0.95 : near < 0.2 ? 0.55 : 0;
+  return Math.max(peak, 0.16 + 0.2 * Math.abs(Math.sin(beat * 1.7) * Math.cos(beat * 0.45)));
+}
+
+function StartHighway({ hot, startAt }) {
   const gemRefs = useRef([]);
   const ringRefs = useRef([]);
-  const [still] = useState(() => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   const copies = 2;
 
   useEffect(() => {
     let frame = 0;
-    const start = performance.now();
     const place = (now) => {
-      const beat = ((now - start) / 1000) / BEAT_SECONDS;
+      const beat = (Math.max(0, now - startAt) / 1000) / BEAT_SECONDS;
       const lit = [0, 0, 0, 0, 0];
       RIFF.forEach(([lane, at], index) => {
         for (let copy = 0; copy < copies; copy += 1) {
@@ -77,7 +76,7 @@ function StartHighway({ hot }) {
             continue;
           }
           const y = yAt(progress);
-          const scale = 0.42 + 0.58 * Math.min(1.1, (y - TOP_Y) / (STRIKE_Y - TOP_Y));
+          const scale = 0.42 + 0.58 * Math.min(1.1, (y - ROAD.top) / (ROAD.strike - ROAD.top));
           node.setAttribute("transform", `translate(${laneX(lane, y).toFixed(2)} ${y.toFixed(2)}) scale(${scale.toFixed(3)})`);
           node.setAttribute("opacity", progress > 1 ? String(Math.max(0, 1 - (progress - 1) / 0.18)) : progress < 0.08 ? String(progress / 0.08) : "1");
           if (progress > 0.97 && progress < 1.08) lit[lane] = 1;
@@ -86,51 +85,52 @@ function StartHighway({ hot }) {
       ringRefs.current.forEach((ring, lane) => ring?.classList.toggle("is-lit", Boolean(lit[lane])));
       frame = requestAnimationFrame(place);
     };
-    if (still) {
-      place(start + BEAT_SECONDS * 1000 * 3.4);
+    if (still()) {
+      place(startAt + BEAT_SECONDS * 1000 * 3.4);
       cancelAnimationFrame(frame);
       return undefined;
     }
     frame = requestAnimationFrame(place);
     return () => cancelAnimationFrame(frame);
-  }, [still]);
+  }, [startAt]);
 
   const lanes = [0, 1, 2, 3, 4];
-  const road = `M${CX - TOP_HALF} ${TOP_Y} L${CX + TOP_HALF} ${TOP_Y} L${CX + BOTTOM_HALF} ${BOTTOM_Y} L${CX - BOTTOM_HALF} ${BOTTOM_Y} Z`;
+  const cx = ROAD.width / 2;
+  const outline = `M${cx - ROAD.topHalf} ${ROAD.top} L${cx + ROAD.topHalf} ${ROAD.top} L${cx + ROAD.bottomHalf} ${ROAD.bottom} L${cx - ROAD.bottomHalf} ${ROAD.bottom} Z`;
   return (
-    <svg className={"start-highway" + (hot ? " is-hot" : "")} viewBox="0 0 320 252" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <svg className={"start-highway" + (hot ? " is-hot" : "")} viewBox={`0 0 ${ROAD.width} ${ROAD.bottom}`} preserveAspectRatio="xMidYMax meet" aria-hidden="true">
       <defs>
         <linearGradient id="start-road" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="var(--start-road-far)" />
           <stop offset="1" stopColor="var(--start-road-near)" />
         </linearGradient>
-        <clipPath id="start-road-clip"><path d={road} /></clipPath>
+        <clipPath id="start-road-clip"><path d={outline} /></clipPath>
       </defs>
-      <path d={road} fill="url(#start-road)" />
+      <path d={outline} fill="url(#start-road)" />
       <g clipPath="url(#start-road-clip)">
         {[1, 2, 3, 4].map((i) => (
           <line
             key={i}
-            x1={CX - TOP_HALF + (i * 2 * TOP_HALF) / 5}
-            y1={TOP_Y}
-            x2={CX - BOTTOM_HALF + (i * 2 * BOTTOM_HALF) / 5}
-            y2={BOTTOM_Y}
+            x1={cx - ROAD.topHalf + (i * 2 * ROAD.topHalf) / 5}
+            y1={ROAD.top}
+            x2={cx - ROAD.bottomHalf + (i * 2 * ROAD.bottomHalf) / 5}
+            y2={ROAD.bottom}
             className="start-lane-line"
           />
         ))}
         {[0.18, 0.4, 0.62, 0.84].map((p) => {
           const y = yAt(p);
-          return <line key={p} x1={CX - halfWidthAt(y)} x2={CX + halfWidthAt(y)} y1={y} y2={y} className="start-beat-line" />;
+          return <line key={p} x1={cx - halfWidthAt(y)} x2={cx + halfWidthAt(y)} y1={y} y2={y} className="start-beat-line" />;
         })}
       </g>
-      <path d={`M${CX - TOP_HALF} ${TOP_Y} L${CX - BOTTOM_HALF} ${BOTTOM_Y}`} className="start-road-edge" />
-      <path d={`M${CX + TOP_HALF} ${TOP_Y} L${CX + BOTTOM_HALF} ${BOTTOM_Y}`} className="start-road-edge" />
+      <path d={`M${cx - ROAD.topHalf} ${ROAD.top} L${cx - ROAD.bottomHalf} ${ROAD.bottom}`} className="start-road-edge" />
+      <path d={`M${cx + ROAD.topHalf} ${ROAD.top} L${cx + ROAD.bottomHalf} ${ROAD.bottom}`} className="start-road-edge" />
       {lanes.map((lane) => (
         <g
           key={lane}
           ref={(node) => { ringRefs.current[lane] = node; }}
           className="start-ring"
-          transform={`translate(${laneX(lane, STRIKE_Y)} ${STRIKE_Y})`}
+          transform={`translate(${laneX(lane, ROAD.strike)} ${ROAD.strike})`}
           style={{ "--gem": FRET_COLORS[lane] }}
         >
           <ellipse rx="22" ry="11" className="start-ring-glow" />
@@ -154,69 +154,219 @@ function StartHighway({ hot }) {
   );
 }
 
-// ---------- readiness ----------
+// ---------- the song strip feeding the highway ----------
 
-function useModelState() {
-  const [state, setState] = useState({ phase: "checking", percent: 0, error: "" });
+// The song scrolls past a playhead fixed in the middle; whatever crosses it
+// drops into the highway below as gems. The strip runs TRAVEL_BEATS ahead of
+// the highway, so a loud hit reaches the strikeline as its gem does.
+const FEED_W = 960;
+const FEED_PX_PER_BEAT = 46;
+const FEED_STEP = 0.25; // beats between waveform bars
+const FEED_BARS = Math.ceil(FEED_W / FEED_PX_PER_BEAT / FEED_STEP) + 2;
+const FEED_SECTION_BEATS = 16;
+const FEED_SECTIONS = [["Verse", 0, 0.7], ["Chorus", 1, 1], ["Verse", 0, 0.7], ["Solo", 3, 1]];
+const FEED_MID = 70;
+const FEED_AMP = 36;
+const FEED_LANE_Y = [38, 54, 70, 86, 102]; // green on top, like the editor's roll
+const FEED_NOTE_POOL = 40;
 
-  useEffect(() => {
-    const setup = electronModelSetup();
-    if (!setup) {
-      setState({ phase: "unavailable", percent: 0, error: "" });
-      return undefined;
-    }
-    let active = true;
-    setup.scan().then((result) => {
-      if (!active) return;
-      const status = result?.generatorReadiness?.[FAMILY.generatorId];
-      setState({
-        phase: !status || status.status === "unsupported" ? "unavailable" : status.downloaded ? "ready" : status.status === "partial" ? "partial" : "missing",
-        percent: 0,
-        error: "",
-      });
-    }).catch(() => active && setState({ phase: "unavailable", percent: 0, error: "" }));
-    const off = setup.onInstallEvent?.((event) => {
-      if (!active || event.phase !== "downloading") return;
-      setState((current) => ({ ...current, phase: "downloading", percent: event.percent || 0 }));
-    });
-    return () => {
-      active = false;
-      off?.();
-    };
-  }, []);
-
-  const download = async () => {
-    const setup = electronModelSetup();
-    if (!setup) return;
-    setState({ phase: "downloading", percent: 0, error: "" });
-    try {
-      await setup.install();
-      setState({ phase: "ready", percent: 100, error: "" });
-    } catch (error) {
-      setState({ phase: "missing", percent: 0, error: error?.message || "The download failed." });
-    }
-  };
-
-  return { ...state, download };
+function feedSection(beat) {
+  const index = Math.floor(beat / FEED_SECTION_BEATS);
+  return { index, section: FEED_SECTIONS[((index % FEED_SECTIONS.length) + FEED_SECTIONS.length) % FEED_SECTIONS.length] };
 }
 
+// The riff's notes from `from` to `to` (song beats), every loop of it.
+function feedNotes(from, to) {
+  const notes = [];
+  for (let loop = Math.floor(from / RIFF_BEATS); loop * RIFF_BEATS <= to; loop += 1) {
+    RIFF.forEach(([lane, at]) => {
+      const beat = loop * RIFF_BEATS + at;
+      if (beat >= from && beat <= to) notes.push([lane, beat]);
+    });
+  }
+  return notes;
+}
+
+function SongFeed({ hot, startAt }) {
+  const barRefs = useRef([]);
+  const sectionRefs = useRef([]);
+  const noteRefs = useRef([]);
+
+  useEffect(() => {
+    let frame = 0;
+    const center = FEED_W / 2;
+    const place = (now) => {
+      const songBeat = (Math.max(0, now - startAt) / 1000) / BEAT_SECONDS + TRAVEL_BEATS;
+      const xAt = (beat) => center + (beat - songBeat) * FEED_PX_PER_BEAT;
+      const first = Math.ceil((songBeat - center / FEED_PX_PER_BEAT) / FEED_STEP) * FEED_STEP;
+      barRefs.current.forEach((node, index) => {
+        if (!node) return;
+        const beat = first + index * FEED_STEP;
+        const x = xAt(beat);
+        const h = FEED_AMP * waveAmplitude(beat) * feedSection(beat).section[2];
+        node.setAttribute("x", (x - 2).toFixed(2));
+        node.setAttribute("y", (FEED_MID - h).toFixed(2));
+        node.setAttribute("height", (h * 2).toFixed(2));
+        node.classList.toggle("is-past", x < center);
+      });
+      // Behind the playhead the song is charted: its notes sit in the lanes,
+      // each one popping in as it crosses.
+      const charted = feedNotes(songBeat - center / FEED_PX_PER_BEAT - 1, songBeat);
+      noteRefs.current.forEach((node, index) => {
+        if (!node) return;
+        const note = charted[index];
+        if (!note) {
+          node.setAttribute("opacity", "0");
+          return;
+        }
+        const [lane, beat] = note;
+        const age = songBeat - beat;
+        const pop = Math.min(1, 0.4 + age * 3);
+        node.setAttribute("opacity", "1");
+        node.setAttribute("transform", `translate(${xAt(beat).toFixed(2)} ${FEED_LANE_Y[lane]}) scale(${pop.toFixed(3)})`);
+        node.style.setProperty("--gem", FRET_COLORS[lane]);
+      });
+      const firstSection = Math.floor((songBeat - center / FEED_PX_PER_BEAT) / FEED_SECTION_BEATS);
+      sectionRefs.current.forEach((node, index) => {
+        if (!node) return;
+        const at = (firstSection + index) * FEED_SECTION_BEATS;
+        const { section } = feedSection(at);
+        const x0 = xAt(at);
+        const x1 = xAt(at + FEED_SECTION_BEATS) - 3;
+        const [rect, label] = node.children;
+        rect.setAttribute("x", x0.toFixed(2));
+        rect.setAttribute("width", Math.max(0, x1 - x0).toFixed(2));
+        label.setAttribute("x", (Math.max(x0, 0) + 8).toFixed(2));
+        label.textContent = section[0];
+        node.style.setProperty("--sec", FRET_COLORS[section[1]]);
+        node.classList.toggle("is-charted", x0 < center);
+      });
+      frame = requestAnimationFrame(place);
+    };
+    if (still()) {
+      place(startAt + BEAT_SECONDS * 1000 * 3.4);
+      return undefined;
+    }
+    frame = requestAnimationFrame(place);
+    return () => cancelAnimationFrame(frame);
+  }, [startAt]);
+
+  return (
+    <svg className={"start-feed" + (hot ? " is-hot" : "")} viewBox={`0 0 ${FEED_W} 128`} aria-hidden="true">
+      <defs>
+        <linearGradient id="start-feed-fade" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stopColor="#fff" stopOpacity="0" />
+          <stop offset=".08" stopColor="#fff" />
+          <stop offset=".92" stopColor="#fff" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <mask id="start-feed-mask"><rect width={FEED_W} height="128" fill="url(#start-feed-fade)" /></mask>
+      </defs>
+      <g mask="url(#start-feed-mask)">
+        {Array.from({ length: 3 }, (_, index) => (
+          <g key={index} ref={(node) => { sectionRefs.current[index] = node; }} className="start-feed-sec">
+            <rect y="0" height="22" rx="5" />
+            <text y="15" />
+          </g>
+        ))}
+        <rect x="0" y="28" width={FEED_W} height="84" rx="8" className="start-feed-track" />
+        {FEED_LANE_Y.map((y) => <line key={y} x1="10" x2={FEED_W - 10} y1={y} y2={y} className="start-feed-lane" />)}
+        <g className="start-feed-wave">
+          {Array.from({ length: FEED_BARS }, (_, index) => (
+            <rect key={index} ref={(node) => { barRefs.current[index] = node; }} width="4" rx="2" />
+          ))}
+        </g>
+        {Array.from({ length: FEED_NOTE_POOL }, (_, index) => (
+          <g key={index} ref={(node) => { noteRefs.current[index] = node; }} opacity="0" className="start-feed-note">
+            <circle cy="1.6" r="7" className="start-gem-base" />
+            <circle r="7" className="start-gem" />
+            <circle cx="-1.8" cy="-2.2" r="2.3" className="start-gem-cap" />
+          </g>
+        ))}
+      </g>
+      <g className="start-feed-head">
+        <line x1={FEED_W / 2} x2={FEED_W / 2} y1="0" y2="128" />
+        <rect x={FEED_W / 2 - 6} y="22.5" width="12" height="9" rx="4.5" />
+      </g>
+    </svg>
+  );
+}
+
+function DesktopNote() {
+  return (
+    <p className="start-desktop-note">
+      <I.monitor /> Faster on desktop, and saves straight to Clone Hero.
+      <a className="start-link" href={DESKTOP_APP_URL} target="_blank" rel="noreferrer">
+        Get the app <I.open />
+      </a>
+    </p>
+  );
+}
+
+// The device as a status pill, so it isn't mistaken for a tagline; it opens to
+// show what was checked.
+function DeviceFact({ device, onOpenSettings }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const popRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  // The pill sits low on the page; bring the whole popover into view.
+  useEffect(() => {
+    if (open) popRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [open]);
+
+  const fact = deviceFact(device);
+
+  return (
+    <div className="start-fact-wrap" ref={wrapRef}>
+      <button
+        className={"start-fact" + (fact.tone ? ` is-${fact.tone}` : "") + (open ? " open" : "")}
+        onClick={() => setOpen((v) => !v)}
+        disabled={!device.checked}
+        aria-expanded={open}
+      >
+        <span className="start-fact-dot" />
+        <span className="start-fact-label">This device</span>
+        <span className="start-fact-value">{fact.label}</span>
+        <I.chev className="chev" />
+      </button>
+      {open && (
+        <div className="start-fact-pop" ref={popRef}>
+          <DeviceReadout device={device} />
+          <button className="start-link start-fact-settings" onClick={onOpenSettings}>
+            <I.gear /> Change in Settings
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- this device ----------
+
 function useDeviceState() {
-  const [device, setDevice] = useState({ checked: false, webgpu: false, gpu: "", memoryGb: null, freeBytes: null });
+  const [device, setDevice] = useState(UNCHECKED_DEVICE);
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      electronHardware()?.probe().catch(() => null) ?? null,
-      navigator.storage?.estimate?.().catch(() => null) ?? null,
-    ]).then(([probe, estimate]) => {
-      if (!active) return;
-      setDevice({
-        checked: true,
-        webgpu: probe?.selectedMode === "webgpu",
-        gpu: probe?.gpu || "",
-        memoryGb: navigator.deviceMemory || null,
-        freeBytes: estimate?.quota ? estimate.quota - (estimate.usage || 0) : null,
-      });
+    Promise.resolve(electronHardware()?.probe().catch(() => null) ?? null).then((probe) => {
+      if (active) setDevice(deviceFromProbe(probe));
     });
     return () => { active = false; };
   }, []);
@@ -224,107 +374,15 @@ function useDeviceState() {
   return device;
 }
 
-// A little gem in a lane's color: the list's bullet.
-function Gem({ lane }) {
-  return (
-    <svg className="start-gem-dot" viewBox="0 0 26 16" aria-hidden="true" style={{ "--gem": FRET_COLORS[lane] }}>
-      <ellipse cx="13" cy="9.5" rx="11.5" ry="5.8" className="start-gem-base" />
-      <ellipse cx="13" cy="6.5" rx="11.5" ry="5.8" className="start-gem" />
-      <ellipse cx="13" cy="5.6" rx="6" ry="2.3" className="start-gem-cap" />
-    </svg>
-  );
-}
-
-function ModelRow({ model, device }) {
-  const sizeBytes = FAMILY.downloadMb * 1e6;
-  const tight = model.phase !== "ready" && Number.isFinite(device.freeBytes) && device.freeBytes < sizeBytes * 1.2;
-  return (
-    <li className="start-check">
-      <Gem lane={0} />
-      <span className="start-check-label">Model</span>
-      <span className="start-check-body">
-        <span className="start-check-value">
-          {FAMILY.label} <span className="mono">{formatBytes(sizeBytes)}</span>
-        </span>
-        <span className={"start-check-note" + (tight || model.error ? " is-warn" : "")}>
-          {model.error
-            || (tight ? `Only ${formatBytes(device.freeBytes)} free in this browser.` : "Downloads once, then stays in this browser.")}
-        </span>
-      </span>
-      <span className="start-check-action">
-        {model.phase === "ready" ? (
-          <span className="start-done"><I.check /> Downloaded</span>
-        ) : model.phase === "downloading" ? (
-          <span className="start-progress" role="progressbar" aria-valuenow={model.percent} aria-valuemin={0} aria-valuemax={100} aria-label="Model download">
-            <span style={{ width: `${Math.max(3, model.percent)}%` }} />
-            <b className="mono">{model.percent}%</b>
-          </span>
-        ) : (
-          <button
-            type="button"
-            className="settings-secondary start-check-btn"
-            onClick={model.download}
-            disabled={model.phase === "checking" || model.phase === "unavailable"}
-          >
-            <I.download /> {model.phase === "partial" ? "Finish download" : "Download"}
-          </button>
-        )}
-      </span>
-    </li>
-  );
-}
-
-function DeviceRow({ device }) {
-  const lowMemory = Number.isFinite(device.memoryGb) && device.memoryGb < 4;
-  const tone = !device.checked ? "" : device.webgpu && !lowMemory ? "good" : "warn";
-  return (
-    <li className="start-check">
-      <Gem lane={3} />
-      <span className="start-check-label">Device</span>
-      <span className="start-check-body">
-        <span className="start-check-value">
-          {!device.checked ? "Checking…" : device.webgpu ? "WebGPU" : "CPU only"}
-          {device.gpu && <span className="mono start-gpu">{device.gpu}</span>}
-        </span>
-        <span className={"start-check-note" + (lowMemory ? " is-warn" : "")}>
-          {lowMemory
-            ? "Low memory: long songs may not finish."
-            : device.checked && !device.webgpu
-              ? "Works, but a song takes a lot longer."
-              : "Needs about 4 GB of free memory."}
-        </span>
-      </span>
-      <span className="start-check-action">
-        <span className={"start-pill" + (tone ? ` is-${tone}` : "")}>
-          {!device.checked ? "…" : tone === "good" ? "Fast" : "Slow"}
-        </span>
-      </span>
-    </li>
-  );
-}
-
-function PrivacyRow() {
-  return (
-    <li className="start-check">
-      <Gem lane={4} />
-      <span className="start-check-label">Your song</span>
-      <span className="start-check-body is-wide">
-        <span className="start-check-value">Never leaves this device</span>
-        <span className="start-check-note">Nothing is kept here: export to keep your chart.</span>
-      </span>
-    </li>
-  );
-}
-
 // ---------- page ----------
 
-export default function Start({ onSong, onOpenChart, confirmCloseSong = () => true }) {
+export default function Start({ onSong, onOpenChart, onOpenSettings, confirmCloseSong = () => true }) {
   const [hot, setHot] = useState(false);
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState("");
+  const [clockStart] = useState(() => performance.now());
   const songRef = useRef(null);
   const folderRef = useRef(null);
-  const model = useModelState();
   const device = useDeviceState();
 
   const hasFiles = (event) => Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file");
@@ -368,6 +426,39 @@ export default function Start({ onSong, onOpenChart, confirmCloseSong = () => tr
     }
   };
 
+  const actions = (
+    <>
+      <div className="start-actions">
+        <button type="button" className="btn-primary start-cta" onClick={() => songRef.current?.click()}>
+          <I.upload /> Choose a song
+        </button>
+        <button
+          type="button"
+          className="settings-secondary start-open-btn"
+          onClick={() => folderRef.current?.click()}
+          disabled={opening}
+        >
+          <I.folder /> {opening ? "Opening…" : "Open a Clone Hero song"}
+        </button>
+        <input
+          ref={songRef}
+          type="file"
+          accept={MEDIA_ACCEPT}
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file && confirmCloseSong()) onSong(file);
+          }}
+        />
+        <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple hidden onChange={handleFolder} />
+      </div>
+      <p className={"start-hint" + (openError ? " is-error" : "")}>
+        {openError || <><I.shield /> Or drop a song anywhere. It never leaves this device.</>}
+      </p>
+    </>
+  );
+
   return (
     <div
       className={"start-page" + (hot ? " is-hot" : "")}
@@ -375,55 +466,19 @@ export default function Start({ onSong, onOpenChart, confirmCloseSong = () => tr
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="start-copy">
+      <div className="start-head">
         <h1 className="start-title">Chart any song</h1>
-        <p className="start-sub">Drop in a song and get a five-fret guitar chart for Clone Hero and YARG.</p>
-
-        <div className="start-actions">
-          <button type="button" className="btn-primary start-cta" onClick={() => songRef.current?.click()}>
-            <I.upload /> Choose a song
-          </button>
-          <button
-            type="button"
-            className="settings-secondary start-open-btn"
-            onClick={() => folderRef.current?.click()}
-            disabled={opening}
-          >
-            <I.folder /> {opening ? "Opening…" : "Open a Clone Hero song"}
-          </button>
-          <input
-            ref={songRef}
-            type="file"
-            accept={MEDIA_ACCEPT}
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file && confirmCloseSong()) onSong(file);
-            }}
-          />
-          <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple hidden onChange={handleFolder} />
+        <p className="start-sub">Get a five-fret guitar chart for Clone Hero and YARG, right in your browser.</p>
+        <div className="start-feed-wrap">
+          <SongFeed hot={hot} startAt={clockStart} />
+          <StartHighway hot={hot} startAt={clockStart} />
         </div>
-        <p className={"start-hint" + (openError ? " is-error" : "")}>
-          {openError || <>Or drop it anywhere here. <span className="mono">{FORMATS.join(" · ")}</span></>}
-        </p>
-
-        <ul className="start-checks">
-          <ModelRow model={model} device={device} />
-          <DeviceRow device={device} />
-          <PrivacyRow />
-        </ul>
-
-        <p className="start-desktop">
-          The desktop app is faster, keeps all your songs, and puts them straight into Clone Hero.{" "}
-          <a className="start-link" href={DESKTOP_APP_URL} target="_blank" rel="noreferrer">
-            Get the desktop app <I.open />
-          </a>
-        </p>
+        {actions}
+        <div className="start-shared">
+          <DeviceFact device={device} onOpenSettings={onOpenSettings} />
+          <DesktopNote />
+        </div>
       </div>
-
-      <div className="start-visual"><StartHighway hot={hot} /></div>
-
       <div className="start-drop-veil" aria-hidden="true"><span>Let go to start</span></div>
     </div>
   );
