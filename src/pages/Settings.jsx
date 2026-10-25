@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { I } from "../icons.jsx";
 import { generationDownloadSize } from "../components/GenerationPipeline.jsx";
+import { DeviceReadout, UNCHECKED_DEVICE, deviceFromProbe } from "../components/DeviceFacts.jsx";
 import InstallProgress from "../components/InstallProgress.jsx";
 import {
   friendlyTarget,
@@ -28,7 +29,7 @@ import {
 import { listGenerators } from "../services/generation.js";
 import { installAssets, probeHardware, scanModelSetup, subscribeModelInstallEvents } from "../services/modelSetup.js";
 import { NOTICE_LINKS, openNotice } from "../services/notices.js";
-import { electronPlatform } from "../services/runtimeBridge.js";
+import { electronPlatform, isWebApp } from "../services/runtimeBridge.js";
 
 const EMPTY_SETTINGS = {
   setupComplete: false,
@@ -385,6 +386,18 @@ export default function Settings() {
   const unsupported = setup?.combinedStatus === "unsupported" || hardware?.supportedPlatform === false;
   const targetPlatform = setup?.platform || hardware?.platform || electronPlatform();
   const hardwareModes = hardwareModesForPlatform(targetPlatform);
+  const aboutLinks = (
+    <>
+      {NOTICE_BUTTONS.map((notice) => (
+        <button key={notice.key} className="settings-secondary" onClick={() => openBundledNotice(notice.key)}>
+          {notice.label}
+        </button>
+      ))}
+      <a className="settings-secondary" href={NOTICE_LINKS.ffmpeg} target="_blank" rel="noreferrer">
+        FFmpeg legal
+      </a>
+    </>
+  );
   const selectedHardwareMode = hardwareModeForPlatform(settings.hardwareMode, targetPlatform);
   const home = settings.homeFolder;
 
@@ -483,7 +496,7 @@ export default function Settings() {
           </section>
         )}
 
-        <div className="settings-grid">
+        <div className={"settings-grid" + (isWebApp() ? " is-web" : "")}>
           <section className="settings-card settings-models" aria-labelledby="settings-models-title">
             <div className="settings-card-head">
               <h2 className="settings-card-title" id="settings-models-title">Models</h2>
@@ -556,7 +569,8 @@ export default function Settings() {
             {(busy === "installing-models" || installProgress) && <InstallProgress progress={installProgress} />}
           </section>
 
-          <section className="settings-card settings-folders" aria-labelledby="settings-folders-title">
+          {/* The browser keeps its files in its own storage: no folders to pick. */}
+          {!isWebApp() && <section className="settings-card settings-folders" aria-labelledby="settings-folders-title">
             <div className="settings-card-head">
               <h2 className="settings-card-title" id="settings-folders-title">Folders</h2>
             </div>
@@ -612,14 +626,16 @@ export default function Settings() {
                 );
               })}
             </div>
-          </section>
+          </section>}
 
           <section className="settings-card settings-perf" aria-labelledby="settings-perf-title">
             <div className="settings-card-head">
               <h2 className="settings-card-title" id="settings-perf-title">Performance</h2>
-              <span className="settings-card-hint" title={hardwareModeCaveat(settings.hardwareMode, targetPlatform)}>
-                {performanceSummary(hardware, unsupported)}
-              </span>
+              {!isWebApp() && (
+                <span className="settings-card-hint" title={hardwareModeCaveat(settings.hardwareMode, targetPlatform)}>
+                  {performanceSummary(hardware, unsupported)}
+                </span>
+              )}
             </div>
             <div
               className="perf-modes"
@@ -640,26 +656,30 @@ export default function Settings() {
                 </button>
               ))}
             </div>
-            {hardware?.fallbackReason && <p className="settings-card-sub warn">{hardware.fallbackReason}</p>}
+            {isWebApp()
+              ? <DeviceReadout device={hardware ? deviceFromProbe(hardware) : UNCHECKED_DEVICE} />
+              : hardware?.fallbackReason && <p className="settings-card-sub warn">{hardware.fallbackReason}</p>}
           </section>
 
+          {!isWebApp() && (
           <section className="settings-card settings-about" aria-labelledby="settings-about-title">
             <div className="settings-card-head">
               <h2 className="settings-card-title" id="settings-about-title">About</h2>
               <span className="settings-card-hint">Everything stays on this computer. No telemetry.</span>
             </div>
-            <div className="about-links">
-              {NOTICE_BUTTONS.map((notice) => (
-                <button key={notice.key} className="settings-secondary" onClick={() => openBundledNotice(notice.key)}>
-                  {notice.label}
-                </button>
-              ))}
-              <a className="settings-secondary" href={NOTICE_LINKS.ffmpeg} target="_blank" rel="noreferrer">
-                FFmpeg legal
-              </a>
-            </div>
+            <div className="about-links">{aboutLinks}</div>
           </section>
+          )}
         </div>
+
+        {/* The browser version has nothing to set here, so About is a footer,
+            not a card that looks like a setting. */}
+        {isWebApp() && (
+          <footer className="settings-about-foot" aria-label="About">
+            <span>Your songs and charts stay in this browser.</span>
+            <div className="about-links">{aboutLinks}</div>
+          </footer>
+        )}
 
         {diagnosticsOpen && (
           <DiagnosticsSheet

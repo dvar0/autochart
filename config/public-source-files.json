@@ -202,6 +202,7 @@
     "shared/generatedVersion.js",
     "src/App.jsx",
     "src/assets/highway/note-cap.png",
+    "src/components/DeviceFacts.jsx",
     "src/components/GenerationPipeline.jsx",
     "src/components/InstallProgress.jsx",
     "src/components/LibraryFolderPrompt.jsx",

@@ -1276,6 +1276,41 @@ input:focus-visible, select:focus-visible { outline: none; }
 @media (max-width: 1180px) {
   .settings-grid { grid-template-columns: minmax(0, 1fr); }
 }
+/* Browser version: Models | Performance, then About as a quiet footer. */
+.device-readout dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.device-readout dt { color: var(--text-dim); }
+.device-readout dd { margin: 0; color: var(--text); font-weight: 700; }
+.device-readout p { margin: 12px 0 0; color: var(--text-dim); font-size: var(--fs-sm); }
+.device-readout p.is-warn { color: var(--amber-fg); }
+.device-readout code { font: 600 .95em var(--font-mono); color: var(--text); }
+.settings-grid.is-web .device-readout { margin-top: 16px; }
+.settings-about-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  margin-top: 24px;
+  padding: 0 4px;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+}
+.settings-about-foot .about-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.settings-about-foot .settings-secondary {
+  min-height: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.settings-about-foot .settings-secondary:hover { background: none; color: var(--text); text-decoration: underline; }
 .settings-card {
   display: flex;
   flex-direction: column;
