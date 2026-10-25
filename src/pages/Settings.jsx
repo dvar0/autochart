@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { I } from "../icons.jsx";
 import { generationDownloadSize } from "../components/GenerationPipeline.jsx";
 import InstallProgress from "../components/InstallProgress.jsx";
@@ -308,17 +308,26 @@ export default function Settings() {
     }
   };
 
+  // The mode only matters to the next run, so the pick shows at once and saves
+  // quietly; then the hardware check reruns so the card shows where runs go.
+  // Only the latest pick's check is shown when they overlap.
+  const hardwareModeSeq = useRef(0);
   const updateHardwareMode = async (mode) => {
-    setBusy("hardwareMode");
+    const previous = settings;
+    const hardwareMode = normalizeHardwareMode(mode);
+    const seq = ++hardwareModeSeq.current;
+    setSettings((current) => ({ ...current, hardwareMode }));
     setMessage("");
     try {
-      const next = await updateAppSettings({ hardwareMode: normalizeHardwareMode(mode) });
+      const next = await updateAppSettings({ hardwareMode });
+      if (seq !== hardwareModeSeq.current) return;
       setSettings({ ...EMPTY_SETTINGS, ...next });
-      await refreshModels();
+      const nextHardware = await probeHardware();
+      if (seq === hardwareModeSeq.current) setHardware(nextHardware);
     } catch (err) {
+      if (seq !== hardwareModeSeq.current) return;
+      setSettings(previous);
       setMessage({ text: err.message || "Could not update hardware mode.", tone: "error" });
-    } finally {
-      setBusy("");
     }
   };
 

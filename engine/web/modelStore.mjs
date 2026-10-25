@@ -21,6 +21,13 @@ export async function isCached(url) {
   return Boolean(cache && (await cache.match(cacheKey(url))));
 }
 
+// Cached with its size, so adding up the cache never has to read the files.
+function cachedResponse(bytes) {
+  return new Response(bytes, {
+    headers: { "Content-Type": "application/octet-stream", "Content-Length": String(bytes.length) },
+  });
+}
+
 // The file's bytes, from the cache or the network. onProgress gets
 // { loaded, total } while the file downloads.
 export async function fetchModelFile(url, { onProgress = null } = {}) {
@@ -55,7 +62,7 @@ export async function fetchModelFile(url, { onProgress = null } = {}) {
   }
   if (cache) {
     try {
-      await cache.put(key, new Response(bytes, { headers: { "Content-Type": "application/octet-stream" } }));
+      await cache.put(key, cachedResponse(bytes));
     } catch {
       // Out of quota: the run still works, it just downloads again next time.
     }
@@ -80,7 +87,7 @@ export async function loadModelManifest(folderUrl, { offlineOnly = false } = {})
       if (response.ok) {
         bytes = new Uint8Array(await response.arrayBuffer());
         const cache = await openCache();
-        try { await cache?.put(url, new Response(bytes)); } catch { /* not cached, fine */ }
+        try { await cache?.put(url, cachedResponse(bytes)); } catch { /* not cached, fine */ }
       }
     } catch { /* offline: use the cached copy */ }
   }
