@@ -62,8 +62,10 @@ and [Apple's supported override instructions](https://support.apple.com/102445).
 
 1. Choose folders for projects, models, and cache in setup. Use writable local
    folders with room for your songs and generated audio.
-2. Download the chart generation package. Version 0.1.0's model files total
-   **693,298,686 bytes (about 693 MB / 661 MiB)**, excluding the app download.
+2. Download the chart generation package. Fretformer 2 (with its Fill-in
+   model) totals **952,319,821 bytes (about 952 MB / 908 MiB)**, excluding the
+   app download. Fretformer v1 is an optional extra download in Settings
+   (693,298,686 bytes).
    Installation also needs temporary staging space. Projects and separation
    caches require additional disk space that grows with song length and use.
 3. Hardware mode defaults to **Automatic**; there is no hardware-selection

@@ -4,6 +4,25 @@ Checks for changes made since the last public release. Clear every item before
 publishing, then delete the section once the update ships. The general release
 gates are in [release-checklist.md](release-checklist.md).
 
+## Fretformer 2 download
+
+Fretformer 2 and its Fill-in model are in `engine/catalog.json` as the
+`fretformer-2` pack and are the catalog default. They aren't on the model host
+yet, so setup can't download them until this is done:
+
+- [ ] Prepare and audit the payload (`uv run scripts/prepare-huggingface.py`,
+  see [huggingface-release.md](huggingface-release.md)), review it, and upload
+  it to the model repository.
+- [ ] Point `DEFAULT_ASSET_BASE_URL` in `electron/assetInstaller.cjs` at the new
+  revision; run `npm run smoke:generate -- --wipe` and the release gates.
+- [ ] Clean install: setup downloads about 952 MB, and Fretformer 2 is the
+  default for new projects.
+- [ ] Update from the last public release with only Fretformer v1 installed: new
+  projects stay on Fretformer v1 until Fretformer 2 is downloaded in Settings;
+  the download copies the shared files instead of fetching them again.
+- [ ] Release notes give the new download size and say that Fretformer v1 stays
+  available in Settings.
+
 ## Beat map smoother replaced
 
 The damped smoother is gone. Beat This grids now go through spurious/missed-beat
@@ -38,10 +57,10 @@ Check before publishing:
 
 Known leftovers, decide before or after this update:
 
-- The shipped model `manifest.json` files still list `damped_smooth`,
-  `dampedSmoothGain` and `dampedSmoothWindow`. The engine ignores them. They are
-  hash-pinned in `engine/catalog.json`, so clean them up only when the model
-  pack is republished.
+- Fretformer v1's `manifest.json` still lists `damped_smooth`,
+  `dampedSmoothGain` and `dampedSmoothWindow` (the Fretformer 2 manifests no
+  longer do). The engine ignores them. It is hash-pinned in
+  `engine/catalog.json` and already published, so it stays as is.
 - Songs where Beat This climbs in steps (for example 125 → 250 → 500 BPM around
   a fill) keep their fast stretch; burst folding needs a steady tempo on both
   sides. Fixing this means choosing one tempo level per song.

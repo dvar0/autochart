@@ -1,7 +1,8 @@
 # Hugging Face model pack preparation
 
-The public payload is generated from the exact `fretformer-v1-onnx` file list
-in `engine/catalog.json`. It includes the model card, licenses, large-file
+The public payload is generated from the exact file lists of every component
+in `engine/catalog.json` (Fretformer v1, Fretformer 2, Fretformer 2 Fill-in),
+read from the app's models folder (`--source`, or `AUTOCHART_MODELS_DIR`). It includes the model card, licenses, large-file
 attributes, and checksums. Preparation never publishes anything.
 
 ## Prepare and audit
@@ -73,7 +74,7 @@ hf auth login
 hf auth whoami
 hf upload PUBLIC_NAMESPACE/autochart-models \
   release-onboarding/huggingface/autochart-models . \
-  --commit-message "Add Fretformer v1 ONNX model pack"
+  --commit-message "Add Fretformer 2 ONNX model pack"
 ```
 
 Upload only that folder. It contains no Git history or local audit logs.

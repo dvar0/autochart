@@ -31,9 +31,10 @@ browser charts come from the same code. `resample.mjs` is a port of FFmpeg's
 default resampler; the browser decodes with Web Audio at the file's own rate and
 resamples with it, which keeps its audio identical to the desktop's FFmpeg path.
 Demucs' STFT and inverse STFT are computed in JS with an FFT (`stft.mjs`); only
-its core network runs as an ONNX graph. The model folders still list the two
-STFT basis graphs (`demucs_analysis_stft.onnx`, `demucs_synthesis_istft.onnx`),
-but the engine no longer loads them and the browser doesn't download them.
+its core network runs as an ONNX graph. Fretformer v1's folder still lists the
+two STFT basis graphs (`demucs_analysis_stft.onnx`, `demucs_synthesis_istft.onnx`)
+because its published pack pins them, but the engine no longer loads them and
+the browser doesn't download them. The Fretformer 2 folders don't have them.
 
 ### Browser engine
 
@@ -75,26 +76,33 @@ Installed apps load the same layout from:
 <settings.modelsFolder>/fretformer-v1/
 ```
 
-The shipped catalog component `fretformer-v1-onnx` and pack `standard-onnx`
-pin 11 model artifacts and four attribution/license files by canonical path,
-byte size, and SHA-256. Model artifacts come from the configured asset host;
+The shipped catalog pins every model artifact and attribution/license file by
+canonical path, byte size, and SHA-256. Component `fretformer-v1-onnx` (pack
+`standard-onnx`) pins 11 model artifacts; components `fretformer-2-onnx` and
+`fretformer-2-fill-in-onnx` (pack `fretformer-2`, the catalog default) pin 9
+and 10. Components may share a path (the license texts) only with identical
+pins. The installer copies a file whose pinned bytes are already installed at
+another catalog path (models share Beat This and the transcriber mel graph)
+instead of downloading it; the copy passes the same size and SHA-256 checks,
+and a copy that fails them falls back to the download. Model artifacts come from the configured asset host;
 the four invariant legal files are copied from the packaged
 `engine/licenses/` directory. `electron/modelManager.cjs` hashes the actual
 installed bytes at that location, and the engine receives it as
 `job.engine.modelsFolder`; both use the same folder before falling back to
 development symlinks.
 
-## Installed-only Fretformer models
+## Fretformer 2 and Fill-in
 
 `autochart.fretformer.v2-onnx` ("Fretformer 2") and
-`autochart.fretformer.v2-inpaint-onnx` ("Fretformer 2 Inpaint") are local
-test generators. Each manifest entry has `"availability": "installed"`: the
-Generate screen lists one only once its folder under
-`<settings.modelsFolder>/` is complete (`fretformer-v2/` or
-`fretformer-v2-inpaint/`), so installs without them see Fretformer exactly as
-before. There is no catalog component or download for them yet. When one is
-installed, the model plate becomes a picker with a NEW badge, its takes are
-named and tagged with its label, and a project reopens on the model it last
+`autochart.fretformer.v2-inpaint-onnx` ("Fretformer 2 Inpaint", shown as
+Fill-in) download together as the `fretformer-2` pack into
+`<settings.modelsFolder>/fretformer-v2/` and `fretformer-v2-inpaint/`. Both are
+listed on the Generate screen whether or not they are downloaded; new projects
+start on the user's default model, else Fretformer 2 when it is downloaded,
+else any downloaded model. Settings shows one Download per family
+(`src/data/modelFamilies.js` names each family's `packId`). Fill-in is offered
+for whole charts only while "Write whole charts" is on. Takes are named and
+tagged with their model's label, and a project reopens on the model it last
 generated with. Inpaint rewrites picked bars with Fretformer 2 Inpaint
 (`capabilities.inpaint`); Generate stays on whichever model is selected.
 
@@ -198,7 +206,8 @@ that choice is then remembered with the project's saved generation settings.
 
 ## Setup and hardware
 
-Setup downloads `standard-onnx` from the configured asset source, but trusts
+Setup downloads the catalog's default pack (`fretformer-2`) from the
+configured asset source; Settings can also install `standard-onnx`. It trusts
 only the `engine/catalog.json` shipped with that application release. The
 default source is the public `Dvaro/autochart-models` Hugging Face repository,
 pinned to commit `b38e69ca0dc919cef0218ef7f9c0014a1593b3c2`. Downloads require no

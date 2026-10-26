@@ -24,6 +24,9 @@ from google.protobuf.descriptor import FieldDescriptor
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "release-onboarding/huggingface/autochart-models"
+# Where the model folders are read from: the app's models folder on Linux, or
+# AUTOCHART_MODELS_DIR / --source.
+DEFAULT_SOURCE = Path(os.environ.get("AUTOCHART_MODELS_DIR") or Path.home() / ".local/share/autochart/models")
 ATTRIBUTES = "*.onnx filter=lfs diff=lfs merge=lfs -text\n*.npz filter=lfs diff=lfs merge=lfs -text\n"
 ALLOWED_URLS = (
     "https://github.com/facebookresearch/demucs",
@@ -136,24 +139,34 @@ def audit_npz(file, terms):
 
 
 def catalog_files():
+    """Every file pinned by every catalog component; a file shared by several
+    components (license texts) appears once and must carry the same pin."""
     catalog = json.loads((ROOT / "engine/catalog.json").read_text())
-    component = next(c for c in catalog["components"] if c["id"] == "fretformer-v1-onnx")
-    files = component["files"]
-    seen = set()
-    for entry in files:
-        relative = PurePosixPath(entry["path"])
-        require(not relative.is_absolute() and ".." not in relative.parts
-                and "\\" not in entry["path"] and str(relative) == entry["path"], "Unsafe catalog path")
-        require(entry["path"] not in seen, "Duplicate catalog path")
-        seen.add(entry["path"])
-        require(entry["source"] in {"remote", "bundled-license"}, "Unexpected catalog source")
-        require(relative.parts[0] == ("fretformer-v1" if entry["source"] == "remote" else "licenses"),
-                "Unexpected catalog directory")
-    pack = next(p for p in catalog["packs"] if p["id"] == "standard-onnx")
-    remote = [f for f in files if f["source"] == "remote"]
-    require(pack["downloadBytes"] == sum(f["size"] for f in remote)
-            and pack["downloadFileCount"] == len(remote), "Catalog totals mismatch")
-    return files
+    files = {}
+    for component in catalog["components"]:
+        folders = set()
+        for entry in component["files"]:
+            relative = PurePosixPath(entry["path"])
+            require(not relative.is_absolute() and ".." not in relative.parts
+                    and "\\" not in entry["path"] and str(relative) == entry["path"], "Unsafe catalog path")
+            require(entry["source"] in {"remote", "bundled-license"}, "Unexpected catalog source")
+            if entry["source"] == "remote":
+                require(len(relative.parts) == 2, "Unexpected catalog directory")
+                folders.add(relative.parts[0])
+            else:
+                require(relative.parts[0] == "licenses", "Unexpected catalog directory")
+            if entry["path"] in files:
+                require(files[entry["path"]] == entry, "Conflicting pins for a shared catalog path")
+            files[entry["path"]] = entry
+        require(len(folders) == 1, "A component's model files must share one folder")
+    components = {c["id"]: c for c in catalog["components"]}
+    for pack in catalog["packs"]:
+        # A pack downloads each distinct file once.
+        unique = {f["sha256"]: f["size"] for cid in pack["components"]
+                  for f in components[cid]["files"] if f["source"] == "remote"}
+        require(pack["downloadBytes"] == sum(unique.values())
+                and pack["downloadFileCount"] == len(unique), "Catalog totals mismatch")
+    return list(files.values())
 
 
 def checksum_text(records):
@@ -201,14 +214,14 @@ def audit_folder(folder, files, terms):
             "scope": "Payload files and serialized metadata; excludes hosting account and commit identity."}
 
 
-def prepare(output, files, terms):
+def prepare(output, files, terms, source_root):
     require(not output.exists() and not output.is_symlink(), "Output exists; use --verify-only or a new --output")
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".model-pack-", dir=output.parent))
     try:
         for entry in files:
-            source = ROOT / ("engine/models-onnx" if entry["source"] == "remote" else "engine") / entry["path"]
-            data = source.read_bytes()  # Materialize development symlinks, never copy them.
+            source = (source_root if entry["source"] == "remote" else ROOT / "engine") / entry["path"]
+            data = source.read_bytes()  # Materialize symlinks, never copy them.
             require(len(data) == entry["size"] and digest(data) == entry["sha256"],
                     f"{entry['path']}: source catalog mismatch")
             destination = staging / entry["path"]
@@ -235,12 +248,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE,
+                        help="folder holding the model folders named in engine/catalog.json")
     args = parser.parse_args()
     files = catalog_files()
     terms = deny_terms()
     require(bool(os.environ.get("AUTOCHART_PUBLIC_DENY", "").strip()),
             "Set AUTOCHART_PUBLIC_DENY to a comma-separated list of private names/handles")
-    report = audit_folder(args.output, files, terms) if args.verify_only else prepare(args.output, files, terms)
+    report = audit_folder(args.output, files, terms) if args.verify_only else prepare(args.output, files, terms, args.source)
     # Keep the local audit report outside the upload directory; never include source paths or deny values.
     (args.output.parent / f"{args.output.name}-privacy-report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"PASS: {report['fileCount']} upload files; catalog integrity and privacy audit passed.")
