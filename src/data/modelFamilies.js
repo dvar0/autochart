@@ -24,6 +24,17 @@ export const MODEL_FAMILIES = Object.freeze([
     generatorId: "autochart.fretformer.v1-onnx",
     packId: "standard-onnx",
   }),
+  Object.freeze({
+    id: "fretformer-2-lite",
+    label: "Fretformer 2 Lite",
+    badge: "L",
+    experimental: true,
+    about: "Faster, less accurate. Has its own Fill-in.",
+    shortLabel: "Lite",
+    generatorId: "autochart.fretformer.v2-lite-onnx",
+    inpaintGeneratorId: "autochart.fretformer.v2-lite-onnx",
+    packId: "fretformer-2-lite",
+  }),
 ]);
 
 // Models that come with a family's download and normally only redo picked

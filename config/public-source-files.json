@@ -110,6 +110,7 @@
     "engine/manifest.json",
     "engine/models-onnx/fretformer-v1/manifest.json",
     "engine/models-onnx/fretformer-v2-inpaint/manifest.json",
+    "engine/models-onnx/fretformer-v2-lite/manifest.json",
     "engine/models-onnx/fretformer-v2/manifest.json",
     "engine/test/generate-onnx-smoke.cjs",
     "engine/test/generator-switch-e2e.cjs",

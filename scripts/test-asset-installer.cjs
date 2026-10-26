@@ -978,17 +978,19 @@ async function testSharedFileCopies(root) {
     await closeServer(server);
   }
 
-  // The shipped Fretformer 2 pack counts each shared file once.
+  // Each shipped pack counts its shared files once.
   const { catalog: shipped } = await installer.loadPinnedCatalog(root);
-  const pack = shipped.packs.find((item) => item.id === "fretformer-2");
-  const unique = new Map();
-  for (const id of pack.components) {
-    for (const file of shipped.components.find((item) => item.id === id).files) {
-      if (file.source === installer.FILE_SOURCE_REMOTE) unique.set(file.sha256, file.size);
+  for (const pack of shipped.packs) {
+    const unique = new Map();
+    for (const id of pack.components) {
+      for (const file of shipped.components.find((item) => item.id === id).files) {
+        if (file.source === installer.FILE_SOURCE_REMOTE) unique.set(file.sha256, file.size);
+      }
     }
+    assert.equal(pack.downloadFileCount, unique.size, pack.id);
+    assert.equal(pack.downloadBytes, [...unique.values()].reduce((total, size) => total + size, 0), pack.id);
+    pass();
   }
-  assert.equal(pack.downloadFileCount, unique.size);
-  assert.equal(pack.downloadBytes, [...unique.values()].reduce((total, size) => total + size, 0));
   assert.equal(shipped.defaults.packId, "fretformer-2");
   pass();
 }

@@ -2,15 +2,15 @@ AUTOCHART MODEL PACK ATTRIBUTION
 Version 2.0.0
 
 This notice applies to the files pinned by engine/catalog.json for components
-fretformer-2-onnx and fretformer-2-fill-in-onnx. Keep this file and the
-referenced license texts with every copy of the model pack.
+fretformer-2-onnx, fretformer-2-fill-in-onnx and fretformer-2-lite-onnx. Keep
+this file and the referenced license texts with every copy of the model pack.
 
-FRETFORMER 2 AND FRETFORMER 2 FILL-IN
+FRETFORMER 2, FRETFORMER 2 FILL-IN AND FRETFORMER 2 LITE
 Title: Fretformer 2 model weights and ONNX export
 Creator: Autochart contributors
 Copyright: 2026 Autochart contributors
-Source: Autochart engine catalog components fretformer-2-onnx and
-fretformer-2-fill-in-onnx, version 2.0.0
+Source: Autochart engine catalog components fretformer-2-onnx,
+fretformer-2-fill-in-onnx and fretformer-2-lite-onnx, version 2.0.0
 License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0
 International (CC BY-NC-SA 4.0)
 License URI: https://creativecommons.org/licenses/by-nc-sa/4.0/
@@ -23,8 +23,14 @@ fretformer-v2-inpaint/decoder_step_fp32.onnx,
 fretformer-v2-inpaint/fim_decoder_fp32.onnx,
 fretformer-v2-inpaint/transcriber_mel_fp32.onnx,
 fretformer-v2-inpaint/prefix_tables.npz,
-fretformer-v2-inpaint/transcriber_manifest.json, and the Fretformer portions
-identified by fretformer-v2/manifest.json and fretformer-v2-inpaint/manifest.json.
+fretformer-v2-inpaint/transcriber_manifest.json,
+fretformer-v2-lite/encoder_fp32.onnx, fretformer-v2-lite/decoder_step_fp32.onnx,
+fretformer-v2-lite/fim_decoder_fp32.onnx,
+fretformer-v2-lite/transcriber_mel_fp32.onnx,
+fretformer-v2-lite/prefix_tables.npz,
+fretformer-v2-lite/transcriber_manifest.json, and the Fretformer portions
+identified by fretformer-v2/manifest.json, fretformer-v2-inpaint/manifest.json
+and fretformer-v2-lite/manifest.json.
 Modification notice: the trained models were exported and adapted to the local
 ONNX Runtime graph/session format used by Autochart.
 Restriction: sharing and adaptation are permitted only for NonCommercial
@@ -52,8 +58,11 @@ License: MIT (licenses/beat-this-mit.txt)
 Covered files: fretformer-v2/beat_this_core_fp32.onnx,
 fretformer-v2/beat_this_mel_fp32.onnx,
 fretformer-v2-inpaint/beat_this_core_fp32.onnx,
-fretformer-v2-inpaint/beat_this_mel_fp32.onnx, and the Beat This portions
-identified by fretformer-v2/manifest.json and fretformer-v2-inpaint/manifest.json.
+fretformer-v2-inpaint/beat_this_mel_fp32.onnx,
+fretformer-v2-lite/beat_this_core_fp32.onnx,
+fretformer-v2-lite/beat_this_mel_fp32.onnx, and the Beat This portions
+identified by fretformer-v2/manifest.json, fretformer-v2-inpaint/manifest.json
+and fretformer-v2-lite/manifest.json.
 Modification notice: the published checkpoint and subsequent Autochart
 fine-tuning were exported to ONNX for Autochart's independent JavaScript
 inference pipeline.

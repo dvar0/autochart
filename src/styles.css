@@ -1453,6 +1453,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .model-badge.fretformer-2 { background: linear-gradient(135deg, var(--fret-g), var(--fret-b)); }
 .model-badge.fretformer-1 { background: linear-gradient(135deg, var(--fret-y), var(--fret-o)); }
 .model-badge.fretformer-2-fill-in { background: linear-gradient(135deg, var(--fret-b), var(--fret-r)); }
+.model-badge.fretformer-2-lite { background: linear-gradient(135deg, var(--fret-g), var(--fret-y)); }
 .model-row-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .model-row-name b { font-size: var(--fs-base); font-weight: 700; color: var(--text); }
 .model-row-copy small { overflow: hidden; color: var(--text-dim); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }

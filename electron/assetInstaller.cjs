@@ -34,6 +34,8 @@ const DEFAULT_OVERALL_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_MAX_REDIRECTS = 3;
 const PINNED_CATALOG_MAX_BYTES = 512 * 1024;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024 * 1024;
+// Every pack the catalog offers, together.
+const MAX_CATALOG_BYTES = 8 * 1024 * 1024 * 1024;
 const MAX_BUNDLED_LICENSE_BYTES = 1024 * 1024;
 const PINNED_CATALOG_SCHEMA_VERSION = 2;
 const FILE_SOURCE_REMOTE = "remote";
@@ -667,7 +669,7 @@ function validatePinnedCatalog(catalog, modelsRoot) {
   if (!Array.isArray(catalog.packs) || !catalog.packs.length) throw new Error("Pinned catalog must contain packs.");
 
   const componentsById = new Map();
-  const fileRegistry = new EntryRegistry({ maxEntries: 10_000, maxTotalBytes: MAX_RESPONSE_BYTES });
+  const fileRegistry = new EntryRegistry({ maxEntries: 10_000, maxTotalBytes: MAX_CATALOG_BYTES });
   // Components may share a file (license texts) only with identical pins.
   const pinsByPath = new Map();
   for (const component of catalog.components) {

@@ -9,7 +9,8 @@
 //   them (three lead-in separations, only one separated for the six-stem set);
 // - a model that marks solos shows Mark solos and Force a solo in More
 //   settings, and the payload carries both;
-// - the fill-in model is listed as Beta only while "Write whole charts" is on.
+// - the fill-in model is listed as Beta only while "Write whole charts" is on;
+// - Fretformer 2 Lite is listed but never the default while it isn't downloaded.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -26,6 +27,8 @@ const KEPT_IDS = [
   "autochart.fretformer.v2-onnx",
   "autochart.fretformer.v2-inpaint-onnx",
 ];
+// Fretformer 2 Lite, an optional download that stays missing here.
+const LITE_ID = "autochart.fretformer.v2-lite-onnx";
 const BETA_ID = "autochart.fretformer.v2-inpaint-onnx";
 // The first six-stem generator outside beta is the one separation cards name,
 // and the one this test selects. It also marks solos.
@@ -50,7 +53,7 @@ async function main() {
   let fillInDrafts = false;
   let win;
   try {
-    assert.deepEqual(engineManifest.generators.map((generator) => generator.id), [V1_ID, ...KEPT_IDS]);
+    assert.deepEqual(engineManifest.generators.map((generator) => generator.id), [V1_ID, ...KEPT_IDS, LITE_ID]);
     const chartText = chartWriter.writeChartText([[0, 0, 0], [192, 1, 0]], {
       title: "Picker fixture", difficulty: "expert", resolution: 192, syncLines: ["0 = B 120000"],
     }).text;
@@ -111,7 +114,7 @@ async function main() {
       preferences: { defaultGeneratorId: "", fillInDrafts },
       generators: engineManifest.generators.map((generator) => ({
         ...generator,
-        setup: DOWNLOADED_LATER.has(generator.id) && !installedReady
+        setup: generator.id === LITE_ID || (DOWNLOADED_LATER.has(generator.id) && !installedReady)
           ? { ready: false, status: "missing", message: `${generator.models.onnxFolder} is not installed.` }
           : { ready: true, status: "ready" },
       })),

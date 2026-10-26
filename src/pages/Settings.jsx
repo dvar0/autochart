@@ -439,14 +439,15 @@ export default function Settings() {
 
   // One row per model; picking a row makes it the model new projects start
   // with. Beta models come with a family's download and can only be picked
-  // while "Write whole charts" is on.
+  // while "Write whole charts" is on. Experimental families come last.
+  const familyRow = (family) => ({
+    ...family,
+    action: familyAction(family),
+    pickable: isReady(family.generatorId),
+    reason: `Download ${family.label} first`,
+  });
   const modelRows = [
-    ...MODEL_FAMILIES.map((family) => ({
-      ...family,
-      action: familyAction(family),
-      pickable: isReady(family.generatorId),
-      reason: `Download ${family.label} first`,
-    })),
+    ...MODEL_FAMILIES.filter((family) => !family.experimental).map(familyRow),
     ...BETA_MODELS.map((model) => {
       const family = MODEL_FAMILIES.find((item) => item.id === model.familyId);
       const installed = isReady(model.generatorId);
@@ -457,6 +458,7 @@ export default function Settings() {
         reason: installed ? "Turn on Write whole charts first" : `Download ${family.label} first`,
       };
     }),
+    ...MODEL_FAMILIES.filter((family) => family.experimental).map(familyRow),
   ];
 
   const setFillInDrafts = (on) => {
@@ -531,6 +533,7 @@ export default function Settings() {
                       <div className="model-row-name">
                         <b>{row.label}</b>
                         {row.recommended && <span className="model-tag recommended">Recommended</span>}
+                        {row.experimental && <span className="model-tag beta">Experimental</span>}
                       </div>
                       <small>{row.about}</small>
                     </div>

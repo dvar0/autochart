@@ -234,8 +234,8 @@
         },
         {
           "path": "licenses/fretformer-2-attribution.txt",
-          "size": 3368,
-          "sha256": "c3a27bbdd5ed3111a3236bcd7686b861a58e960e1d0a572985eeb1680c1dcb76",
+          "size": 3845,
+          "sha256": "fcb193c2a3045a99e450f0da0a168eabec61bed63096cdb3847a956576f81f3d",
           "source": "bundled-license"
         },
         {
@@ -358,8 +358,8 @@
         },
         {
           "path": "licenses/fretformer-2-attribution.txt",
-          "size": 3368,
-          "sha256": "c3a27bbdd5ed3111a3236bcd7686b861a58e960e1d0a572985eeb1680c1dcb76",
+          "size": 3845,
+          "sha256": "fcb193c2a3045a99e450f0da0a168eabec61bed63096cdb3847a956576f81f3d",
           "source": "bundled-license"
         },
         {
@@ -372,6 +372,117 @@
           "path": "licenses/demucs-mit.txt",
           "size": 1123,
           "sha256": "cce848e475e9ea404912fff89f84456dc84fb70975387d621b44343cf890effd",
+          "source": "bundled-license"
+        },
+        {
+          "path": "licenses/beat-this-mit.txt",
+          "size": 1124,
+          "sha256": "4262b3df2b88fa83f180185c8ba762c9575f97affa478df57831de6eab51f3af",
+          "source": "bundled-license"
+        }
+      ]
+    },
+    {
+      "id": "fretformer-2-lite-onnx",
+      "kind": "chart-model",
+      "label": "Fretformer 2 Lite (ONNX)",
+      "version": "2.0.0",
+      "channel": "experimental",
+      "license": "CC-BY-NC-SA-4.0",
+      "source": "autochart",
+      "attribution": {
+        "title": "Fretformer 2 Lite model weights and ONNX export",
+        "creator": "Autochart contributors",
+        "source": "Autochart engine catalog component fretformer-2-lite-onnx, version 2.0.0",
+        "license": "CC-BY-NC-SA-4.0",
+        "licenseUri": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "modified": "Exported and adapted to Autochart's local ONNX Runtime graph/session format."
+      },
+      "generatorIds": [
+        "autochart.fretformer.v2-lite-onnx"
+      ],
+      "capabilities": {
+        "difficulties": [
+          "easy",
+          "medium",
+          "hard",
+          "expert"
+        ],
+        "bestFor": [
+          "low-end-devices"
+        ]
+      },
+      "licenseNotice": "engine/licenses/fretformer-2-attribution.txt",
+      "licenseFiles": [
+        "licenses/fretformer-2-attribution.txt",
+        "licenses/cc-by-nc-sa-4.0.txt",
+        "licenses/beat-this-mit.txt"
+      ],
+      "files": [
+        {
+          "path": "fretformer-v2-lite/manifest.json",
+          "size": 20318,
+          "sha256": "b7c56befbaefb13617224b4c2e3ed8202821b72e6fe98134b5208509ac1d7417",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/beat_this_core_fp32.onnx",
+          "size": 82098873,
+          "sha256": "a43a278873f3307fce96c991e6d8caf3f6543a383f1dbede5977320d0f4cff87",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/beat_this_mel_fp32.onnx",
+          "size": 4469414,
+          "sha256": "6b48f0b394c6f1ccefc73b9322f7f8fc696928737c1fbcb72decc009d6dd4244",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/transcriber_mel_fp32.onnx",
+          "size": 17126036,
+          "sha256": "4963c18b55e83c4f8f6bf22fc6690fe0303a78c685f0aa27571bbcb425d31965",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/encoder_fp32.onnx",
+          "size": 121895320,
+          "sha256": "0fefb20cf0160bee194c294add85365778c209eb3adc7b85a931b6f1d9d071f2",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/decoder_step_fp32.onnx",
+          "size": 164748353,
+          "sha256": "2bc95aaca6529aae5f29d516a40d5bca0e917eca7ec5efd6b902d6de7c7d3539",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/fim_decoder_fp32.onnx",
+          "size": 164777097,
+          "sha256": "5279b329582c09a1696938bcb178313a7fd3fa143c77b0e76fe8c7de4e4076d2",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/prefix_tables.npz",
+          "size": 83322,
+          "sha256": "c9e5807c547fc867ac0e50d4beb344d9725a83f3c5e9e75c38e3b7a8fb6babaf",
+          "source": "remote"
+        },
+        {
+          "path": "fretformer-v2-lite/transcriber_manifest.json",
+          "size": 7322,
+          "sha256": "3d408fb38a78b59f3e84a8596548f9c858e481c49c4bed00d01607a8ecb6ef4f",
+          "source": "remote"
+        },
+        {
+          "path": "licenses/fretformer-2-attribution.txt",
+          "size": 3845,
+          "sha256": "fcb193c2a3045a99e450f0da0a168eabec61bed63096cdb3847a956576f81f3d",
+          "source": "bundled-license"
+        },
+        {
+          "path": "licenses/cc-by-nc-sa-4.0.txt",
+          "size": 20850,
+          "sha256": "e66c269d4819aaab34b49ef5220c4ddab6756f21bb5180761a4eb8561f2b7bbd",
           "source": "bundled-license"
         },
         {
@@ -492,6 +603,53 @@
       "components": [
         "fretformer-v1-onnx"
       ]
+    },
+    {
+      "id": "fretformer-2-lite",
+      "label": "Fretformer 2 Lite",
+      "channel": "experimental",
+      "defaultGeneratorId": "autochart.fretformer.v2-lite-onnx",
+      "defaultTimingDetector": "beat_this_custom_timing",
+      "downloadBytes": 555226055,
+      "downloadFileCount": 9,
+      "installContents": [
+        {
+          "id": "beat-this",
+          "label": "Beat This timing detection",
+          "description": "Finds the song's beats and timing.",
+          "delivery": "download",
+          "fileCount": 2
+        },
+        {
+          "id": "fretformer",
+          "label": "Fretformer 2 Lite and Fill-in",
+          "description": "Creates the playable note chart from the full mix and redoes the parts you pick.",
+          "delivery": "download",
+          "fileCount": 7
+        },
+        {
+          "id": "ffmpeg",
+          "label": "FFmpeg media support",
+          "description": "Reads and prepares audio and video files.",
+          "delivery": "bundled"
+        },
+        {
+          "id": "local-runtime",
+          "label": "Local model runtime",
+          "description": "Runs the models locally using ONNX Runtime and Node.js.",
+          "delivery": "bundled"
+        },
+        {
+          "id": "licenses",
+          "label": "Licenses and attribution",
+          "description": "Installs the required model and Beat This license notices with the files.",
+          "delivery": "bundled-copy",
+          "fileCount": 3
+        }
+      ],
+      "components": [
+        "fretformer-2-lite-onnx"
+      ]
     }
   ],
   "timingOptions": [
@@ -527,6 +685,9 @@
     ],
     "autochart.fretformer.v2-inpaint-onnx": [
       "fretformer-2-fill-in-onnx"
+    ],
+    "autochart.fretformer.v2-lite-onnx": [
+      "fretformer-2-lite-onnx"
     ]
   }
 }

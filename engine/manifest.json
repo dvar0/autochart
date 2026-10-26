@@ -139,6 +139,48 @@
           "win32": { "demucs": "cpu" }
         }
       }
+    },
+    {
+      "id": "autochart.fretformer.v2-lite-onnx",
+      "label": "Fretformer 2 Lite",
+      "titleTag": "Fretformer 2 Lite",
+      "badge": "Lite",
+      "description": "For slower computers: skips stem separation, so it follows the melody less closely. Has its own Fill-in.",
+      "status": "experimental",
+      "platforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ],
+      "capabilities": {
+        "difficulties": [
+          "easy",
+          "medium",
+          "hard",
+          "expert"
+        ],
+        "sustains": "never-strip",
+        "triples": true,
+        "requiresGpu": false,
+        "usesTimingCache": true,
+        "usesStemCache": false,
+        "descriptorKnobs": ["speed", "chords", "hopos", "taps", "movement"],
+        "structureMarkers": ["solos", "sections"],
+        "inpaint": true
+      },
+      "separation": {
+        "model": "htdemucs_6s",
+        "stemSet": "htdemucs_6s",
+        "cacheSubdir": "stems_htdemucs_6s",
+        "stems": ["drums", "bass", "vocals", "guitar", "other"]
+      },
+      "models": {
+        "onnxFolder": "fretformer-v2-lite"
+      },
+      "runtime": {
+        "backend": "onnxruntime-node",
+        "executionProvider": "cpu"
+      }
     }
   ]
 }
