@@ -19,6 +19,7 @@ const AUDIO_NAME = "song.bin";
 const ALBUM_NAME = "album.bin";
 const BACKGROUND_NAME = "background.bin";
 const CHART_NAME = "notes.chart";
+const LITE_GENERATOR_ID = "autochart.fretformer.v2-lite-onnx";
 const MANIFEST_NAME = "song.json";
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 const SOURCE_ASSET = Symbol("autochart.library.sourceAsset");
@@ -899,6 +900,13 @@ async function getMediaAssetSource(context, id, fileName, expectedRole = "") {
   };
 }
 
+// Lite charts say so in the loading phrase, so they aren't taken for
+// Fretformer 2's.
+function generatedWith(meta) {
+  const generators = String(meta.autochart_generator || "").split(",");
+  return generators.includes(LITE_GENERATOR_ID) ? "Generated with Autochart (Fretformer 2 Lite)." : "Generated with Autochart.";
+}
+
 function buildSongIni(meta, settings, resources = {}) {
   const lines = ["[song]"];
   const iniValue = (value) => String(value ?? "").replace(/\r\n?|[\n\u2028\u2029]/g, " ").trim();
@@ -916,7 +924,7 @@ function buildSongIni(meta, settings, resources = {}) {
     // Marks the folder as an Autochart export so a later export may replace it.
     ["autochart_export", "1"],
     ["loading_phrase", meta.autochart_ai_generated === "true"
-      ? `Contains AI-generated guitar difficulties: ${meta.autochart_generated_difficulties}. Generated with Autochart.`
+      ? `Contains AI-generated guitar difficulties: ${meta.autochart_generated_difficulties}. ${generatedWith(meta)}`
       : ""],
     ["song_length", meta.durationSec ? Math.round(meta.durationSec * 1000) : ""],
     // No diff_guitar/diff_band tier: YARG and Clone Hero parse those as integer
@@ -1159,7 +1167,7 @@ async function exportDestinationState(destDir) {
 // Exact loading phrase buildSongIni has written since the first release; exports
 // made before `autochart_export` existed are recognised by it or by provenance.
 const LEGACY_EXPORT_LOADING_PHRASE_RE =
-  /^Contains AI-generated guitar difficulties: (?:easy|medium|hard|expert)(?:,(?:easy|medium|hard|expert))*\. Generated with Autochart\.$/;
+  /^Contains AI-generated guitar difficulties: (?:easy|medium|hard|expert)(?:,(?:easy|medium|hard|expert))*\. Generated with Autochart(?: \(Fretformer 2 Lite\))?\.$/;
 
 // Values of every key in the [song] section(s), ignoring comments and any
 // other section, so a marker only counts where the games read metadata.

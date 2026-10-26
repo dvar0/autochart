@@ -23,7 +23,9 @@ comma-separated when multiple generators contributed and omitted if unknown
 (for example, some older saved takes).
 
 `song.ini` also includes a readable `loading_phrase` explaining which guitar
-difficulties contain generated notes. Handmade-only exports receive no AI
+difficulties contain generated notes. When Fretformer 2 Lite wrote any of
+them, the phrase ends "Generated with Autochart (Fretformer 2 Lite)." so a Lite
+chart isn't taken for Fretformer 2's. Handmade-only exports receive no AI
 marker, including handmade charts edited or assembled in Autochart. Origin
 information survives normal save, edit, final-chart assembly, export and
 re-import operations. Older edited charts with missing lineage and no generator

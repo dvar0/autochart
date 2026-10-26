@@ -10,6 +10,7 @@ import { readStoredAudio } from "../../engine/web/stemStore.mjs";
 import { getSongRecord } from "../services/songLibrary.js";
 
 const GAME_AUDIO = new Set(["ogg", "mp3", "opus", "wav"]);
+const LITE_GENERATOR_ID = "autochart.fretformer.v2-lite-onnx";
 const VIDEO = new Set(["webm", "mp4"]);
 
 function extOf(name = "", mime = "") {
@@ -31,6 +32,13 @@ export function cloneHeroFolderName(meta = {}, { copy = false } = {}) {
   return safeFolderName(copy ? `${base} (Autochart)` : base);
 }
 
+// Lite charts say so in the loading phrase, so they aren't taken for
+// Fretformer 2's.
+function generatedWith(meta) {
+  const generators = String(meta.autochart_generator || "").split(",");
+  return generators.includes(LITE_GENERATOR_ID) ? "Generated with Autochart (Fretformer 2 Lite)." : "Generated with Autochart.";
+}
+
 // Same fields and rules as the desktop export (electron/libraryStore.cjs buildSongIni).
 function buildSongIni(meta, resources = {}) {
   const lines = ["[song]"];
@@ -47,7 +55,7 @@ function buildSongIni(meta, resources = {}) {
     ["autochart_generated_difficulties", meta.autochart_generated_difficulties],
     ["autochart_generator", meta.autochart_generator],
     ["loading_phrase", meta.autochart_ai_generated === "true"
-      ? `Contains AI-generated guitar difficulties: ${meta.autochart_generated_difficulties}. Generated with Autochart.`
+      ? `Contains AI-generated guitar difficulties: ${meta.autochart_generated_difficulties}. ${generatedWith(meta)}`
       : ""],
     ["song_length", meta.durationSec ? Math.round(meta.durationSec * 1000) : ""],
     ["background", resources.background || ""],
