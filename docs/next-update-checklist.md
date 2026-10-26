@@ -26,6 +26,10 @@ yet, so setup can't download them until this is done:
   Settings, generates with separation skipped, and fills in its own takes;
   Fretformer 2's Fill-in on a Lite take separates first. Decide whether it
   ships in this update or comes out of the catalog.
+- [ ] On a slow machine, a run whose separation is projected past twice the
+  song's length offers Lite once; Switch to Lite downloads it and reruns, Keep
+  going never offers it again. Lite stays out of the Generate picker until
+  it's downloaded.
 
 ## Beat map smoother replaced
 

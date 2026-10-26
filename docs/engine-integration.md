@@ -155,6 +155,26 @@ usual. Lite's generator lists the `htdemucs_6s` stem set
 (`capabilities.usesStemCache: false`), so the separation cards and Separate now
 use Fretformer 2's separation while Lite is selected.
 
+Lite is `"availability": "installed"`, so the Generate picker lists it only
+once it's downloaded (or picked in Settings). The app offers it when a device
+needs it, not before:
+
+- **Slow separation.** The engine's `demucs` progress events carry
+  `audioSeconds`. `src/pages/generate/liteOffer.js` times the segments after
+  the first one (which also loads the model) and, once a run's separation is
+  projected past twice the song's length (and at least a minute), shows an
+  offer under the progress: Switch to Lite stops the run, makes Lite the model
+  new projects start with, downloads it if needed, and reruns on it; Keep going
+  hides it and saves `liteOfferDeclined`, so it isn't offered again.
+- **Browser.** A browser with 2 GB of memory or less, or a phone or tablet
+  without graphics card access, lists Lite and starts new projects on it. The
+  browser engine downloads only the Demucs graph before separating and the
+  rest of the model after it, so a device that switches to Lite hasn't fetched
+  Fretformer 2's other files.
+
+Charts with a Lite take end their loading phrase with "(Fretformer 2 Lite)"
+(see `docs/chart-metadata.md`).
+
 ## Beat maps
 
 Beat maps belong to the analysis audio, not to a separation. Every generator
