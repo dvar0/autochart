@@ -169,6 +169,39 @@ export async function readStoredAudio(path) {
   return readFile(dir, `${String(path).slice(AUDIO_PREFIX.length)}.wav`);
 }
 
+async function directorySize(dir) {
+  let bytes = 0;
+  for await (const handle of dir.values()) {
+    bytes += handle.kind === "file" ? (await handle.getFile()).size : await directorySize(handle);
+  }
+  return bytes;
+}
+
+// Stems take far more room than the songs (raw float32), so Settings can free
+// them. Each song's analysis audio stays: its takes play on it.
+export async function storedStemBytes() {
+  try {
+    const root = await (await navigator.storage.getDirectory()).getDirectoryHandle(ROOT);
+    let bytes = 0;
+    for await (const [name, handle] of root.entries()) {
+      if (name !== AUDIO_FOLDER) bytes += handle.kind === "file" ? (await handle.getFile()).size : await directorySize(handle);
+    }
+    return bytes;
+  } catch {
+    return 0;
+  }
+}
+
+// Removes every stored separation (songs separate again when next generated).
+export async function removeStoredStems() {
+  try {
+    const root = await (await navigator.storage.getDirectory()).getDirectoryHandle(ROOT);
+    const names = [];
+    for await (const name of root.keys()) if (name !== AUDIO_FOLDER) names.push(name);
+    for (const name of names) await root.removeEntry(name, { recursive: true });
+  } catch { /* nothing stored */ }
+}
+
 export async function clearStems() {
   try {
     const root = await navigator.storage.getDirectory();

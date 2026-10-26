@@ -27,7 +27,9 @@ import {
   updateAppSettings,
 } from "../services/appSettings.js";
 import { listGenerators } from "../services/generation.js";
-import { installAssets, probeHardware, scanModelSetup, subscribeModelInstallEvents } from "../services/modelSetup.js";
+import {
+  installAssets, probeHardware, removeModelDownloads, scanModelSetup, subscribeModelInstallEvents,
+} from "../services/modelSetup.js";
 import { NOTICE_LINKS, openNotice } from "../services/notices.js";
 import { electronPlatform, isWebApp } from "../services/runtimeBridge.js";
 
@@ -113,6 +115,10 @@ function webFamilyStatus(family, generatorsById, manifestLoaded) {
   const setup = generatorsById.get(family.generatorId)?.setup;
   if (!setup || setup.status === "unsupported") return "unsupported";
   return setup.downloaded ? "ready" : "missing";
+}
+
+function formatSize(bytes) {
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 }
 
 function StatusPill({ status }) {
@@ -374,6 +380,50 @@ export default function Settings() {
     }
   };
 
+  // Browser version: models and stems live in the browser's storage, which
+  // phones run short of, so they can be removed here.
+  const removeDownloads = async (request, question) => {
+    if (!window.confirm(question)) return;
+    setBusy(request.all ? "removing-all" : `removing-${request.packId}`);
+    setMessage("");
+    try {
+      const result = await removeModelDownloads(request);
+      if (result?.setup) setSetup(result.setup);
+      await refreshModels();
+      setInstallProgress(null);
+      setMessage("Removed.");
+    } catch (err) {
+      setMessage({ text: err.message || "Could not remove the models.", tone: "error" });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const removeFamily = (family) => {
+    const bytes = [family.generatorId, family.inpaintGeneratorId]
+      .filter((id, index, ids) => id && ids.indexOf(id) === index)
+      .reduce((sum, id) => sum + (generatorsById.get(id)?.setup?.bytes || 0), 0);
+    void removeDownloads(
+      { packId: family.packId },
+      `Remove ${family.label} from this browser?${bytes ? ` This frees ${formatSize(bytes)}.` : ""}\n\nIt downloads again the next time you use it.`
+    );
+  };
+
+  // Under a megabyte is only the models' small manifest files.
+  const storedTotal = (setup?.cachedBytes || 0) + (setup?.stemBytes || 0);
+  const storedBytes = storedTotal >= 1e6 ? storedTotal : 0;
+
+  const removeAll = () => {
+    const parts = [
+      setup?.cachedBytes >= 1e6 ? `models ${formatSize(setup.cachedBytes)}` : "",
+      setup?.stemBytes >= 1e6 ? `separated stems ${formatSize(setup.stemBytes)}` : "",
+    ].filter(Boolean).join(", ");
+    void removeDownloads(
+      { all: true },
+      `Remove all models and separated stems from this browser?${parts ? ` (${parts})` : ""}\n\nModels download again, and songs separate again, the next time you generate. Your songs and charts stay.`
+    );
+  };
+
   const openBundledNotice = async (key) => {
     try {
       const opened = await openNotice(key);
@@ -420,25 +470,47 @@ export default function Settings() {
     const downloadable = web || Boolean(pack);
     const size = web ? (family.downloadMb ? `${family.downloadMb} MB` : "") : pack ? generationDownloadSize(pack) : "";
     if (status === "checking") return <StatusPill status="checking" />;
+    if (status === "ready" && web) {
+      return (
+        <>
+          <StatusPill status="ready" />
+          <button
+            type="button"
+            className="settings-secondary model-remove"
+            onClick={() => removeFamily(family)}
+            disabled={Boolean(busy)}
+            aria-label={`Remove ${family.label}`}
+            title={`Remove ${family.label} from this browser`}
+          >
+            <I.trash />
+          </button>
+        </>
+      );
+    }
     if (status === "ready") return <StatusPill status="ready" />;
     if (status === "unsupported") return <StatusPill status="unsupported" />;
     const installing = busy === `installing-${family.id}`;
+    const spaceShort = web && generatorsById.get(family.generatorId)?.setup?.spaceShort;
     const label = installing
       ? "Installing…"
-      : status === "missing"
-        ? `Download${size ? ` · ${size}` : ""}`
-        : "Repair";
-    const reason = !downloadable
-      ? "Not available to download yet."
-      : busy && !installing
-        ? "Wait for the current settings operation to finish."
-        : "";
+      : spaceShort
+        ? "Not enough space"
+        : status === "missing"
+          ? `Download${size ? ` · ${size}` : ""}`
+          : "Repair";
+    const reason = spaceShort
+      ? `Needs ${spaceShort.neededMb} MB, about ${spaceShort.freeMb} MB is free on this device.`
+      : !downloadable
+        ? "Not available to download yet."
+        : busy && !installing
+          ? "Wait for the current settings operation to finish."
+          : "";
     return (
       <>
         <button
           className={(downloadable && !family.experimental ? "btn-primary" : "settings-secondary") + " model-action"}
           onClick={() => installModels(family)}
-          disabled={!downloadable || Boolean(busy)}
+          disabled={!downloadable || Boolean(spaceShort) || Boolean(busy)}
           aria-describedby={`settings-install-reason-${family.id}`}
           title={reason || `Download ${family.label}`}
         >
@@ -587,6 +659,21 @@ export default function Settings() {
             </div>
 
             {(busy.startsWith("installing-") || installProgress) && <InstallProgress progress={installProgress} />}
+
+            {web && (
+              <div className="model-storage">
+                <span>{storedBytes ? `${formatSize(storedBytes)} on this device` : "Nothing downloaded yet"}</span>
+                <button
+                  type="button"
+                  className="settings-secondary"
+                  onClick={removeAll}
+                  disabled={Boolean(busy) || !storedBytes}
+                  title="Remove every model and separated stem from this browser"
+                >
+                  <I.trash /> Remove all
+                </button>
+              </div>
+            )}
           </section>
 
           {/* The browser keeps its files in its own storage: no folders to pick. */}

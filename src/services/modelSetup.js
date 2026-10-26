@@ -36,6 +36,14 @@ export async function installAssets(packId = "") {
   throw new Error("Downloading the chart generation package requires the Electron app.");
 }
 
+// Frees room in the browser version: { packId } removes one family's models,
+// { all: true } every model and stored separation.
+export async function removeModelDownloads(request) {
+  const bridge = electronModelSetup();
+  if (hasElectronModelSetup() && bridge?.remove) return bridge.remove(request);
+  throw new Error("Removing models is done from the models folder in the desktop app.");
+}
+
 export function subscribeModelInstallEvents(callback) {
   const bridge = electronModelSetup();
   if (hasElectronModelSetup() && bridge?.onInstallEvent) {
