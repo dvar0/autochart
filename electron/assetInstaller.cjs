@@ -513,6 +513,7 @@ async function downloadFile({
   beforeTempOpen = null,
   beforeExistingVerify = null,
   beforePromote = null,
+  localSourcePath = "",
 }) {
   const expected = validateExpectedFile(expectedSize, expectedSha256);
   await ensureRealDirectoryTree(rootDirectory, path.dirname(targetPath));
@@ -542,8 +543,12 @@ async function downloadFile({
   // a fresh exclusive path, so repair never depends on deleting an untrusted
   // pre-existing file (including partials written by older app versions).
   const tmpPath = `${targetPath}.${crypto.randomUUID()}.download`;
-  const stream = await requestStream(url, requestOptions);
-  const declared = responseContentLength(stream);
+  // A local source is an installed copy of the same pinned file; its bytes go
+  // through the same size and SHA256 checks as a download.
+  const stream = localSourcePath
+    ? fsSync.createReadStream(localSourcePath, { flags: fsSync.constants.O_RDONLY | (fsSync.constants.O_NOFOLLOW || 0) })
+    : await requestStream(url, requestOptions);
+  const declared = localSourcePath ? 0 : responseContentLength(stream);
   if (declared && declared !== expected.size) {
     stream.destroy();
     throw new Error(`Response Content-Length mismatch: expected ${expected.size}, got ${declared}.`);
@@ -663,6 +668,8 @@ function validatePinnedCatalog(catalog, modelsRoot) {
 
   const componentsById = new Map();
   const fileRegistry = new EntryRegistry({ maxEntries: 10_000, maxTotalBytes: MAX_RESPONSE_BYTES });
+  // Components may share a file (license texts) only with identical pins.
+  const pinsByPath = new Map();
   for (const component of catalog.components) {
     const componentId = String(component?.id || "").trim();
     if (!componentId || componentsById.has(componentId)) throw new Error(`Pinned catalog has a missing or duplicate component id: ${componentId}`);
@@ -704,7 +711,14 @@ function validatePinnedCatalog(catalog, modelsRoot) {
         }
       }
       resolveContainedChild(modelsRoot, normalizedPath);
-      fileRegistry.add(normalizedPath, "file", Number(file.size));
+      if (componentPaths.has(normalizedPath)) throw new Error(`Pinned component ${componentId} repeats file ${normalizedPath}.`);
+      const pin = `${expected.size}:${expected.sha256}:${source}:${Boolean(file.extract)}`;
+      if (!pinsByPath.has(normalizedPath)) {
+        fileRegistry.add(normalizedPath, "file", Number(file.size));
+        pinsByPath.set(normalizedPath, pin);
+      } else if (pinsByPath.get(normalizedPath) !== pin) {
+        throw new Error(`Pinned file ${normalizedPath} has different pins in different components.`);
+      }
       componentPaths.add(normalizedPath);
       componentFiles.set(normalizedPath, file);
     }
@@ -806,14 +820,32 @@ function selectedPack(catalog, settings = {}, options = {}) {
   return pack || packs[0] || null;
 }
 
+// Installed files that hold the same pinned bytes as `file`, so it can be
+// copied instead of downloaded (models share Beat This and other graphs).
+async function localCopySources(catalog, file, target) {
+  const sources = [];
+  for (const component of catalog.components || []) {
+    for (const other of component.files || []) {
+      if (other.path === file.path || other.sha256 !== file.sha256 || Number(other.size) !== Number(file.size)) continue;
+      if (fileInstallSource(other) !== FILE_SOURCE_REMOTE) continue;
+      const candidate = resolveContainedChild(target, other.path);
+      const stat = await lstatIfPresent(candidate);
+      if (stat && stat.isFile() && !stat.isSymbolicLink() && stat.size === Number(file.size) && !sources.includes(candidate)) {
+        sources.push(candidate);
+      }
+    }
+  }
+  return sources;
+}
+
 function filesForPack(catalog, pack) {
   const componentsById = new Map((catalog.components || []).map((component) => [component.id, component]));
-  const files = [];
+  const files = new Map();
   for (const id of Array.isArray(pack?.components) ? pack.components : []) {
     const component = componentsById.get(id);
-    files.push(...component.files);
+    for (const file of component.files) if (!files.has(file.path)) files.set(file.path, file);
   }
-  return files;
+  return [...files.values()];
 }
 
 async function installFromHttpWithOptions(settings, baseUrl, options = {}) {
@@ -912,7 +944,7 @@ async function installFromHttpWithOptions(settings, baseUrl, options = {}) {
         });
       } else {
         await ensureSafeDestination(target, destination);
-        downloaded = await downloadFile({
+        const request = {
           url: assetUrl(baseUrl, file.path),
           targetPath: destination,
           expectedSize: file.size,
@@ -921,7 +953,17 @@ async function installFromHttpWithOptions(settings, baseUrl, options = {}) {
           onProgress: onFileProgress,
           rootDirectory: target,
           beforeExistingVerify: options.beforeExistingVerify,
-        });
+        };
+        for (const localSourcePath of await localCopySources(catalog, file, target)) {
+          try {
+            downloaded = await downloadFile({ ...request, localSourcePath });
+            if (!downloaded.skipped) downloaded.copied = true;
+            break;
+          } catch {
+            // That copy doesn't match its pin; try the next one, then the network.
+          }
+        }
+        downloaded ??= await downloadFile(request);
       }
     } catch (err) {
       if (fileSource === FILE_SOURCE_BUNDLED_LICENSE) {
@@ -939,6 +981,7 @@ async function installFromHttpWithOptions(settings, baseUrl, options = {}) {
       filePath: file.path,
       fileSource,
       skipped: Boolean(downloaded.skipped),
+      copied: Boolean(downloaded.copied),
       fileDownloadedBytes: positiveNumber(downloaded.size),
       fileTotalBytes: fileTotalBytes || positiveNumber(downloaded.size),
       downloadedBytes: completedBytes,
@@ -1033,6 +1076,7 @@ module.exports = {
     extractFile,
     installFromHttpWithOptions,
     loadPinnedCatalog,
+    localCopySources,
     requestStream,
     validatePinnedCatalog,
   },

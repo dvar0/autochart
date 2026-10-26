@@ -557,8 +557,8 @@ function registerIpcHandlers() {
     return { install, setup, settings: settingsForRenderer(setup?.settings || settings) };
   }
 
-  ipcMain.handle("modelSetup:install", async (event) => {
-    return installModelPack(event);
+  ipcMain.handle("modelSetup:install", async (event, packId = "") => {
+    return installModelPack(event, typeof packId === "string" && packId ? { packId } : {});
   });
 
   ipcMain.handle("hardware:probe", async () => {

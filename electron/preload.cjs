@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld("autochart", {
   modelSetup: {
     isAvailable: () => true,
     scan: (options) => ipcRenderer.invoke("modelSetup:scan", { fresh: Boolean(options?.fresh) }),
-    install: () => ipcRenderer.invoke("modelSetup:install"),
+    install: (packId) => ipcRenderer.invoke("modelSetup:install", typeof packId === "string" ? packId : ""),
     onInstallEvent: (callback) => {
       const listener = (_event, payload) => callback(payload);
       ipcRenderer.on("modelSetup:installEvent", listener);

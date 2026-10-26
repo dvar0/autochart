@@ -26,10 +26,12 @@ export async function scanModelSetup({ fresh = false } = {}) {
   };
 }
 
-export async function installAssets() {
+// packId picks one of the catalog's packs; without it the app installs the
+// catalog's default pack.
+export async function installAssets(packId = "") {
   const bridge = electronModelSetup();
   if (hasElectronModelSetup() && bridge?.install) {
-    return bridge.install();
+    return bridge.install(packId);
   }
   throw new Error("Downloading the chart generation package requires the Electron app.");
 }
