@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
   defaultGeneratorId: "",
   fillInDrafts: false,
   liteOfferDeclined: false,
+  keepStems: false,
   defaults: {},
 };
 

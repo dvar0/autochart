@@ -1536,6 +1536,16 @@ input:focus-visible, select:focus-visible { outline: none; }
 .folder-row-actions { display: flex; gap: 6px; }
 .folder-row-actions .settings-secondary { min-height: 32px; padding: 0 10px; gap: 6px; background: var(--surface); }
 .folder-row-actions .settings-secondary svg { width: 13px; height: 13px; }
+.folder-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 0 14px;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.folder-option .model-switch { margin-left: auto; }
 
 /* about */
 .about-links { display: flex; flex-wrap: wrap; gap: 8px; }

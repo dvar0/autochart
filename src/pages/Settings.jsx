@@ -43,6 +43,7 @@ const EMPTY_SETTINGS = {
   hardwareMode: "auto",
   defaultGeneratorId: "",
   fillInDrafts: false,
+  keepStems: false,
   pathDefaults: null,
   homeFolder: "",
   settingsRecovery: null,
@@ -54,6 +55,10 @@ const FOLDER_ROWS = [
   { key: "cacheFolder", title: "Cache", choose: chooseCacheFolder },
   { key: "modelsFolder", title: "Model files", choose: chooseModelsFolder },
 ];
+
+const KEEP_STEMS_HELP =
+  "Charts only need a few MB from each separation, so the separated stems (hundreds of MB a song) are "
+  + "deleted afterwards. Turn this on to keep them. Playing stems separates the song again when they're gone.";
 
 const FILL_IN_DRAFTS_HELP =
   "Fill-in normally redoes the bars you pick in Inpaint. Turn this on to also use it in Generate to write "
@@ -380,7 +385,7 @@ export default function Settings() {
     }
   };
 
-  // Browser version: models and stems live in the browser's storage, which
+  // Browser version: models and separations live in the browser's storage, which
   // phones run short of, so they can be removed here.
   const removeDownloads = async (request, question) => {
     if (!window.confirm(question)) return;
@@ -416,11 +421,11 @@ export default function Settings() {
   const removeAll = () => {
     const parts = [
       setup?.cachedBytes >= 1e6 ? `models ${formatSize(setup.cachedBytes)}` : "",
-      setup?.stemBytes >= 1e6 ? `separated stems ${formatSize(setup.stemBytes)}` : "",
+      setup?.stemBytes >= 1e6 ? `separations ${formatSize(setup.stemBytes)}` : "",
     ].filter(Boolean).join(", ");
     void removeDownloads(
       { all: true },
-      `Remove all models and separated stems from this browser?${parts ? ` (${parts})` : ""}\n\nModels download again, and songs separate again, the next time you generate. Your songs and charts stay.`
+      `Remove all models and separations from this browser?${parts ? ` (${parts})` : ""}\n\nModels download again, and songs separate again, the next time you generate. Your songs and charts stay.`
     );
   };
 
@@ -723,7 +728,7 @@ export default function Settings() {
                           className="settings-secondary"
                           onClick={confirmAndClearCache}
                           disabled={Boolean(busy) || !value}
-                          title="Delete separated stems and analysis"
+                          title="Delete separations and analysis"
                         >
                           <I.trash /> Clear
                         </button>
@@ -732,6 +737,22 @@ export default function Settings() {
                   </div>
                 );
               })}
+              <div className="folder-option">
+                <span id="settings-keep-stems">Keep separated stems</span>
+                <i className="ms-info" role="img" aria-label={KEEP_STEMS_HELP} title={KEEP_STEMS_HELP}>
+                  <I.info />
+                </i>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.keepStems}
+                  aria-labelledby="settings-keep-stems"
+                  className={"model-switch" + (settings.keepStems ? " on" : "")}
+                  onClick={() => void updateModelPreference({ keepStems: !settings.keepStems })}
+                >
+                  <span className="model-switch-knob" aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </section>}
 

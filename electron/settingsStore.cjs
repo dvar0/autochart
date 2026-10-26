@@ -40,6 +40,8 @@ const DEFAULT_SETTINGS = {
   fillInDrafts: false,
   // "Keep going" on the slow-separation offer: don't offer Fretformer 2 Lite again.
   liteOfferDeclined: false,
+  // Keep the separated stems after their mel tables are stored (see engine/lib/onnx/melTables.mjs).
+  keepStems: false,
 };
 
 function settingsPath(userDataPath) {
@@ -92,6 +94,7 @@ function normalizeSettings(settings = {}, defaults = {}) {
   next.defaultGeneratorId = String(next.defaultGeneratorId || "").trim();
   next.fillInDrafts = next.fillInDrafts === true;
   next.liteOfferDeclined = next.liteOfferDeclined === true;
+  next.keepStems = next.keepStems === true;
 
   const storedVersion = Number(settings.cachePathVersion) || 0;
   const legacyCacheFolder = normalizePathSetting(settings.cacheFolder, "cacheFolder");
