@@ -4466,6 +4466,22 @@ video.bg-layer {
   font-size: var(--fs-xs);
   line-height: 1.4;
 }
+.gen-lite-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-box);
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.gen-lite-offer p { margin: 0; }
+.gen-lite-offer b { color: var(--text); }
+.gen-lite-offer.is-failed { background: var(--red-bg); color: var(--red-fg); }
+.gen-lite-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.gen-lite-actions .settings-secondary { min-height: 34px; padding: 0 12px; background: var(--surface); }
 .gen-log {
   display: flex;
   flex-direction: column;

@@ -469,7 +469,7 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
         stream: "stdout",
         message: `segment ${index}/${total} offset=${offset} chunk=${chunkLength}`,
       });
-      emit({ type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0 });
+      emit({ type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0, audioSeconds: length / orch.sampleRate });
     },
   });
 

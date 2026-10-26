@@ -38,6 +38,8 @@ const DEFAULT_SETTINGS = {
   defaultGeneratorId: "",
   // Lists beta generators (drafting with the fill-in model) in the model picker.
   fillInDrafts: false,
+  // "Keep going" on the slow-separation offer: don't offer Fretformer 2 Lite again.
+  liteOfferDeclined: false,
 };
 
 function settingsPath(userDataPath) {
@@ -89,6 +91,7 @@ function normalizeSettings(settings = {}, defaults = {}) {
   next.assetBaseUrl = String(next.assetBaseUrl || "").trim();
   next.defaultGeneratorId = String(next.defaultGeneratorId || "").trim();
   next.fillInDrafts = next.fillInDrafts === true;
+  next.liteOfferDeclined = next.liteOfferDeclined === true;
 
   const storedVersion = Number(settings.cachePathVersion) || 0;
   const legacyCacheFolder = normalizePathSetting(settings.cacheFolder, "cacheFolder");

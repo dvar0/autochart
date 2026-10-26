@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { I } from "../../icons.jsx";
 import ProgressRing from "../../components/ProgressRing.jsx";
+import { LITE_FAMILY, minutesText, separationSecondsLeft } from "./liteOffer.js";
 
 // Mirrors the ONNX event sequence: queued → audio → demucs → timing →
 // smoothing → transcription → chart-writing finalization → done → saved.
@@ -148,6 +149,45 @@ function stageStateText(info) {
   return "";
 }
 
+// Offers Fretformer 2 Lite while a slow separation runs, then follows the
+// switch (stop, download, rerun).
+function LiteOffer({ run, now, offer, liteSwitch, onSwitch, onKeepGoing }) {
+  if (liteSwitch) {
+    const text = liteSwitch.phase === "downloading"
+      ? `Downloading ${LITE_FAMILY.label}… ${Math.round(liteSwitch.percent || 0)}%`
+      : liteSwitch.phase === "failed"
+        ? liteSwitch.error
+        : liteSwitch.phase === "starting"
+          ? `Starting with ${LITE_FAMILY.label}…`
+          : "Stopping…";
+    return (
+      <div className={"gen-lite-offer" + (liteSwitch.phase === "failed" ? " is-failed" : "")} role="status" aria-live="polite">
+        <p>{text}</p>
+        {liteSwitch.phase === "failed" && (
+          <div className="gen-lite-actions">
+            <button type="button" className="settings-secondary" onClick={onSwitch}>Try again</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (!offer) return null;
+  const left = separationSecondsLeft(run.separationClock, now);
+  return (
+    <div className="gen-lite-offer" role="status" aria-live="polite">
+      <p>
+        Separating stems needs {left == null ? "a long time" : minutesText(left)} more on this device.{" "}
+        <b>{LITE_FAMILY.label}</b> skips this step and finishes much sooner, but follows the melody less closely.
+        {offer.needsDownload && LITE_FAMILY.downloadMb ? ` Switching downloads it first (${LITE_FAMILY.downloadMb} MB).` : ""}
+      </p>
+      <div className="gen-lite-actions">
+        <button type="button" className="settings-secondary" onClick={onSwitch}>Switch to Lite</button>
+        <button type="button" className="settings-secondary" onClick={onKeepGoing}>Keep going</button>
+      </div>
+    </div>
+  );
+}
+
 function fmtElapsed(seconds) {
   const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
   const m = Math.floor(safe / 60);
@@ -155,7 +195,7 @@ function fmtElapsed(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default function GenerationProgress({ run }) {
+export default function GenerationProgress({ run, liteOffer = null, liteSwitch = null, onSwitchToLite, onKeepSeparating }) {
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
   const logRef = useRef(null);
@@ -243,6 +283,15 @@ export default function GenerationProgress({ run }) {
       )}
 
       {failed && <div className="gen-progress-error">{run.error}</div>}
+
+      <LiteOffer
+        run={run}
+        now={now}
+        offer={liteOffer}
+        liteSwitch={liteSwitch}
+        onSwitch={onSwitchToLite}
+        onKeepGoing={onKeepSeparating}
+      />
 
       {run.runtimeFallback && (
         <div className="gen-progress-notice" role="status" aria-live="polite">

@@ -267,6 +267,7 @@
     "src/pages/generate/edit/useEditWorkspace.js",
     "src/pages/generate/generationGate.js",
     "src/pages/generate/hardwareRecovery.js",
+    "src/pages/generate/liteOffer.js",
     "src/pages/generate/sourceReplacement.js",
     "src/pages/generate/stageSignal.js",
     "src/pages/generate/useGenerateProject.js",

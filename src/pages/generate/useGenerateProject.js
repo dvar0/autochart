@@ -24,6 +24,11 @@ import {
 import { createEditorState, editorReducer } from "./edit/editorReducer.js";
 import { MODEL_FAMILIES, defaultGeneratorIdFrom, selectableGeneratorsFrom } from "../../data/modelFamilies.js";
 import {
+  LITE_FAMILY, LITE_GENERATOR_ID, nextSeparationClock, separationIsSlow, separationSecondsLeft,
+} from "./liteOffer.js";
+import { updateAppSettings } from "../../services/appSettings.js";
+import { installAssets, subscribeModelInstallEvents } from "../../services/modelSetup.js";
+import {
   DEFAULT_GENERATION_CONTROLS,
   DEFAULT_GENERATOR_ID,
   DEFAULT_TIMING_DETECTOR_ID,
@@ -581,6 +586,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // missing library folder, then resumes the save.
   const libraryFolderGate = useLibraryFolderGate();
   const [genRun, setGenRun] = useState(null);
+  // Switching a slow run to Fretformer 2 Lite: { phase: "stopping" |
+  // "downloading" | "starting" | "failed", percent, error }.
+  const [liteSwitch, setLiteSwitch] = useState(null);
   const genRunRef = useRef(null);
   genRunRef.current = genRun;
   // The in-flight run's analysis audio. Loaded when the run uses lead-in
@@ -759,6 +767,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
             const frac = Math.max(0, Math.min(1, event.progress));
             next.stageProgress = { ...(run.stageProgress || {}), [event.stage]: frac * 100 };
           }
+          // Time the separation so a slow device can be offered Lite. Once
+          // it's slow it stays slow for the run, so the offer doesn't flicker.
+          if (event.stage === "demucs" && event.status === "running" && !event.downloading) {
+            next.separationClock = nextSeparationClock(run.separationClock, event);
+            if (!run.slowSeparation && separationIsSlow(next.separationClock)) next.slowSeparation = true;
+          }
           return next;
         });
       } else if (event.type === "partial_chart") {
@@ -822,6 +836,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // so the report survives its own song appearing.
   useEffect(() => {
     setGenRun((run) => (run && run.songId !== songId ? null : run));
+    setLiteSwitch((current) => (current?.phase === "failed" ? null : current));
   }, [songId]);
 
   useEffect(() => {
@@ -1644,6 +1659,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         runtimeFallback: null,
         hardwareMode: hardwareMode === "cpu" ? "cpu" : "auto",
         willSeparate: readsStems(selectedGenerator) && !separationIsCached(runDemucsSeparation, selectedGenerator),
+        generatorId: runSettings.generation.generatorId,
         difficulty: runSettings.difficulty,
         // Source-transform lead-in, in ms + seconds, used by the live board to
         // align in-flight chart playback against the (usually unpadded) source
@@ -1662,7 +1678,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           runTimingDetector === DEFAULT_TIMING_DETECTOR_ID ? null : timingDetectorLabel(runTimingDetector),
           runUsesSourceChartSync ? null : runTimingSmoothing ? "smoothing on" : "smoothing off",
           runSourceTransform.label,
-          runDemucsSeparation?.name || "Default separation",
+          readsStems(selectedGenerator) ? runDemucsSeparation?.name || "Default separation" : null,
           selectedPreset.name,
           runSeed == null ? "random seed" : `seed ${runSeed}`,
         ].filter(Boolean).join(" · "),
@@ -1788,6 +1804,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         setStatusMsg(result.chartPath ? `Generated chart at ${result.chartPath}` : result.message || `Job ${result.jobId}: ${result.status}`);
       }
       setGenRun((run) => (run ? { ...run, finishedAt: Date.now(), ok: true } : run));
+      // The browser downloads a model on its first run; re-read the list so
+      // the console stops saying it will.
+      if (generatorSetup?.downloaded === false) refreshGenerators().catch(() => {});
     } catch (err) {
       // Retain this render's song, media, metadata, and options, even if the
       // controls change before retry. The retry receives a fresh job ID.
@@ -1971,6 +1990,72 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     generatorChosenRef.current = true;
     setGeneratorId(id);
   };
+
+  // Offered while a run's separation is on track to take well past the
+  // song's length, unless the user said to keep going once before.
+  const liteGenerator = generators.find((generator) => generator.id === LITE_GENERATOR_ID) || null;
+  const liteOffer = genRun && !genRun.finishedAt && genRun.slowSeparation && !genRun.liteOfferDismissed
+    && genRun.stages?.demucs?.status === "running" && genRun.generatorId !== LITE_GENERATOR_ID
+    && liteGenerator && liteGenerator.setup?.status !== "unsupported"
+    && !generatorPreferences.liteOfferDeclined && !liteSwitch
+    ? { secondsLeft: separationSecondsLeft(genRun.separationClock), needsDownload: !liteGenerator.setup?.ready }
+    : null;
+
+  const keepSeparating = () => {
+    setGenRun((run) => (run ? { ...run, liteOfferDismissed: true } : run));
+    setGeneratorPreferences((current) => ({ ...current, liteOfferDeclined: true }));
+    updateAppSettings({ liteOfferDeclined: true }).catch(() => {});
+  };
+
+  const refreshGenerators = async () => {
+    const manifest = await listGenerators();
+    lastGeneratorManifest = manifest;
+    const next = generatorStateFromManifest(manifest);
+    setGenerators(next.generators);
+    setGeneratorPreferences(next.preferences);
+    return next.generators.find((generator) => generator.id === LITE_GENERATOR_ID) || null;
+  };
+
+  // Stops the run, makes Lite the model new projects start with, downloads it
+  // when it isn't yet, then runs again with the same settings on Lite.
+  const switchToLite = async () => {
+    if (liteSwitch && liteSwitch.phase !== "failed") return;
+    const jobId = genRun && !genRun.finishedAt ? genRun.jobId : "";
+    setLiteSwitch({ phase: "stopping" });
+    try {
+      if (jobId) await cancelGeneration(jobId);
+      await updateAppSettings({ defaultGeneratorId: LITE_GENERATOR_ID });
+      let lite = await refreshGenerators();
+      if (!lite?.setup?.ready) {
+        setLiteSwitch({ phase: "downloading", percent: 0 });
+        const unsubscribe = subscribeModelInstallEvents((event) => {
+          const percent = Number(event?.percent);
+          if (!Number.isFinite(percent)) return;
+          setLiteSwitch((current) => (current?.phase === "downloading" ? { ...current, percent } : current));
+        });
+        try {
+          await installAssets(LITE_FAMILY.packId);
+        } finally {
+          unsubscribe();
+        }
+        lite = await refreshGenerators();
+      }
+      if (!lite?.setup?.ready) throw new Error(lite?.setup?.message || "Fretformer 2 Lite isn't ready.");
+      generatorChosenRef.current = true;
+      setGeneratorId(LITE_GENERATOR_ID);
+      setLiteSwitch({ phase: "starting" });
+    } catch (err) {
+      setLiteSwitch({ phase: "failed", error: err.message || "Couldn't switch to Lite." });
+    }
+  };
+
+  // The rerun starts once the stopped run has let go and Lite is selected.
+  useEffect(() => {
+    if (liteSwitch?.phase !== "starting" || busy || generationInFlightRef.current) return;
+    if (selectedGenerator?.id !== LITE_GENERATOR_ID || !selectedGenerator.setup?.ready) return;
+    setLiteSwitch(null);
+    void handleGenerate();
+  });
 
   // "Use settings": load a generated take's whole recipe back into the console
   // (model, difficulty, sampling, knobs, structure, timing, lead-in, separation)
@@ -2556,6 +2641,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       if (!busy && canRetryUsingCpu(genRun)) cpuRetryRef.current?.();
     },
     handleStopGenerate,
+    liteOffer,
+    liteSwitch,
+    switchToLite,
+    keepSeparating,
     handleSave,
     handleExportFinal,
     handleSaveFinalToLibrary,

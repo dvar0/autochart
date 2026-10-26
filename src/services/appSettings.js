@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   assetBaseUrl: "",
   defaultGeneratorId: "",
   fillInDrafts: false,
+  liteOfferDeclined: false,
   defaults: {},
 };
 

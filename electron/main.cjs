@@ -727,6 +727,7 @@ function registerIpcHandlers() {
       preferences: {
         defaultGeneratorId: settings.defaultGeneratorId || "",
         fillInDrafts: settings.fillInDrafts === true,
+        liteOfferDeclined: settings.liteOfferDeclined === true,
       },
     };
   });

@@ -146,7 +146,7 @@ function takeModel(version, generators, badgedGeneratorIds) {
 // A generated take's full recipe as labelled rows. `compare` is what the deck
 // checks across takes to highlight the values that set a take apart; `chips`
 // replace the plain value where colour carries meaning.
-function takeRecipe(version) {
+function takeRecipe(version, generators = []) {
   const generation = version.settings?.generation;
   if (version.source !== "generated" || !generation) return null;
   const controls = generation.controls || {};
@@ -204,15 +204,20 @@ function takeRecipe(version) {
     : "This model has no style controls";
 
   const demucsName = version.meta?.demucsName || version.provenance?.sourceSeparation?.name || "";
+  // Models that read only the full mix (Lite) never used a separation.
+  const generatorId = version.meta?.generatorId || generation.generatorId || "";
+  const fullMix = generators.find((item) => item.id === generatorId)?.capabilities?.usesStemCache === false;
 
   return [
     { key: "seed", label: "Seed", value: seed != null ? String(seed) : "random" },
     { key: "lead", label: "Lead-in", value: leadIn, title: `Lead-in silence: ${leadIn}`, faint: leadIn === "0s" },
     { key: "timing", label: "Timing", ...timing },
-    {
-      key: "audio", label: "Audio", value: demucsName ? compactSeparationName(demucsName) : "Default",
-      title: `Separation: ${demucsName || "Default separation"}`,
-    },
+    fullMix
+      ? { key: "audio", label: "Audio", value: "Full mix", title: "Reads the full mix, no separation" }
+      : {
+        key: "audio", label: "Audio", value: demucsName ? compactSeparationName(demucsName) : "Default",
+        title: `Separation: ${demucsName || "Default separation"}`,
+      },
     { key: "sampling", label: "Sampling", full: true, compare: `${presetName}|${temperature}|${topP}`, ...sampling },
     {
       key: "style", label: "Style", full: true, title: styleTitle, compare: styleTitle,
@@ -537,7 +542,7 @@ export default function TakesDeck({ project }) {
   const showingDemucs = deckTab === "demucs";
   const takesNewestFirst = [...candidateVersions].reverse();
   const recipesById = new Map(
-    takesNewestFirst.map((v) => [v.id, takeRecipe(v)])
+    takesNewestFirst.map((v) => [v.id, takeRecipe(v, project.generators || [])])
   );
   // Every card shows its whole recipe; with two or more generated takes, the
   // values that differ between them are the bright ones.

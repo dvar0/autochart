@@ -42,6 +42,10 @@ export default function Console({ project }) {
     genRun,
     handleGenerate,
     handleStopGenerate,
+    liteOffer,
+    liteSwitch,
+    switchToLite,
+    keepSeparating,
     sourceAudioFile,
     generatorId,
   } = project;
@@ -361,7 +365,13 @@ export default function Console({ project }) {
 
       {genRun && (
         <section className="rail-sec">
-          <GenerationProgress run={genRun} />
+          <GenerationProgress
+            run={genRun}
+            liteOffer={liteOffer}
+            liteSwitch={liteSwitch}
+            onSwitchToLite={switchToLite}
+            onKeepSeparating={keepSeparating}
+          />
           {project.canRetryUsingCpu && (
             <div className="rail-toast" role="alert">
               <p>Hardware acceleration failed. Try the same song and options using CPU.</p>

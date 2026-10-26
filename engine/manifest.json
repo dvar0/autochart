@@ -147,6 +147,7 @@
       "badge": "Lite",
       "description": "For slower computers: skips stem separation, so it follows the melody less closely. Has its own Fill-in.",
       "status": "experimental",
+      "availability": "installed",
       "platforms": [
         "linux",
         "darwin",

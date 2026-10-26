@@ -27,7 +27,8 @@ const KEPT_IDS = [
   "autochart.fretformer.v2-onnx",
   "autochart.fretformer.v2-inpaint-onnx",
 ];
-// Fretformer 2 Lite, an optional download that stays missing here.
+// Fretformer 2 Lite, an optional download that stays missing here, so it is
+// never listed.
 const LITE_ID = "autochart.fretformer.v2-lite-onnx";
 const BETA_ID = "autochart.fretformer.v2-inpaint-onnx";
 // The first six-stem generator outside beta is the one separation cards name,
@@ -189,8 +190,8 @@ async function main() {
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
     assert.deepEqual(
       await pickerOptions(),
-      engineManifest.generators.filter((g) => g.id !== BETA_ID).map((g) => [g.id, g.label]),
-      "Fretformer 2 is listed before it is downloaded",
+      engineManifest.generators.filter((g) => g.id !== BETA_ID && g.id !== LITE_ID).map((g) => [g.id, g.label]),
+      "Fretformer 2 is listed before it is downloaded; Lite is not",
     );
     assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), V1_ID, "the downloaded model is the default");
     await waitFor(async () => (await faderNames()).length > 0, "style faders");
@@ -209,7 +210,7 @@ async function main() {
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
     assert.deepEqual(
       await pickerOptions(),
-      engineManifest.generators.filter((g) => g.id !== BETA_ID).map((g) => [g.id, g.label]),
+      engineManifest.generators.filter((g) => g.id !== BETA_ID && g.id !== LITE_ID).map((g) => [g.id, g.label]),
       "fill-in is not offered while Write whole charts is off",
     );
 
@@ -218,7 +219,10 @@ async function main() {
     await click("Library");
     await click("Open project");
     await waitFor(async () => (await pickerOptions()).some(([id]) => id === BETA_ID), "fill-in in the picker");
-    assert.deepEqual(await pickerOptions(), engineManifest.generators.map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]));
+    assert.deepEqual(
+      await pickerOptions(),
+      engineManifest.generators.filter((g) => g.id !== LITE_ID).map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]),
+    );
     assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), SIX_STEM.id, "Fretformer 2 is the default once downloaded");
     assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge"))'), false, "no badge");
     await waitFor(async () => (await faderNames()).length > 0, "style faders");
