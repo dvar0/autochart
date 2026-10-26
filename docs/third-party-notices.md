@@ -132,11 +132,11 @@ texts.
 
 ## Fretformer 2
 
-- Title: Fretformer 2 model weights and ONNX export (Fretformer 2 and its
-  Fill-in model)
+- Title: Fretformer 2 model weights and ONNX export (Fretformer 2, its
+  Fill-in model, and Fretformer 2 Lite)
 - Creator and copyright: 2026 Autochart contributors
-- Source: Autochart engine catalog components `fretformer-2-onnx` and
-  `fretformer-2-fill-in-onnx`, version 2.0.0
+- Source: Autochart engine catalog components `fretformer-2-onnx`,
+  `fretformer-2-fill-in-onnx` and `fretformer-2-lite-onnx`, version 2.0.0
 - License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0
   International (CC BY-NC-SA 4.0)
 - License URI: https://creativecommons.org/licenses/by-nc-sa/4.0/
@@ -146,7 +146,7 @@ texts.
 The same terms as Fretformer apply. The complete attribution ships in
 `engine/licenses/fretformer-2-attribution.txt`, which setup installs the same
 way. Fretformer 2 separates with Demucs' six-source `htdemucs_6s` weights,
-covered by the Demucs notice below.
+covered by the Demucs notice below; Fretformer 2 Lite doesn't separate.
 
 ## Demucs / Hybrid Transformer Demucs
 

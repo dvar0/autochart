@@ -1,7 +1,8 @@
 # Hugging Face model pack preparation
 
 The public payload is generated from the exact file lists of every component
-in `engine/catalog.json` (Fretformer v1, Fretformer 2, Fretformer 2 Fill-in),
+in `engine/catalog.json` (Fretformer v1, Fretformer 2, Fretformer 2 Fill-in,
+Fretformer 2 Lite),
 read from the app's models folder (`--source`, or `AUTOCHART_MODELS_DIR`). It includes the model card, licenses, large-file
 attributes, and checksums. Preparation never publishes anything.
 

@@ -138,6 +138,23 @@ sets, CFG gating, solo and section markers, legacy beat-map adoption;
 `AUTOCHART_E2E_V2_ID` runs the marker steps against another generator),
 `scripts/test-generator-picker-electron.cjs` (picker, knob swap, payload).
 
+## Fretformer 2 Lite
+
+`autochart.fretformer.v2-lite-onnx` ("Fretformer 2 Lite", experimental) is an
+optional `fretformer-2-lite` pack in `<settings.modelsFolder>/fretformer-v2-lite/`.
+Its transcriber reads only the full mix (`stages.transcriber.channelOrder` is
+`["full"]`), so the folder has no Demucs graphs and generation skips separation:
+`needsStems(manifest)` in `pipeline.mjs` is false, the engine emits the
+`demucs` stage as `skipped`, and the result leaves it out of `stages`. The same
+folder holds a fill-in decoder, so Lite fills in its own takes without stems.
+
+On the Inpaint tab a take starts on its own family's Fill-in model (Lite takes
+on Lite, others on Fretformer 2's), and the model picker switches between them.
+Fretformer 2's Fill-in on a Lite take separates first, then caches the stems as
+usual. Lite's generator lists the `htdemucs_6s` stem set
+(`capabilities.usesStemCache: false`), so the separation cards and Separate now
+use Fretformer 2's separation while Lite is selected.
+
 ## Beat maps
 
 Beat maps belong to the analysis audio, not to a separation. Every generator

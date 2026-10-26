@@ -22,6 +22,10 @@ yet, so setup can't download them until this is done:
   the download copies the shared files instead of fetching them again.
 - [ ] Release notes give the new download size and say that Fretformer v1 stays
   available in Settings.
+- [ ] Fretformer 2 Lite (`fretformer-2-lite` pack, experimental) downloads from
+  Settings, generates with separation skipped, and fills in its own takes;
+  Fretformer 2's Fill-in on a Lite take separates first. Decide whether it
+  ships in this update or comes out of the catalog.
 
 ## Beat map smoother replaced
 

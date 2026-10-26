@@ -9,6 +9,8 @@ tags:
 model-index:
   - name: Fretformer 2
     results: []
+  - name: Fretformer 2 Lite
+    results: []
   - name: Fretformer v1
     results: []
 ---
@@ -23,6 +25,7 @@ locally on the user's computer.
 | --- | --- | --- |
 | `fretformer-v2/` | Fretformer 2 | Writing charts (recommended) |
 | `fretformer-v2-inpaint/` | Fretformer 2 Fill-in | Redoing the bars you pick, comes with Fretformer 2 |
+| `fretformer-v2-lite/` | Fretformer 2 Lite | Experimental: faster, less accurate, with its own fill-in |
 | `fretformer-v1/` | Fretformer v1 | The first model |
 
 Each folder is complete on its own. Folders share some graphs byte for byte
@@ -57,6 +60,11 @@ folders hold only Demucs' core network.
 holds the same kinds of files plus `fim_decoder_fp32.onnx`, the fill-in
 decoder (10 files, approximately 666 MB). Downloaded together they come to
 about 952 MB, since shared files download once.
+
+`fretformer-v2-lite/` reads only the full mix, so it has no Demucs graphs and
+skips separation. It holds Beat This, the transcriber's mel features, an
+encoder, a decoder, a fill-in decoder and its prefix tables (9 files,
+approximately 555 MB; about 452 MB beyond Fretformer 2's shared files).
 
 The `fretformer-v1/` directory contains 11 files (approximately 693 MB):
 
@@ -99,8 +107,8 @@ repository commit with the matching application catalog.
 
 ## Licenses and attribution
 
-**Fretformer 2, Fretformer 2 Fill-in, and Fretformer v1 weights and ONNX
-exports:** Autochart contributors, CC BY-NC-SA 4.0. Noncommercial use,
+**Fretformer 2, Fretformer 2 Fill-in, Fretformer 2 Lite, and Fretformer v1
+weights and ONNX exports:** Autochart contributors, CC BY-NC-SA 4.0. Noncommercial use,
 attribution, and share-alike conditions apply to the Fretformer materials.
 See `licenses/cc-by-nc-sa-4.0.txt`.
 
@@ -115,7 +123,7 @@ exported to ONNX. Upstream: <https://github.com/CPJKU/beat_this>.
 
 The repository's license tag describes Fretformer. Demucs and Beat This
 retain their component-specific MIT licenses. See
-`licenses/fretformer-2-attribution.txt` (Fretformer 2) and
+`licenses/fretformer-2-attribution.txt` (Fretformer 2 and Lite) and
 `licenses/model-pack-attribution.txt` (Fretformer v1) for file coverage,
 modification notices, and upstream citations. The Autochart application is separately licensed
 under AGPL-3.0-or-later.
