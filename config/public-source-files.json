@@ -105,6 +105,7 @@
     "engine/licenses/beat-this-mit.txt",
     "engine/licenses/cc-by-nc-sa-4.0.txt",
     "engine/licenses/demucs-mit.txt",
+    "engine/licenses/fretformer-2-attribution.txt",
     "engine/licenses/model-pack-attribution.txt",
     "engine/manifest.json",
     "engine/models-onnx/fretformer-v1/manifest.json",

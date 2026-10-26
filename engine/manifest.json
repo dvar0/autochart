@@ -52,9 +52,8 @@
       "label": "Fretformer 2",
       "titleTag": "Fretformer 2",
       "badge": "New",
-      "description": "Six-stem separation, style knobs, and solo and section markers. Local test model until it ships.",
-      "status": "experimental",
-      "availability": "installed",
+      "description": "Six-stem separation, style knobs, and solo and section markers. Comes with Fill-in.",
+      "status": "stable",
       "platforms": [
         "linux",
         "darwin",
@@ -101,7 +100,6 @@
       "badge": "New",
       "description": "Fretformer 2's Inpaint model: rewrites picked bars, and can also write whole charts. Comes with Fretformer 2.",
       "status": "experimental",
-      "availability": "installed",
       "platforms": [
         "linux",
         "darwin",

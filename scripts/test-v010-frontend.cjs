@@ -76,7 +76,8 @@ function assert(condition, message) {
     if (browserWindow === undefined) delete global.window;
     else global.window = browserWindow;
     const generationPipeline = await bundle("src/components/GenerationPipeline.jsx", temp);
-    const standardPack = require("../engine/catalog.json").packs.find((pack) => pack.id === "standard-onnx");
+    const shippedCatalog = require("../engine/catalog.json");
+    const standardPack = shippedCatalog.packs.find((pack) => pack.id === shippedCatalog.defaults.packId);
     assert(generationPipeline.generationDownloadSize() === generationPipeline.generationDownloadSize(standardPack), "download size fallback drifted from catalog");
     const generationGate = await bundle("src/pages/generate/generationGate.js", temp);
     const unsupportedState = await bundle("src/pages/generate/UnsupportedGenerationState.jsx", temp);

@@ -345,12 +345,12 @@ export default function Settings() {
     }
   };
 
-  const installModels = async () => {
-    setBusy("installing-models");
+  const installModels = async (family) => {
+    setBusy(`installing-${family.id}`);
     setMessage("");
     setInstallProgress({ phase: "starting", percent: 0, message: "Preparing download." });
     try {
-      const result = await installAssets();
+      const result = await installAssets(family.packId);
       if (result?.settings) setSettings({ ...EMPTY_SETTINGS, ...result.settings });
       if (result?.setup) setSetup(result.setup);
       await refreshModels();
@@ -382,7 +382,6 @@ export default function Settings() {
   const defaultGeneratorId = defaultGeneratorIdFrom(generators, preferences);
   const isReady = (generatorId) => Boolean(generatorsById.get(generatorId)?.setup?.ready);
 
-  const standardPack = setup?.standardPack;
   const unsupported = setup?.combinedStatus === "unsupported" || hardware?.supportedPlatform === false;
   const targetPlatform = setup?.platform || hardware?.platform || electronPlatform();
   const hardwareModes = hardwareModesForPlatform(targetPlatform);
@@ -406,15 +405,16 @@ export default function Settings() {
 
   const familyAction = (family) => {
     const status = familyStatus(family, generatorsById, manifestLoaded);
-    const downloadable = standardPack?.defaultGeneratorId === family.generatorId;
+    const pack = (setup?.packs || []).find((item) => item.id === family.packId);
+    const downloadable = Boolean(pack);
     if (status === "checking") return <StatusPill status="checking" />;
     if (status === "ready") return <StatusPill status="ready" />;
     if (status === "unsupported") return <StatusPill status="unsupported" />;
-    const installing = busy === "installing-models" && downloadable;
+    const installing = busy === `installing-${family.id}`;
     const label = installing
       ? "Installing…"
       : status === "missing"
-        ? `Download${downloadable ? ` · ${generationDownloadSize(standardPack)}` : ""}`
+        ? `Download${downloadable ? ` · ${generationDownloadSize(pack)}` : ""}`
         : "Repair";
     const reason = !downloadable
       ? "Not available to download yet."
@@ -425,7 +425,7 @@ export default function Settings() {
       <>
         <button
           className={(downloadable ? "btn-primary" : "settings-secondary") + " model-action"}
-          onClick={installModels}
+          onClick={() => installModels(family)}
           disabled={!downloadable || Boolean(busy)}
           aria-describedby={`settings-install-reason-${family.id}`}
           title={reason || `Download ${family.label}`}
@@ -566,7 +566,7 @@ export default function Settings() {
               })}
             </div>
 
-            {(busy === "installing-models" || installProgress) && <InstallProgress progress={installProgress} />}
+            {(busy.startsWith("installing-") || installProgress) && <InstallProgress progress={installProgress} />}
           </section>
 
           {/* The browser keeps its files in its own storage: no folders to pick. */}

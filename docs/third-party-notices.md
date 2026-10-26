@@ -130,6 +130,24 @@ legal code ship in `engine/licenses/model-pack-attribution.txt` and
 copies from the packaged app rather than relying on the model host for legal
 texts.
 
+## Fretformer 2
+
+- Title: Fretformer 2 model weights and ONNX export (Fretformer 2 and its
+  Fill-in model)
+- Creator and copyright: 2026 Autochart contributors
+- Source: Autochart engine catalog components `fretformer-2-onnx` and
+  `fretformer-2-fill-in-onnx`, version 2.0.0
+- License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+  International (CC BY-NC-SA 4.0)
+- License URI: https://creativecommons.org/licenses/by-nc-sa/4.0/
+- Use: Separately downloaded Fretformer 2 transcription weights and their ONNX
+  export.
+
+The same terms as Fretformer apply. The complete attribution ships in
+`engine/licenses/fretformer-2-attribution.txt`, which setup installs the same
+way. Fretformer 2 separates with Demucs' six-source `htdemucs_6s` weights,
+covered by the Demucs notice below.
+
 ## Demucs / Hybrid Transformer Demucs
 
 - Upstream: https://github.com/facebookresearch/demucs

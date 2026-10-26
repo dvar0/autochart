@@ -911,6 +911,88 @@ async function testPinnedInstallAndNetworkLimits(root) {
   await rejects(installer.loadPinnedCatalog(root, { pinnedCatalogPath: oversizedCatalog }), /catalog exceeds/i);
 }
 
+// Models in one pack share graphs: a file whose pinned bytes are already
+// installed elsewhere is copied, not downloaded, and a bad copy falls back to
+// the network.
+async function testSharedFileCopies(root) {
+  const licenseBody = Buffer.from("shared copy license\n");
+  const sharedBody = Buffer.from("shared graph bytes\n");
+  const ownBody = Buffer.from("fill-in only graph\n");
+  const bundledLicenseRoot = path.join(root, "shared-licenses");
+  await writeFixture(bundledLicenseRoot, "notice.txt", licenseBody);
+  const license = { path: "licenses/notice.txt", source: installer.FILE_SOURCE_BUNDLED_LICENSE, size: licenseBody.length, sha256: sha256(licenseBody) };
+  const remote = (filePath, body) => ({ path: filePath, source: installer.FILE_SOURCE_REMOTE, size: body.length, sha256: sha256(body) });
+  const base = pinnedCatalog([license, remote("model-a/shared.bin", sharedBody)]);
+  const second = {
+    ...base.components[0],
+    id: "second-component",
+    files: [license, remote("model-b/shared.bin", sharedBody), remote("model-b/own.bin", ownBody)],
+  };
+  const catalog = {
+    ...base,
+    components: [base.components[0], second],
+    packs: [
+      { id: "test-pack", label: "Test pack", components: ["test-component", "second-component"] },
+      { id: "second-pack", label: "Second pack", components: ["second-component"] },
+    ],
+  };
+  const catalogPath = await writeFixture(root, "shared-catalog.json", `${JSON.stringify(catalog)}\n`);
+  const requests = [];
+  const { server, baseUrl } = await startServer((req, res) => {
+    requests.push(req.url);
+    const body = req.url === "/model-a/shared.bin" || req.url === "/model-b/shared.bin"
+      ? sharedBody
+      : req.url === "/model-b/own.bin" ? ownBody : null;
+    if (!body) {
+      res.statusCode = 404;
+      res.end();
+      return;
+    }
+    res.setHeader("content-length", body.length);
+    res.end(body);
+  });
+  try {
+    const modelsRoot = path.join(root, "shared-models");
+    const events = [];
+    const install = (packId = "test-pack") => installer.installFromHttpWithOptions({ modelsFolder: modelsRoot }, baseUrl, {
+      pinnedCatalogPath: catalogPath,
+      bundledLicenseRoot,
+      packId,
+      onProgress: (event) => events.push(event),
+    });
+    await install();
+    assert.deepEqual(requests.sort(), ["/model-a/shared.bin", "/model-b/own.bin"]);
+    assert.equal(await fs.readFile(path.join(modelsRoot, "model-b", "shared.bin"), "utf8"), sharedBody.toString());
+    assert.equal(events.find((event) => event.type === "file-complete" && event.filePath === "model-b/shared.bin")?.copied, true);
+    pass();
+
+    // A tampered local copy must not be trusted: model-b's file downloads.
+    await fs.rm(path.join(modelsRoot, "model-b", "shared.bin"));
+    await fs.writeFile(path.join(modelsRoot, "model-a", "shared.bin"), Buffer.alloc(sharedBody.length, 0x41));
+    requests.length = 0;
+    await install("second-pack");
+    assert.deepEqual(requests, ["/model-b/shared.bin"]);
+    assert.equal(await fs.readFile(path.join(modelsRoot, "model-b", "shared.bin"), "utf8"), sharedBody.toString());
+    pass();
+  } finally {
+    await closeServer(server);
+  }
+
+  // The shipped Fretformer 2 pack counts each shared file once.
+  const { catalog: shipped } = await installer.loadPinnedCatalog(root);
+  const pack = shipped.packs.find((item) => item.id === "fretformer-2");
+  const unique = new Map();
+  for (const id of pack.components) {
+    for (const file of shipped.components.find((item) => item.id === id).files) {
+      if (file.source === installer.FILE_SOURCE_REMOTE) unique.set(file.sha256, file.size);
+    }
+  }
+  assert.equal(pack.downloadFileCount, unique.size);
+  assert.equal(pack.downloadBytes, [...unique.values()].reduce((total, size) => total + size, 0));
+  assert.equal(shipped.defaults.packId, "fretformer-2");
+  pass();
+}
+
 async function main() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "autochart-installer-test-")));
   try {
@@ -919,6 +1001,7 @@ async function main() {
     await testShippedLicensePins(root);
     await testBundledLicenseSafety(root);
     await testPinnedInstallAndNetworkLimits(root);
+    await testSharedFileCopies(root);
     console.log(`Installer hardening checks passed: ${assertions} behavioral assertions.`);
   } finally {
     await fs.rm(root, { recursive: true, force: true });

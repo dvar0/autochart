@@ -577,6 +577,12 @@ async function main() {
       "scripts/smoke-generate.cjs",
       smokeArgs(options)
     );
+    // Fretformer 1 is an optional download; this also brings the models the engine gates run.
+    await runNode(
+      "Fretformer 1 generation smoke",
+      "scripts/smoke-generate.cjs",
+      [...smokeArgs({ ...options, cleanInstall: false }), "--generator", "autochart.fretformer.v1-onnx"]
+    );
     await runNode("Engine gate 1/3: ONNX generation smoke", "engine/test/generate-onnx-smoke.cjs", engineGateArgs(options));
     await runNode("Engine gate 2/3: CFG batch parity", "engine/test/transcribe-cfg-batch-parity.cjs", engineGateArgs(options));
     await runNode("Engine gate 3/3: WebGPU parity", "engine/test/webgpu-parity.cjs", engineGateArgs(options));

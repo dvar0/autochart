@@ -27,7 +27,7 @@ Options:
   --projects-folder <path>  Project folder (default: isolated temporary path).
   --asset-base-url <url>    Asset catalog base URL.
   --hardware <mode>         auto, cuda, webgpu, coreml, or cpu. Default: auto.
-  --generator <id>          Generator id. Default: the first one in the engine manifest.
+  --generator <id>          Generator id. Default: the catalog default.
   --generation-timeout-seconds <n>  Cancel generation after n seconds (default: 900; excludes installation).
   --difficulty <value>      easy, medium, hard, or expert. Default: expert.
   --seed <number>           Fixed generation seed. Default: 20260622.
@@ -238,6 +238,34 @@ function setupReady(scan) {
   return Boolean(scan?.generationReady && scan?.standardPack?.ready);
 }
 
+// Without --generator, run what a fresh install starts with.
+async function pickGenerator(manifest, args) {
+  const catalog = await modelManager.loadCatalog(manifest);
+  const id = args.generator || catalog?.defaults?.generatorId;
+  const generator = manifest.generators?.find((entry) => entry.id === id) || (!args.generator && manifest.generators?.[0]);
+  if (!generator) throw new Error("No generator is available.");
+  return generator;
+}
+
+async function componentOf(manifest, generatorId) {
+  const catalog = await modelManager.loadCatalog(manifest);
+  return catalog.components.find((entry) => entry.generatorIds?.includes(generatorId)) || null;
+}
+
+async function modelFolderOf(manifest, generatorId) {
+  const component = await componentOf(manifest, generatorId);
+  const file = component?.files?.find((entry) => entry.path.endsWith("/manifest.json"));
+  return file ? path.dirname(file.path) : "fretformer-v1";
+}
+
+// The download that brings this generator's models: the default one when it does.
+async function packOf(manifest, generatorId) {
+  const catalog = await modelManager.loadCatalog(manifest);
+  const component = await componentOf(manifest, generatorId);
+  const packs = (catalog.packs || []).filter((pack) => component && pack.components?.includes(component.id));
+  return (packs.find((pack) => pack.id === catalog.defaults?.packId) || packs[0])?.id || "";
+}
+
 async function scan(settings) {
   const manifest = await engineManager.loadManifest();
   return modelManager.scanModelSetup({ settings, manifest });
@@ -263,15 +291,19 @@ async function installIfNeeded(settings, args) {
   // The development checkout can make a scan look ready through its fallback
   // symlinks. A smoke run must populate and exercise the selected modelsFolder
   // instead of silently testing a different model root.
-  const selectedManifest = path.join(settings.modelsFolder, "fretformer-v1", "manifest.json");
+  const manifest = await engineManager.loadManifest();
+  const generator = await pickGenerator(manifest, args);
+  const selectedManifest = path.join(settings.modelsFolder, await modelFolderOf(manifest, generator.id), "manifest.json");
   const directManifest = path.join(settings.modelsFolder, "manifest.json");
   const selectedModelsReady = fsSync.existsSync(selectedManifest) || fsSync.existsSync(directManifest);
   if ((setupReady(currentScan) && !args.wipe && selectedModelsReady) || args.skipInstall) {
     return { settings: runtimeSettings, scan: currentScan, hardware };
   }
 
-  log("installing assets", currentScan.standardPack?.id || "standard pack");
+  const packId = await packOf(manifest, generator.id);
+  log("installing assets", packId || currentScan.standardPack?.id || "standard pack");
   const install = await assetInstaller.installAssets(runtimeSettings, {
+    packId,
     onProgress: (event) => {
       if (event.type === "progress" && Number.isFinite(event.percent)) {
         process.stdout.write(`\r[smoke] install ${event.percent}% ${event.filePath || event.path || ""}`.slice(0, 160));
@@ -342,10 +374,7 @@ async function withGenerationTimeout(jobId, sender, timeoutSeconds, generate) {
 
 async function runGeneration(userData, settings, args) {
   const manifest = await engineManager.loadManifest();
-  const generator = args.generator
-    ? manifest.generators?.find((entry) => entry.id === args.generator)
-    : manifest.generators?.[0];
-  if (!generator) throw new Error("No generator is available.");
+  const generator = await pickGenerator(manifest, args);
   const events = [];
   const sender = {
     isDestroyed: () => false,

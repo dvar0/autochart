@@ -210,6 +210,7 @@ function isAllowedAppFile(relative, platform, arch, distAllowlist = new Set()) {
     "engine/licenses/beat-this-mit.txt",
     "engine/licenses/cc-by-nc-sa-4.0.txt",
     "engine/licenses/demucs-mit.txt",
+    "engine/licenses/fretformer-2-attribution.txt",
     "engine/licenses/model-pack-attribution.txt",
     "docs/blueoak-1.0.0.txt",
     "docs/fs-minipass-isc.txt",

@@ -1,8 +1,8 @@
 // Run with: npx electron scripts/test-generator-picker-electron.cjs [--screenshots <dir>]
 // Real React UI and preload IPC with the shipped engine/manifest.json:
-// - installed-only generators stay hidden until their setup is ready, and
-//   Fretformer keeps the plain model plate;
-// - once installed, the plate is a model picker, with no badge or note;
+// - with only Fretformer 1 downloaded, Fretformer 2 is listed (Generate offers
+//   its download) and Fretformer 1 stays the default;
+// - once Fretformer 2 is downloaded it is the default, with no badge or note;
 // - picking the six-stem model swaps the Style faders to its set and the
 //   generate payload carries its generator id and knob names;
 // - separation cards list each model's stems only where that separation has
@@ -33,9 +33,8 @@ const SIX_STEM = engineManifest.generators.find((generator) => generator.separat
 if (!SIX_STEM?.capabilities?.structureMarkers?.includes("solos")) {
   throw new Error("expected the first six-stem generator to mark solos");
 }
-// Every installed-only generator in the manifest is hidden until its folder
-// exists, and shows up in the picker after.
-const INSTALLED_ONLY = new Set(engineManifest.generators.filter((g) => g.availability === "installed").map((g) => g.id));
+// The Fretformer 2 download: missing at first, ready after.
+const DOWNLOADED_LATER = new Set(KEPT_IDS);
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -112,7 +111,7 @@ async function main() {
       preferences: { defaultGeneratorId: "", fillInDrafts },
       generators: engineManifest.generators.map((generator) => ({
         ...generator,
-        setup: INSTALLED_ONLY.has(generator.id) && !installedReady
+        setup: DOWNLOADED_LATER.has(generator.id) && !installedReady
           ? { ready: false, status: "missing", message: `${generator.models.onnxFolder} is not installed.` }
           : { ready: true, status: "ready" },
       })),
@@ -180,11 +179,17 @@ async function main() {
       await fs.writeFile(path.join(screenshotDir, `${name}.png`), image.toPNG());
     };
 
-    // Not installed: v1 only, plain plate, v1 faders, solos disabled.
+    // Only Fretformer 1 downloaded: it is the default, Fretformer 2 is listed,
+    // v1 faders, solos disabled.
+    const pickerOptions = () => evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
     await click("Open project");
-    await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-name"))'), "model plate");
-    assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-picker"))'), false, "no picker while test models are missing");
-    assert.equal(await evaluate('document.querySelector(".model-plate-name").textContent.trim()'), "Fretformer");
+    await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
+    assert.deepEqual(
+      await pickerOptions(),
+      engineManifest.generators.filter((g) => g.id !== BETA_ID).map((g) => [g.id, g.label]),
+      "Fretformer 2 is listed before it is downloaded",
+    );
+    assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), V1_ID, "the downloaded model is the default");
     await waitFor(async () => (await faderNames()).length > 0, "style faders");
     assert.deepEqual(await faderNames(), ["Speed", "Chords", "Tech", "Move", "Repeat"]);
     await openMoreSettings();
@@ -199,7 +204,6 @@ async function main() {
     await click("Library");
     await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
-    const pickerOptions = () => evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
     assert.deepEqual(
       await pickerOptions(),
       engineManifest.generators.filter((g) => g.id !== BETA_ID).map((g) => [g.id, g.label]),
@@ -212,10 +216,10 @@ async function main() {
     await click("Open project");
     await waitFor(async () => (await pickerOptions()).some(([id]) => id === BETA_ID), "fill-in in the picker");
     assert.deepEqual(await pickerOptions(), engineManifest.generators.map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]));
-    assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), V1_ID, "v1 stays the default");
-    assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge"))'), false, "no badge on v1");
+    assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), SIX_STEM.id, "Fretformer 2 is the default once downloaded");
+    assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge"))'), false, "no badge");
     await waitFor(async () => (await faderNames()).length > 0, "style faders");
-    await screenshot("2-v1-selected");
+    await screenshot("2-fretformer-2-default");
 
     await evaluate(`(() => {
       const select = document.querySelector(".model-plate-picker select");
@@ -302,7 +306,7 @@ async function main() {
     assert.deepEqual(v1Cards.Default.labels, [], "plain v1 card has no model rows");
     assert.equal(v1Cards["Default · +0.5s"].labels.length, 2, "existing six-stem stems stay listed");
     await screenshotDeck("5-separations-v1");
-    console.log("generator picker: hidden until installed, v1 default, six-stem knobs and payload, Mark solos and Force a solo, Beta label passed");
+    console.log("generator picker: listed before download, downloaded model default, six-stem knobs and payload, Mark solos and Force a solo, Beta label passed");
   } finally {
     win?.destroy();
     await fs.rm(temp, { recursive: true, force: true });
