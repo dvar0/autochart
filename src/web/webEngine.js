@@ -11,8 +11,8 @@ import {
   removeModelFolder, storageRoom,
 } from "../../engine/web/modelStore.mjs";
 import {
-  clearStems, readStoredAudio, removeStemsExcept, removeStoredStems, saveAnalysisAudio, stemKey, stemPaths,
-  storedStemBytes, storedStemNames,
+  clearLeftovers, clearStems, hasMelTables, readStoredAudio, removeStemsExcept, removeStoredStems, saveAnalysisAudio,
+  stemKey, stemPaths, storedStemBytes, storedStemNames,
 } from "../../engine/web/stemStore.mjs";
 import { getAppSettings } from "../services/appSettings.js";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
@@ -242,14 +242,21 @@ async function storeAnalysisAudio(jobId, blob, audio, audioSha256, sourceTransfo
   return path;
 }
 
-// Every stem set this song's separation has stored, as the app records them.
+// Every stem set this song's separation has stored, as the app records them:
+// its mel tables, and its stems when they were kept to play.
 async function separationStemSets(audioSha256, sourceTransform, separationId) {
   const sets = [...new Set(WEB_GENERATORS.map(stemSetOf))];
   const stemSets = {};
   for (const stemSet of sets) {
     const key = stemKey({ audioSha256, sourceVariantKey: sourceTransform.key, separationId, stemSet });
     const names = await storedStemNames(key);
-    if (names?.length) stemSets[stemSet] = { stems: stemPaths(key, names) };
+    const melTables = await hasMelTables(key);
+    if (names?.length || melTables) {
+      stemSets[stemSet] = {
+        stems: names?.length ? stemPaths(key, names) : {},
+        ...(melTables ? { melTables: { path: `opfs:${key}` } } : {}),
+      };
+    }
   }
   return { stems: stemSets.htdemucs?.stems || {}, stemSets };
 }
@@ -274,9 +281,9 @@ function runSeparation(payload, sourceTransform) {
   };
 }
 
-// Stems are big (raw float32, hundreds of MB a song) and the browser works on
-// one song at a time, so only the songs with a job running keep theirs: a job
-// for one song removes every other song's stems. Each run's analysis audio
+// Stems are big (raw float32, hundreds of MB a song) and are only stored to
+// play them; the browser works on one song at a time, so a job for one song
+// removes every other song's stems. Mel tables stay. Each run's analysis audio
 // stays until the page is next opened (a finished take still exports from it).
 const songsInUse = new Map();
 
@@ -285,9 +292,9 @@ async function keepOnlyStemsInUse(jobId, audioSha256) {
   await removeStemsExcept(new Set(songsInUse.values()));
 }
 
-// Left over from a closed tab: nothing can point at it any more. Skipped while
-// another tab of the app is open (it may be using its stems); each tab holds a
-// shared lock so the others can tell.
+// Left over from a closed tab (stems, analysis audio): nothing can point at
+// it any more. Mel tables stay. Skipped while another tab of the app is open
+// (it may be using them); each tab holds a shared lock so the others can tell.
 const TAB_LOCK = "autochart-open-tab";
 async function clearLeftoverStems() {
   const locks = globalThis.navigator?.locks;
@@ -296,7 +303,7 @@ async function clearLeftoverStems() {
     const { held = [] } = await locks.query();
     const otherTabOpen = held.some((lock) => lock.name === TAB_LOCK);
     locks.request(TAB_LOCK, { mode: "shared" }, () => new Promise(() => {})).catch(() => {});
-    if (!otherTabOpen) await clearStems();
+    if (!otherTabOpen) await clearLeftovers();
   } catch { /* leave it */ }
 }
 
@@ -395,6 +402,7 @@ async function prepareDemucs(payload = {}) {
     const name = String(payload.name || (separationId === DEFAULT_DEMUCS_ID ? "Default separation" : "Regenerated separation"));
     job.separationId = separationId;
     job.demucsSeparation = { id: separationId, name, profile: "Standard Demucs" };
+    job.needStems = Boolean(payload.needStems);
     const result = await runJob("prepareDemucs", jobId, job, transfer);
     keepModelsStored();
     const stems = await separationStemSets(job.audioSha256, job.sourceTransform, separationId);

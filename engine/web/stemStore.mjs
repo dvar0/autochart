@@ -1,8 +1,10 @@
-// Separated stems for the browser engine, kept in the origin private file
-// system (OPFS) so regenerating a song skips Demucs, like the desktop's
-// separation cache. Each stem is stored as raw float32 (left then right), so
-// the transcriber reads exactly what Demucs wrote. Works in the page and the
-// engine worker.
+// Separations for the browser engine, kept in the origin private file system
+// (OPFS) so regenerating a song skips Demucs, like the desktop's separation
+// cache. A separation is kept as its mel tables (engine/lib/onnx/melTables.mjs,
+// a few MB); its stems (raw float32, left then right) only when asked for, to
+// play them. Works in the page and the engine worker.
+
+import { MEL_TABLES_FILE } from "../lib/onnx/melTables.mjs";
 
 const ROOT = "autochart-stems";
 const PREFIX = "opfs:";
@@ -95,6 +97,40 @@ export async function loadStems(key, names = null) {
   }
 }
 
+// A separation's mel tables (the encoded file), or null when none are stored.
+export async function loadMelTables(key) {
+  const dir = await folder(key);
+  if (!dir) return null;
+  try {
+    return new Uint8Array(await readFile(dir, MEL_TABLES_FILE));
+  } catch {
+    return null;
+  }
+}
+
+export async function saveMelTables(key, bytes) {
+  const dir = await folder(key, true);
+  if (!dir) return false;
+  try {
+    await writeFile(dir, MEL_TABLES_FILE, bytes);
+    return true;
+  } catch {
+    // Out of quota: the run goes on, the next one separates again.
+    return false;
+  }
+}
+
+export async function hasMelTables(key) {
+  const dir = await folder(key);
+  if (!dir) return false;
+  try {
+    await dir.getFileHandle(MEL_TABLES_FILE);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function hasStems(key) {
   return Boolean(await storedStemNames(key));
 }
@@ -177,8 +213,8 @@ async function directorySize(dir) {
   return bytes;
 }
 
-// Stems take far more room than the songs (raw float32), so Settings can free
-// them. Each song's analysis audio stays: its takes play on it.
+// What Settings can free: every stored separation (tables and stems). Each
+// song's analysis audio stays: its takes play on it.
 export async function storedStemBytes() {
   try {
     const root = await (await navigator.storage.getDirectory()).getDirectoryHandle(ROOT);
@@ -192,8 +228,17 @@ export async function storedStemBytes() {
   }
 }
 
-// Removes the stored separations of every song but the given audio (sha256s):
-// stems are kept only for the songs being worked on. Analysis audio stays.
+// Deletes a separation folder's stems, keeping its mel tables.
+async function removeStemFiles(root, name) {
+  const dir = await root.getDirectoryHandle(name);
+  const files = [];
+  for await (const file of dir.keys()) if (file !== MEL_TABLES_FILE) files.push(file);
+  for (const file of files) await dir.removeEntry(file, { recursive: true });
+}
+
+// Removes the stored stems of every song but the given audio (sha256s): stems
+// are big and kept only for the songs being worked on. Mel tables and
+// analysis audio stay.
 export async function removeStemsExcept(audioSha256s) {
   const keep = [...audioSha256s].filter(Boolean).map((sha) => `${safePart(sha)}__`);
   try {
@@ -203,7 +248,7 @@ export async function removeStemsExcept(audioSha256s) {
       if (name !== AUDIO_FOLDER && !keep.some((prefix) => name.startsWith(prefix))) names.push(name);
     }
     for (const name of names) {
-      try { await root.removeEntry(name, { recursive: true }); } catch { /* in use: next time */ }
+      try { await removeStemFiles(root, name); } catch { /* in use: next time */ }
     }
   } catch { /* nothing stored */ }
 }
@@ -218,6 +263,23 @@ export async function removeStoredStems() {
   } catch { /* nothing stored */ }
 }
 
+// What a closed tab leaves behind: every song's stems and analysis audio.
+// The mel tables stay, so songs don't separate again.
+export async function clearLeftovers() {
+  try {
+    const root = await (await navigator.storage.getDirectory()).getDirectoryHandle(ROOT);
+    const names = [];
+    for await (const name of root.keys()) names.push(name);
+    for (const name of names) {
+      try {
+        if (name === AUDIO_FOLDER) await root.removeEntry(name, { recursive: true });
+        else await removeStemFiles(root, name);
+      } catch { /* in use: next time */ }
+    }
+  } catch { /* nothing stored */ }
+}
+
+// Everything stored here: separations and analysis audio.
 export async function clearStems() {
   try {
     const root = await navigator.storage.getDirectory();

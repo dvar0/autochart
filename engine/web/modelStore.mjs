@@ -173,10 +173,12 @@ export function modelFiles(manifest) {
   return [...files];
 }
 
-// The files stem separation needs (the Demucs graphs).
+// The files stem separation needs: the Demucs graphs, and the mel graph that
+// turns the stems into the mel tables kept in their place.
 export function separationFiles(manifest) {
   return Object.values(manifest?.graphs || {})
-    .filter((graph) => graph?.file && String(graph.role || "").startsWith("demucs-") && !UNUSED_ROLES.has(graph.role))
+    .filter((graph) => graph?.file && !UNUSED_ROLES.has(graph.role) &&
+      (String(graph.role || "").startsWith("demucs-") || graph.role === "transcriber-mel"))
     .map((graph) => graph.file);
 }
 

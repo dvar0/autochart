@@ -7,7 +7,9 @@ import { demucsOrchestration } from "../lib/onnx/manifest.mjs";
 import { beatOrchestration, medianBpm } from "../lib/onnx/beatDetect.mjs";
 import {
   separateStems, detectTiming, transcribe, transcriberChannels, needsStems, chartFromTokens, prefixBiasMaker,
+  makeMelTables, melTableSpec,
 } from "../lib/onnx/pipeline.mjs";
+import { encodeMelTables, decodeMelTables, tablesMatch } from "../lib/onnx/melTables.mjs";
 import { sessionDevice } from "../lib/onnx/runtime.mjs";
 import { loadMelSession, buildBeatMel, DEFAULT_REF_ONLY_MIXES } from "../lib/onnx/buildBeatMel.mjs";
 import { loadEncoderSessions, runEncoder, makeRng, disposeGpuTensor } from "../lib/onnx/transcribe.mjs";
@@ -21,7 +23,7 @@ import {
 } from "../lib/transcriberSettings.mjs";
 import { loadManifest, releaseSessions, transcriberDevice as pickTranscriberDevice } from "./host.mjs";
 import { checkStorageRoom, ensureModelFiles, missingModelFiles, separationFiles } from "./modelStore.mjs";
-import { stemKey, loadStems, saveStems, storedStemNames } from "./stemStore.mjs";
+import { stemKey, loadStems, saveStems, loadMelTables, saveMelTables } from "./stemStore.mjs";
 import { stereoAt, ffmpegMonoAt, averageMonoAt } from "./audio.mjs";
 
 const TRANSCRIBER_RATE = 22050;
@@ -85,11 +87,7 @@ function separationKey(job) {
 // the rest of the model. Inpaint downloads everything up front.
 async function prepareModels(job, emit, { separationFirst = true } = {}) {
   const manifest = await loadManifest(job.modelUrl);
-  let separating = false;
-  if (separationFirst && needsStems(manifest)) {
-    const stored = await storedStemNames(separationKey(job));
-    separating = !stored || !demucsOrchestration(manifest).stems.every((name) => stored.includes(name));
-  }
+  const separating = separationFirst && needsStems(manifest) && !(await storedSeparation(job, manifest));
   // Checked for the whole model up front, so a full device finds out before
   // separating rather than after.
   if (separating) await checkStorageRoom((await missingModelFiles(manifest)).total);
@@ -103,26 +101,64 @@ async function downloadRest(manifest, emit) {
   await downloadModels(manifest, emit, { stage: "timing" });
 }
 
-// The stems this run's separation needs: from the stem store when this song,
-// lead-in and separation were separated before, else Demucs (then stored).
+// The stored separation this run can use: its mel tables, plus its stems when
+// the run needs them (job.needStems, to play them). Null when it must separate.
+async function storedSeparation(job, manifest) {
+  const melTables = await storedMelTables(job, manifest);
+  if (!melTables) return null;
+  if (!job.needStems) return { melTables, stems: null };
+  const stems = await loadStems(separationKey(job), demucsOrchestration(manifest).stems);
+  return stems ? { melTables, stems } : null;
+}
+
+async function storedMelTables(job, manifest) {
+  const bytes = await loadMelTables(separationKey(job));
+  if (!bytes) return null;
+  try {
+    const melTables = await decodeMelTables(bytes);
+    return tablesMatch(melTables, melTableSpec(manifest)) ? melTables : null;
+  } catch {
+    return null;
+  }
+}
+
+// Each stem the transcriber reads, as mono 22.05 kHz.
+function stemMonosOf(manifest, separated) {
+  const stemMonos = {};
+  for (const name of transcriberChannels(manifest).filter((channel) => channel !== "full")) {
+    const stem = separated.stems.find((s) => s.name === name);
+    if (!stem) throw new Error(`transcription: missing ${name} stem`);
+    stemMonos[name] = averageMonoAt(stem.left, stem.right, separated.sampleRate, TRANSCRIBER_RATE);
+  }
+  return stemMonos;
+}
+
+function fullMonoOf(audio) {
+  return averageMonoAt(audio.left, audio.right, audio.sampleRate, TRANSCRIBER_RATE);
+}
+
+// This run's separation as mel tables: stored when this song, lead-in and
+// separation were separated before, else Demucs, then the tables are made
+// and stored in place of the stems (kept too when job.needStems).
 async function separation(job, manifest, audio, emit) {
   if (!needsStems(manifest)) {
     emit({ type: "stage", stage: "demucs", status: "skipped", backend: BACKEND });
-    return { stems: [], key: null, cacheHit: false, device: null, skipped: true };
+    return { melTables: null, key: null, cacheHit: false, device: null, skipped: true };
   }
   const orch = demucsOrchestration(manifest);
   const key = separationKey(job);
-  const cached = await loadStems(key, orch.stems);
-  if (cached) {
+  const stored = await storedSeparation(job, manifest);
+  if (stored) {
     emit({ type: "stage", stage: "demucs", status: "completed", cache: "hit", backend: BACKEND });
-    emit({ type: "log", stage: "demucs", stream: "stdout", message: "reusing stored stems" });
-    return { ...cached, key, cacheHit: true, device: null };
+    emit({ type: "log", stage: "demucs", stream: "stdout", message: "reusing the stored separation" });
+    return { melTables: stored.melTables, key, cacheHit: true, device: null };
   }
   emit({ type: "stage", stage: "demucs", status: "running", backend: BACKEND });
+  const log = (message) => emit({ type: "log", stage: "demucs", stream: "stdout", message });
   const stereo = stereoAt(audio, orch.sampleRate);
   const out = await separateStems({
     manifest, device: job.device, left: stereo.left, right: stereo.right,
-    log: (message) => emit({ type: "log", stage: "demucs", stream: "stdout", message }),
+    log,
     onDevice: (device) => emit({ type: "stage", stage: "demucs", status: "running", backend: BACKEND, device }),
     onProgress: ({ index, total }) => emit({
       type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0,
@@ -130,9 +166,19 @@ async function separation(job, manifest, audio, emit) {
     }),
   });
   await releaseSessions();
-  await saveStems(key, out);
+  // Stored tables stay as they were (separating again only to play the
+  // stems), so later charts match earlier ones.
+  let melTables = await storedMelTables(job, manifest);
+  if (!melTables) {
+    melTables = await makeMelTables({ manifest, fullMono: fullMonoOf(audio), stemMonos: stemMonosOf(manifest, out), log });
+    await releaseSessions();
+    const bytes = await encodeMelTables(melTables);
+    await saveMelTables(key, bytes);
+    log(`mel tables: stored ${(bytes.byteLength / 1e6).toFixed(1)} MB`);
+  }
+  if (job.needStems) await saveStems(key, out);
   emit({ type: "stage", stage: "demucs", status: "completed", backend: BACKEND, device: out.device });
-  return { ...out, key, cacheHit: false };
+  return { melTables, key, cacheHit: false, device: out.device };
 }
 
 async function timing(job, manifest, settings, audio, emit) {
@@ -179,18 +225,6 @@ async function timing(job, manifest, settings, audio, emit) {
   return out;
 }
 
-// The mix and each stem the transcriber reads, as mono 22.05 kHz.
-function transcriberAudio(manifest, audio, stems) {
-  const stemMonos = {};
-  for (const name of transcriberChannels(manifest).filter((channel) => channel !== "full")) {
-    const stem = stems.stems.find((s) => s.name === name);
-    if (!stem) throw new Error(`transcription: missing ${name} stem`);
-    stemMonos[name] = averageMonoAt(stem.left, stem.right, stems.sampleRate, TRANSCRIBER_RATE);
-  }
-  const fullMono = averageMonoAt(audio.left, audio.right, audio.sampleRate, TRANSCRIBER_RATE);
-  return { fullMono, stemMonos, audioDuration: fullMono.length / TRANSCRIBER_RATE };
-}
-
 export async function runGenerate(job, emit, runtime) {
   const generator = job.generator;
   const settings = normalizeTranscriberSettings(job, generator);
@@ -207,7 +241,8 @@ export async function runGenerate(job, emit, runtime) {
 
   const transcriberDevice = pickTranscriberDevice(job.transcriberDevice || job.device, runtime);
   emit({ type: "stage", stage: "transcription", status: "running", backend: BACKEND, requestedDevice: transcriberDevice });
-  const { fullMono, stemMonos, audioDuration } = transcriberAudio(manifest, audio, stems);
+  const fullMono = fullMonoOf(audio);
+  const audioDuration = fullMono.length / TRANSCRIBER_RATE;
   const resolution = beats.resolution || CHART_OUTPUT_RESOLUTION;
   const offset = beats.offset || 0;
   let transcriberProvider = null;
@@ -217,7 +252,7 @@ export async function runGenerate(job, emit, runtime) {
     settings,
     knobNames: descriptorKnobNames(generator),
     fullMono,
-    stemMonos,
+    melTables: stems.melTables,
     audioDuration,
     beatTimes: Float64Array.from(beats.beatTimes),
     resolution,
@@ -388,7 +423,8 @@ export async function runInpaint(job, emit, runtime) {
   const modelConfig = stage.modelConfig || {};
   const structure = stage.structure || null;
   const channelOrder = stage.channelOrder.map(String);
-  const { fullMono, stemMonos, audioDuration } = transcriberAudio(manifest, audio, stems);
+  const fullMono = fullMonoOf(audio);
+  const audioDuration = fullMono.length / TRANSCRIBER_RATE;
   const grid = sourceChartBeatGrid(chartText, { audioDuration });
   const resolution = grid.resolution;
   const device = pickTranscriberDevice(job.transcriberDevice || job.device, runtime);
@@ -396,7 +432,7 @@ export async function runInpaint(job, emit, runtime) {
   const { beatMel, beatMask, nBeats } = await buildBeatMel({
     melSession,
     fullMono22050: fullMono,
-    stemMonos22050: stemMonos,
+    melTables: stems.melTables,
     beatTimes: Float64Array.from(grid.beatTimes),
     maxBeats: Number(modelConfig.maxBeats || 1280),
     audioDuration,
