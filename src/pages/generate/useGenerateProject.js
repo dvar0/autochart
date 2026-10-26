@@ -22,7 +22,7 @@ import {
   buildSourceReplacementRecord,
 } from "./sourceReplacement.js";
 import { createEditorState, editorReducer } from "./edit/editorReducer.js";
-import { defaultGeneratorIdFrom, selectableGeneratorsFrom } from "../../data/modelFamilies.js";
+import { MODEL_FAMILIES, defaultGeneratorIdFrom, selectableGeneratorsFrom } from "../../data/modelFamilies.js";
 import {
   DEFAULT_GENERATION_CONTROLS,
   DEFAULT_GENERATOR_ID,
@@ -83,6 +83,8 @@ import { DEFAULT_DEMUCS_ID, newSongId } from "../../services/songSchema.js";
 // Inpaint's model: Fretformer 2 stays the Generate model; its Inpaint
 // sibling rewrites picked bars.
 const INPAINT_GENERATOR_ID = "autochart.fretformer.v2-inpaint-onnx";
+// Families with a fill-in-the-middle model, in the order the picker lists them.
+const FILL_IN_FAMILIES = MODEL_FAMILIES.filter((family) => family.inpaintGeneratorId);
 // The Inpaint model's style knobs, for the browser preview where no generator is listed.
 const INPAINT_FALLBACK_KNOBS = descriptorKnobsForGenerator({ capabilities: { descriptorKnobs: ["speed", "chords", "hopos", "taps", "movement"] } });
 const EMPTY_DETAILS = { title: "", artist: "", album: "", year: "", genre: "", charter: "Autochart" };
@@ -254,6 +256,11 @@ function effectiveGenerator(generators = [], generatorId = "", preferences = {})
 export function generatorStemSetId(generator = null) {
   const separation = generator?.separation || {};
   return separation.cacheSubdir ? String(separation.stemSet || separation.cacheSubdir) : "htdemucs";
+}
+
+// False for a model that reads only the mix (Lite): its runs skip separation.
+function readsStems(generator) {
+  return generator?.capabilities?.usesStemCache !== false;
 }
 
 // One separation can hold a stem set per separation model; `stems` is v1's.
@@ -622,6 +629,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [workTab, setWorkTab] = useState("generate");
   const [editorState, dispatchEditor] = useReducer(editorReducer, undefined, () => createEditorState(null));
   const [editorSourceVersionId, setEditorSourceVersionId] = useState("");
+  // The Fill-in model picked for the take open in the editor (sourceKey).
+  const [inpaintPick, setInpaintPick] = useState({ sourceKey: "", generatorId: "" });
   const [editorDraftVersionId, setEditorDraftVersionId] = useState("");
   const [editorDirty, setEditorDirty] = useState(false);
   const [editorSavedAt, setEditorSavedAt] = useState(0);
@@ -1378,7 +1387,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   };
 
   // `generator` picks the separation model (its stem set); the selected model by default.
-  const prepareDemucsSeparation = async ({ id = "", name = "", makeActive = true, sourceTransform = null, generator = selectedGenerator } = {}) => {
+  const prepareDemucsSeparation = async ({ id = "", name = "", makeActive = true, sourceTransform = null, generator: pickedGenerator = selectedGenerator } = {}) => {
+    // A model that reads only the mix (Lite) separates with the model whose
+    // stems it lists.
+    const generator = readsStems(pickedGenerator)
+      ? pickedGenerator
+      : generators.find((g) => readsStems(g) && generatorStemSetId(g) === generatorStemSetId(pickedGenerator)) || pickedGenerator;
     const runAudioFile = pendingAudioFile || importedSong?.audioFile || null;
     if (!runAudioFile) {
       setStatusMsg("Choose a media file before preparing Demucs.");
@@ -1629,7 +1643,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         live: null,
         runtimeFallback: null,
         hardwareMode: hardwareMode === "cpu" ? "cpu" : "auto",
-        willSeparate: !separationIsCached(runDemucsSeparation, selectedGenerator),
+        willSeparate: readsStems(selectedGenerator) && !separationIsCached(runDemucsSeparation, selectedGenerator),
         difficulty: runSettings.difficulty,
         // Source-transform lead-in, in ms + seconds, used by the live board to
         // align in-flight chart playback against the (usually unpadded) source
@@ -2360,14 +2374,33 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     [editorState.doc]
   );
 
-  // Inpaint runs the fill-in-the-middle model on the edited chart as it
-  // stands, with the take's own audio, lead-in and separation.
-  const inpaintGenerator = generators.find((g) => g.id === INPAINT_GENERATOR_ID && g.capabilities?.inpaint) || null;
+  // Inpaint runs a fill-in-the-middle model on the edited chart as it
+  // stands, with the take's own audio, lead-in and separation. A take starts
+  // on its own family's model (a Lite take on Lite, which needs no stems);
+  // the pick lasts until another take is opened.
+  const sourceGeneratorId = editorSourceVersion?.meta?.generatorId
+    || editorSourceVersion?.settings?.generation?.generatorId || "";
+  const sourceFillFamily = FILL_IN_FAMILIES.find((family) =>
+    family.generatorId === sourceGeneratorId || family.inpaintGeneratorId === sourceGeneratorId);
+  const sourceKey = editorSourceVersion?.id || "";
+  const inpaintGeneratorId = (inpaintPick.sourceKey === sourceKey && inpaintPick.generatorId)
+    || sourceFillFamily?.inpaintGeneratorId || INPAINT_GENERATOR_ID;
+  const inpaintModels = FILL_IN_FAMILIES.map((family) => {
+    const generator = generators.find((g) => g.id === family.inpaintGeneratorId);
+    return {
+      generatorId: family.inpaintGeneratorId,
+      label: family.label,
+      ready: Boolean(generator?.setup?.ready),
+      message: generator?.setup?.ready ? "" : `Download ${family.label} in Settings first`,
+    };
+  });
+  const inpaintModel = inpaintModels.find((model) => model.generatorId === inpaintGeneratorId) || null;
+  const inpaintGenerator = generators.find((g) => g.id === inpaintGeneratorId && g.capabilities?.inpaint) || null;
   // The browser preview has no engine; the edit screen mocks Inpaint there.
   const inpaintBlockedReason = !canInpaint()
     ? ""
     : !inpaintGenerator || (inpaintGenerator.setup && !inpaintGenerator.setup.ready)
-      ? "Inpaint needs Fretformer 2"
+      ? inpaintModel?.message || "Download Fretformer 2 in Settings first"
       : !(requiresPathBackedAudio() ? importedSong?.audioSource : importedSong?.audioFile)
         ? "Save the song first"
         : "";
@@ -2386,7 +2419,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       });
       const result = await inpaintChart({
         jobId,
-        generatorId: INPAINT_GENERATOR_ID,
+        generatorId: inpaintGeneratorId,
         audioSource: importedSong.audioSource,
         audioFile: importedSong.audioFile,
         sourceTransform: source?.provenance?.sourceTransform || null,
@@ -2447,6 +2480,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     previewTrack: editorPreviewTrack,
     hasSession: hasEditorSession,
     inpaintBlockedReason,
+    inpaintModels,
+    inpaintGeneratorId,
+    setInpaintGeneratorId: (generatorId) => setInpaintPick({ sourceKey, generatorId }),
     inpaintKnobs: inpaintGenerator ? descriptorKnobsForGenerator(inpaintGenerator) : INPAINT_FALLBACK_KNOBS,
     startInpaint: canInpaint() ? startInpaint : null,
   };

@@ -60,6 +60,9 @@ export default function EditInspector({ project, ws }) {
           sections={ws.sections}
           pending={ws.pending}
           blockedReason={ws.regenBlockedReason}
+          fillModels={ws.fillModels}
+          fillModelId={ws.fillModelId}
+          onFillModel={ws.setFillModelId}
           styleKnobs={ws.styleKnobs}
           knobs={ws.knobs}
           tries={ws.tries}
@@ -113,6 +116,36 @@ function OverwriteConfirm({ confirm, bars, onConfirm, onCancel }) {
   );
 }
 
+// The Fill-in model, in the same plate the Generate tab uses for its model.
+function FillModelPlate({ models, value, onChange, disabled }) {
+  const selected = models.find((model) => model.generatorId === value);
+  return (
+    <div className="model-plate">
+      <div className="model-plate-top">
+        {models.length > 1 ? (
+          <label className="model-plate-picker">
+            <select
+              className="model-plate-name"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              disabled={disabled}
+              aria-label="Fill-in model"
+            >
+              {models.map((model) => (
+                <option key={model.generatorId} value={model.generatorId}>{model.label}</option>
+              ))}
+            </select>
+            <I.chev />
+          </label>
+        ) : (
+          <div className="model-plate-name">{selected?.label || models[0].label}</div>
+        )}
+      </div>
+      {selected && !selected.ready && <div className="model-plate-warning">{selected.message}</div>}
+    </div>
+  );
+}
+
 function useNudge() {
   const [nudge, setNudge] = useState(0);
   const needs = (ready, run) => () => (ready ? run() : setNudge((n) => n + 1));
@@ -126,6 +159,9 @@ function RegenTab({
   sections,
   pending,
   blockedReason,
+  fillModels,
+  fillModelId,
+  onFillModel,
   styleKnobs,
   knobs,
   tries,
@@ -189,6 +225,7 @@ function RegenTab({
       {/* Settings, then the big button, as on the Generate tab. */}
       <section className="insp-card insp-settings insp-regen-card">
         {confirm && <OverwriteConfirm confirm={confirm} bars={bars} onConfirm={onConfirm} onCancel={onCancelConfirm} />}
+        {fillModels.length > 0 && <FillModelPlate models={fillModels} value={fillModelId} onChange={onFillModel} disabled={busy} />}
         <div className="variant-field generation-field">
           <div className="field-line">
             <label>
