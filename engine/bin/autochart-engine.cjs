@@ -353,6 +353,12 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
   const onnxLib = require("../lib/onnx");
   const separationGenerator = generator || await resolveGeneratorConfig(job.generatorId, job);
   const manifest = await onnxLib.loadModelsManifest(ENGINE_ROOT, job);
+  if (!onnxLib.needsStems(manifest)) {
+    if (command !== "generate") throw new Error(`${separationGenerator.label} reads the full mix and doesn't separate stems.`);
+    emit({ type: "stage", stage: "demucs", status: "skipped", backend: "onnxruntime-node" });
+    emit({ type: "log", stage: "demucs", stream: "stdout", message: "demucs: skipped, this model reads the full mix" });
+    return { skipped: true, demucsRan: false, stems: {}, executionProvider: null, cacheHit: false, demucsModel: null };
+  }
   const orch = onnxLib.demucsOrchestration(manifest);
   const requestedDevice = await onnxLib.resolveDevice(
     resolveOnnxDevice(job), onnxLib.graphPath(manifest, "beat-mel")
@@ -1220,7 +1226,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
           ],
         },
         milestone: 5,
-        stages: ["demucs", "timing", "transcription", "chart"],
+        stages: [...(demucsStage.skipped ? [] : ["demucs"]), "timing", "transcription", "chart"],
         settings,
         decoderSettings,
         generation,
@@ -1294,7 +1300,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
             transcriber: transcriberExecutionProvider,
           },
           notRunStages: [
-            ...(demucsStage ? [] : ["demucs"]),
+            ...(demucsStage && !demucsStage.skipped ? [] : ["demucs"]),
             ...(beatStage ? [] : ["timing", "smoothing"]),
             ...(transcriberExecutionProvider ? [] : ["transcription"]),
             "chart",

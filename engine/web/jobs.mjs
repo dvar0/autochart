@@ -6,7 +6,7 @@
 import { demucsOrchestration } from "../lib/onnx/manifest.mjs";
 import { beatOrchestration, medianBpm } from "../lib/onnx/beatDetect.mjs";
 import {
-  separateStems, detectTiming, transcribe, transcriberChannels, chartFromTokens, prefixBiasMaker,
+  separateStems, detectTiming, transcribe, transcriberChannels, needsStems, chartFromTokens, prefixBiasMaker,
 } from "../lib/onnx/pipeline.mjs";
 import { sessionDevice } from "../lib/onnx/runtime.mjs";
 import { loadMelSession, buildBeatMel, DEFAULT_REF_ONLY_MIXES } from "../lib/onnx/buildBeatMel.mjs";
@@ -74,6 +74,10 @@ async function prepareModels(job, emit) {
 // The stems this run's separation needs: from the stem store when this song,
 // lead-in and separation were separated before, else Demucs (then stored).
 async function separation(job, manifest, audio, emit) {
+  if (!needsStems(manifest)) {
+    emit({ type: "stage", stage: "demucs", status: "skipped", backend: BACKEND });
+    return { stems: [], key: null, cacheHit: false, device: null, skipped: true };
+  }
   const orch = demucsOrchestration(manifest);
   const separationId = String(job.separationId || DEFAULT_DEMUCS_ID);
   const key = stemKey({

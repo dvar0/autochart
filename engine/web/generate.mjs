@@ -4,7 +4,7 @@
 
 import { demucsOrchestration } from "../lib/onnx/manifest.mjs";
 import { beatOrchestration } from "../lib/onnx/beatDetect.mjs";
-import { separateStems, detectTiming, transcribe, transcriberChannels, chartFromTokens } from "../lib/onnx/pipeline.mjs";
+import { separateStems, detectTiming, transcribe, transcriberChannels, needsStems, chartFromTokens } from "../lib/onnx/pipeline.mjs";
 import { releaseSessions } from "./host.mjs";
 import { stereoAt, ffmpegMonoAt, averageMonoAt } from "./audio.mjs";
 
@@ -27,7 +27,7 @@ export async function generateChart({ manifest, audio, settings, knobNames, devi
   };
 
   const orch = demucsOrchestration(manifest);
-  const separation = await timed("demucs", async () => {
+  const separation = !needsStems(manifest) ? { stems: [] } : await timed("demucs", async () => {
     const stereo = stereoAt(audio, orch.sampleRate);
     const out = await separateStems({
       manifest, device, left: stereo.left, right: stereo.right,

@@ -73,6 +73,11 @@ export function transcriberChannels(manifest) {
     : CHANNEL_ORDER;
 }
 
+// A model that reads only the mix (Lite) skips separation.
+export function needsStems(manifest) {
+  return transcriberChannels(manifest).some((channel) => channel !== "full");
+}
+
 // The decoder's prefix bias for a header (BOS, difficulty, knobs, flags).
 export async function prefixBiasMaker(manifest) {
   const transcriberStage = transcriberStageOf(manifest);
