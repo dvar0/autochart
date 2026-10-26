@@ -51,6 +51,17 @@ decodes on CPU. The CPU backend's separation differs
 slightly from native CPU, so CPU-only browser charts are valid but not identical
 to the desktop's.
 
+Models live in Cache Storage (`modelStore.mjs`) and stems in the origin private
+file system (`stemStore.mjs`), so phones can run short of room. Before a model
+downloads, `navigator.storage.estimate()` must leave room for it (plus 5%):
+the Generate console and Settings say so and hold the download, and a job
+checks the whole model before separating. If a write still fails for quota,
+the job stops with a `storage_full` error and that model's other files are
+removed. After a run or download the page asks for persistent storage, so the
+browser keeps the models when space runs low. Settings in the browser shows
+what's stored, removes one family's models, or removes every model and stored
+separation (each run's analysis audio stays: its takes play on it).
+
 `scripts/web-spike/` is the test harness: `build.mjs` bundles the page and
 worker, `server.mjs` serves them with the isolation headers plus the model
 folder, and `compare.mjs` checks a browser run against a desktop job (chart,
