@@ -174,10 +174,11 @@ async function main() {
       assert(section(text, "SyncTrack") === section(prior.chartText, "SyncTrack"), "Fretformer and the marker model share one [SyncTrack]");
       const stemSets = marker.result.sourceSeparation?.stemSets || {};
       assert(Boolean(stemSets.htdemucs && stemSets.htdemucs_6s), "separation reports both stem sets");
-      assert(Object.keys(stemSets.htdemucs_6s.stems).sort().join(",") === "bass,drums,guitar,other,vocals", "six-stem set has guitar and folded other");
+      assert(Boolean(stemSets.htdemucs.melTables && stemSets.htdemucs_6s.melTables), "both stem sets keep mel tables");
+      assert(!Object.keys(stemSets.htdemucs_6s.stems).length, "stems are deleted after separation");
       assert(
-        marker.result.sourceSeparation.stems?.other?.path === prior.sourceSeparation?.stems?.other?.path,
-        "the separation's Fretformer stems are unchanged"
+        stemSets.htdemucs.melTables.path === prior.sourceSeparation?.stemSets?.htdemucs?.melTables?.path,
+        "the separation's Fretformer tables are unchanged"
       );
     }
     assert(JSON.stringify(report.prefix.cond.slice(-2)) === "[151,155]", "marker prefix ends with solo ON + section ON");

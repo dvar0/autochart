@@ -91,6 +91,7 @@
     "engine/lib/onnx/inpaint.mjs",
     "engine/lib/onnx/kvCacheSliceGraph.mjs",
     "engine/lib/onnx/manifest.mjs",
+    "engine/lib/onnx/melTables.mjs",
     "engine/lib/onnx/modelsManifest.cjs",
     "engine/lib/onnx/package.json",
     "engine/lib/onnx/pipeline.mjs",

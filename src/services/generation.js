@@ -163,6 +163,7 @@ export async function prepareDemucs(input) {
     metadata: input.metadata,
     sourceTransform: input.sourceTransform,
     title: input.metadata?.title,
+    needStems: Boolean(input.needStems),
   });
 }
 

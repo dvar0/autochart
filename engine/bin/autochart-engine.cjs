@@ -4,7 +4,7 @@ const fsSync = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const demucsWorkspaceSafety = require("../../electron/demucsWorkspace.cjs");
-const { inspectVerifiedFile, readVerifiedFile, writeVerifiedAtomic } = require("../../electron/fileSafety.cjs");
+const { inspectVerifiedFile, readVerifiedFile, removeVerifiedPath, writeVerifiedAtomic } = require("../../electron/fileSafety.cjs");
 const { createGenerationLifecycle, createResultPersistence, failureStageDetails } = require("../lib/generationStages.cjs");
 const {
   chartBpms,
@@ -392,14 +392,28 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
     sourceVariantKey: job.sourceTransform?.key || job.demucsSeparation?.sourceVariantKey || "lead-in:0",
   };
 
+  // A separation is kept as its mel tables; the stems stay only when asked
+  // for (job.keepStems, or job.needStems to listen to them).
+  const tablesPath = path.join(stemDir, onnxLib.MEL_TABLES_FILE);
+  const keepStems = Boolean(job.keepStems || job.needStems);
+  let storedTables = null;
   if (!job.forceDemucs) {
     const cachedStems = await demucsStemMap(cacheDir, stemDir, orch.stems);
-    if (orch.stems.every((name) => cachedStems[name])) {
+    const haveStems = orch.stems.every((name) => cachedStems[name]);
+    let melTables = storedTables = await readMelTables(onnxLib, manifest, tablesPath);
+    let stems = haveStems ? cachedStems : {};
+    if (!melTables && haveStems) {
+      // Separated before mel tables were kept.
+      melTables = await writeMelTables(onnxLib, manifest, job, cacheDir, tablesPath, cachedStems);
+      if (!keepStems) stems = await removeStems(cacheDir, cachedStems);
+    }
+    if (melTables && (haveStems || !job.needStems)) {
       const prepareOutput = {
         detail: "cached",
         demucsRan: false,
         featuresWritten: false,
-        stems: cachedStems,
+        stems,
+        melTablesPath: tablesPath,
         executionProvider: null,
         cacheHit: true,
         requestedDevice,
@@ -419,7 +433,7 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
         cacheHit: true,
         requestedDevice,
       });
-      return { ...prepareOutput, stemArrays: {}, demucsModel: orch.model };
+      return { ...prepareOutput, melTables, demucsModel: orch.model };
     }
   }
 
@@ -473,7 +487,7 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
     },
   });
 
-  const stemsMap = {};
+  let stemsMap = {};
   const stemArrays = {};
   for (const stem of stems) {
     const outPath = path.join(stemDir, `${stem.name}.wav`);
@@ -484,12 +498,17 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
     stemsMap[stem.name] = { path: outPath, identity: writtenStem.identity, format: "wav", mime: "audio/wav" };
     stemArrays[stem.name] = { left: stem.left, right: stem.right, sampleRate: orch.sampleRate };
   }
+  // Stored tables stay as they were (separating again only to play the stems),
+  // so later charts match earlier ones.
+  const melTables = storedTables || await writeMelTables(onnxLib, manifest, job, cacheDir, tablesPath, stemsMap);
+  if (!keepStems) stemsMap = await removeStems(cacheDir, stemsMap);
 
   const prepareOutput = {
     detail: "onnx-runtime",
     demucsRan: true,
     featuresWritten: false,
     stems: stemsMap,
+    melTablesPath: tablesPath,
     executionProvider,
     requestedDevice,
     cache: {
@@ -513,7 +532,7 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
     device: executionProvider,
     requestedDevice,
   });
-  return { ...prepareOutput, stemArrays, demucsModel: orch.model };
+  return { ...prepareOutput, stemArrays, melTables, demucsModel: orch.model };
 }
 
 async function prepareDemucsOnnx(job, jobPath, { lifecycle = createGenerationLifecycle({ emit }) } = {}) {
@@ -947,17 +966,20 @@ async function onnxDetectBeats(job, jobPath, opts = {}) {
   return { beats, beatsJsonPath, timingDir, executionProvider, requestedDevice };
 }
 
-// The mix and each stem the transcriber reads, as mono 22.05 kHz.
-async function decodeTranscriberAudio(onnxLib, audioPath, demucsStage, channelOrder) {
+// The mix as the transcriber reads it: mono 22.05 kHz.
+async function decodeFullMono(onnxLib, audioPath) {
   const fullStereo = await onnxLib.decodeStereoF32(audioPath, { sampleRate: 22050 });
   const fullMono = new Float32Array(fullStereo.length);
   for (let i = 0; i < fullStereo.length; i += 1) fullMono[i] = 0.5 * (fullStereo.left[i] + fullStereo.right[i]);
+  return fullMono;
+}
+
+// Each stem the transcriber reads, as mono 22.05 kHz.
+async function decodeStemMonos(onnxLib, stems, channelOrder) {
   const stemMonos = {};
   for (const name of channelOrder.filter((channel) => channel !== "full")) {
-    const stemPathObj = demucsStage.stems && demucsStage.stems[name];
-    if (!stemPathObj || !stemPathObj.path) {
-      throw new Error(`transcription: missing ${name} stem wav under ${demucsStage.cache && demucsStage.cache.stemDir}`);
-    }
+    const stemPathObj = stems && stems[name];
+    if (!stemPathObj || !stemPathObj.path) throw new Error(`mel tables: missing ${name} stem`);
     const verifiedStem = await readVerifiedFile(stemPathObj.path, {
       expectedIdentity: stemPathObj.identity,
       label: `Demucs ${name} stem`,
@@ -968,7 +990,52 @@ async function decodeTranscriberAudio(onnxLib, audioPath, demucsStage, channelOr
     for (let i = 0; i < s.length; i += 1) mono[i] = 0.5 * (s.left[i] + s.right[i]);
     stemMonos[name] = mono;
   }
-  return { fullMono, stemMonos, audioDuration: fullStereo.length / 22050 };
+  return stemMonos;
+}
+
+// Makes a separation's mel tables from its stems and stores them in its stem folder.
+async function writeMelTables(onnxLib, manifest, job, cacheDir, tablesPath, stems) {
+  const log = (message) => emit({ type: "log", stage: "demucs", stream: "stdout", message });
+  const { channelOrder } = onnxLib.melTableSpec(manifest);
+  const fullMono = await decodeFullMono(onnxLib, path.resolve(job.audioPath));
+  const stemMonos = await decodeStemMonos(onnxLib, stems, channelOrder);
+  const tables = await onnxLib.makeMelTables({ manifest, fullMono, stemMonos, log });
+  const bytes = await onnxLib.encodeMelTables(tables);
+  await demucsWorkspaceSafety.assertSafeLeaf(path.dirname(tablesPath), tablesPath);
+  await writeVerifiedAtomic(tablesPath, Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), {
+    rootDirectory: cacheDir,
+    label: "Stem mel tables",
+  });
+  log(`mel tables: stored ${(bytes.byteLength / 1e6).toFixed(1)} MB (${tables.channels.join(", ")})`);
+  return tables;
+}
+
+// The stored mel tables, or null when there are none this model can read.
+async function readMelTables(onnxLib, manifest, tablesPath) {
+  try {
+    const read = await readVerifiedFile(tablesPath, { label: "Stem mel tables", maxBytes: 512 * 1024 * 1024 });
+    const tables = await onnxLib.decodeMelTables(read.data);
+    return onnxLib.tablesMatch(tables, onnxLib.melTableSpec(manifest)) ? tables : null;
+  } catch {
+    return null;
+  }
+}
+
+// Deletes the stem files once their mel tables are stored; returns what's left.
+async function removeStems(cacheDir, stems) {
+  const rootIdentity = await fs.lstat(cacheDir);
+  for (const stem of Object.values(stems)) {
+    const parentDirectory = path.dirname(stem.path);
+    await removeVerifiedPath(stem.path, {
+      rootDirectory: cacheDir,
+      rootIdentity,
+      parentDirectory,
+      parentIdentity: await fs.lstat(parentDirectory),
+      identity: stem.identity,
+      label: "Demucs stem",
+    });
+  }
+  return {};
 }
 
 async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycle({ emit }) } = {}) {
@@ -1025,9 +1092,9 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       backend: "onnxruntime-node",
       requestedDevice: transcriberDevice,
     });
-    const channelOrder = onnxLib.transcriberChannels(manifest);
-    emit({ type: "log", stage: "transcription", stream: "stdout", message: `transcription: decoding ${channelOrder.length} channels (${channelOrder.join(", ")}) to mono 22050` });
-    const { fullMono, stemMonos, audioDuration } = await decodeTranscriberAudio(onnxLib, audioPath, demucsStage, channelOrder);
+    emit({ type: "log", stage: "transcription", stream: "stdout", message: "transcription: decoding the mix to mono 22050 (stems come from the separation's mel tables)" });
+    const fullMono = await decodeFullMono(onnxLib, audioPath);
+    const audioDuration = fullMono.length / 22050;
     const beatTimes = Float64Array.from(beatStage.beats.beatTimes);
     const resolution = beatStage.beats.resolution || CHART_OUTPUT_RESOLUTION;
     const offset = beatStage.beats.offset || 0;
@@ -1037,7 +1104,8 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       settings,
       knobNames: descriptorKnobNames(generator),
       fullMono,
-      stemMonos,
+      stemMonos: {},
+      melTables: demucsStage.melTables || null,
       audioDuration,
       beatTimes,
       resolution,
@@ -1357,7 +1425,8 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
       const channelOrder = stage.channelOrder.map(String);
       const knobNames = descriptorKnobNames(generator);
 
-      const { fullMono, stemMonos, audioDuration } = await decodeTranscriberAudio(onnxLib, audioPath, demucsStage, channelOrder);
+      const fullMono = await decodeFullMono(onnxLib, audioPath);
+      const audioDuration = fullMono.length / 22050;
       const grid = sourceChartBeatGrid(chartText, { audioDuration });
       const resolution = grid.resolution;
       const runtime = await resolveOnnxTranscriberDevice(job, onnxLib, manifest, resolveOnnxDevice(job));
@@ -1365,7 +1434,8 @@ async function inpaintOnnx(job, jobPath, { lifecycle = createGenerationLifecycle
       const { beatMel, beatMask, nBeats } = await onnxLib.buildBeatMel({
         melSession,
         fullMono22050: fullMono,
-        stemMonos22050: stemMonos,
+        stemMonos22050: {},
+        melTables: demucsStage.melTables || null,
         beatTimes: Float64Array.from(grid.beatTimes),
         maxBeats: Number(modelConfig.maxBeats || 1280),
         audioDuration,

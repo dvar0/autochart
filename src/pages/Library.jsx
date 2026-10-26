@@ -138,8 +138,12 @@ function latestVersion(versions) {
   return versions.reduce((latest, version) => (versionDate(version) > versionDate(latest) ? version : latest), null);
 }
 
-function hasStemPaths(artifact) {
-  return Object.values(artifact?.stems || {}).some((stem) => stem?.path);
+// Separated: stems on disk, or (usually) only their mel tables.
+function isSeparated(artifact) {
+  if (Object.values(artifact?.stems || {}).some((stem) => stem?.path)) return true;
+  return Object.values(artifact?.stemSets || {}).some((set) =>
+    set?.melTables || Object.values(set?.stems || {}).some((stem) => stem?.path)
+  );
 }
 
 function demucsSnapshot(sourceArtifacts = {}) {
@@ -151,6 +155,7 @@ function demucsSnapshot(sourceArtifacts = {}) {
       id: DEFAULT_DEMUCS_ID,
       name: storedDefault?.name || "Default separation",
       stems: storedDefault?.stems || {},
+      stemSets: storedDefault?.stemSets || {},
       status: storedDefault?.status || "on-demand",
     },
     ...items.filter((item) => item.id !== DEFAULT_DEMUCS_ID),
@@ -160,7 +165,7 @@ function demucsSnapshot(sourceArtifacts = {}) {
   return {
     count: artifacts.length,
     activeName: active?.name || "Default separation",
-    readyLabel: hasStemPaths(active) ? "Stems ready" : "On demand",
+    readyLabel: isSeparated(active) ? "Separated" : "On demand",
   };
 }
 

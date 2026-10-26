@@ -27,6 +27,7 @@ import { StageSignal } from "./StageAnimations.jsx";
 import {
   demucsAuditionKey,
   generatorStemSetId,
+  hasSeparation,
   MIN_COMPARE_CHARTS,
   separationStemSet,
 } from "./useGenerateProject.js";
@@ -250,12 +251,8 @@ function versionDemucsId(version) {
   return version?.meta?.demucsId || version?.provenance?.sourceSeparation?.id || version?.settings?.demucsSeparation?.id || "";
 }
 
-function hasStemSet(artifact, stemSetId) {
-  return Object.values(separationStemSet(artifact, stemSetId)).some((stem) => stem?.path);
-}
-
 function artifactReady(artifact) {
-  return STEM_SETS.some((stemSet) => hasStemSet(artifact, stemSet.id));
+  return STEM_SETS.some((stemSet) => hasSeparation(artifact, stemSet.id));
 }
 
 function fmtArtifactDate(value) {
@@ -356,7 +353,7 @@ function DemucsPanel({ project }) {
           // v1's set is always listed (it separates on first play, as before);
           // another model's set is listed once it exists or while that model is selected.
           const stemSets = STEM_SETS.filter((stemSet) =>
-            stemSet.id === "htdemucs" || stemSet.id === selectedStemSetId || hasStemSet(artifact, stemSet.id)
+            stemSet.id === "htdemucs" || stemSet.id === selectedStemSetId || hasSeparation(artifact, stemSet.id)
           );
           const labelStemSets = stemSets.length > 1;
           const badgeIndex = demucsArtifacts.length - 1 - index;
@@ -390,7 +387,7 @@ function DemucsPanel({ project }) {
                 const heading = labelStemSets && (
                   <div className="demucs-set-label">{label} · {stemSet.stems.length} stems</div>
                 );
-                if (stemSet.id !== "htdemucs" && !hasStemSet(artifact, stemSet.id)) {
+                if (stemSet.id !== "htdemucs" && !hasSeparation(artifact, stemSet.id)) {
                   return (
                     <div className="demucs-set" key={stemSet.id}>
                       {heading}
@@ -430,7 +427,13 @@ function DemucsPanel({ project }) {
                             className={auditioning ? "active" : ""}
                             onClick={() => playStem(artifact, stem.id, stemSet.id)}
                             disabled={busy || loading || !sourceAudioFile}
-                            title={sourceAudioFile ? `Audition ${stem.label.toLowerCase()} in the preview stage` : "Choose media first"}
+                            title={
+                              !sourceAudioFile
+                                ? "Choose media first"
+                                : separationStemSet(artifact, stemSet.id)[stem.id]?.path
+                                  ? `Audition ${stem.label.toLowerCase()} in the preview stage`
+                                  : `Separates this song again to play ${stem.label.toLowerCase()}`
+                            }
                           >
                             {loading ? <span className="cta-spinner" aria-hidden="true" /> : !labelStemSets && <I.play />}
                             {stem.label}

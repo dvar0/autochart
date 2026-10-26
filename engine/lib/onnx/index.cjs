@@ -12,6 +12,7 @@ module.exports = {
   ...require("./chartEventStream.mjs"),
   ...require("./prefixTables.mjs"),
   ...require("./buildBeatMel.mjs"),
+  ...require("./melTables.mjs"),
   ...require("./transcribe.mjs"),
   ...require("./forceSolo.mjs"),
   ...require("./chartTokens.mjs"),

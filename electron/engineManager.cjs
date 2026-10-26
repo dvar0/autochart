@@ -26,6 +26,8 @@ const {
 
 const MANIFEST_NAME = "manifest.json";
 const CURRENT_PLATFORM = process.platform;
+// A separation's stored mel tables (engine/lib/onnx/melTables.mjs MEL_TABLES_FILE).
+const MEL_TABLES_FILE = "mel-tables.bin";
 
 function defaultEngineRoot() {
   if (process.env.AUTOCHART_ENGINE_PATH) {
@@ -1422,7 +1424,8 @@ async function findDemucsStemDir(workspace, stemSet = DEFAULT_STEM_SET, skipDirN
     const hasAllStems = stemSet.stems.every((stem) =>
       ["flac", "wav"].some((ext) => names.has(`${stem}.${ext}`))
     );
-    if (hasAllStems) return dir;
+    // A separation is usually kept as its mel tables alone (the stems are deleted).
+    if (hasAllStems || names.has(MEL_TABLES_FILE)) return dir;
     for (const entry of entries) {
       if (entry.isDirectory() && !skip.has(entry.name)) queue.push(path.join(dir, entry.name));
     }
@@ -1439,10 +1442,23 @@ async function separationStemSets(workspace, manifest) {
   for (const stemSet of sets) {
     const stemDir = await findDemucsStemDir(workspace, stemSet, stemSet.cacheSubdir ? [] : otherSubdirs);
     const stems = await demucsStemMap(stemDir, stemSet.stems);
-    if (Object.keys(stems).length) stemSets[stemSet.id] = { stemDir, stems };
+    const melTables = await melTablesFile(stemDir);
+    if (Object.keys(stems).length || melTables) {
+      stemSets[stemSet.id] = { stemDir, stems, ...(melTables ? { melTables } : {}) };
+    }
   }
   const v1 = stemSets[DEFAULT_STEM_SET.id] || null;
   return { stemDir: v1?.stemDir || null, stems: v1?.stems || {}, stemSets };
+}
+
+async function melTablesFile(stemDir) {
+  if (!stemDir) return null;
+  try {
+    const read = await inspectVerifiedFile(path.join(stemDir, MEL_TABLES_FILE), { label: "Stem mel tables" });
+    return { path: read.path, identity: read.identity };
+  } catch {
+    return null;
+  }
 }
 
 async function demucsStemMap(stemDir, stemNames = DEMUCS_STEMS) {
@@ -1626,6 +1642,7 @@ async function generateChart(userDataPath, sender, payload, options = {}) {
       generation,
       ...hardwareDeviceOverrides(settings),
       hardwareMode: settings.hardwareMode || "auto",
+      keepStems: Boolean(settings.keepStems),
       ...(demucsSeparationPayload ? { demucsSeparation: demucsSeparationPayload } : {}),
       demucsWorkspace: selectedDemucsWorkspace,
       timingWorkspace: await demucsWorkspace.resolveTimingWorkspace(cacheRoot(userDataPath, settings), cachedAudio.sha256),
@@ -1814,6 +1831,9 @@ async function prepareDemucs(userDataPath, sender, payload, options = {}) {
     demucsWorkspace: workspace,
     ...hardwareDeviceOverrides(settings),
     hardwareMode: settings.hardwareMode || "auto",
+    keepStems: Boolean(settings.keepStems),
+    // Asked for to play the stems: a separation kept only as mel tables runs again.
+    needStems: Boolean(payload.needStems),
     demucsSeparation: {
       id: separationId,
       name: separationName,

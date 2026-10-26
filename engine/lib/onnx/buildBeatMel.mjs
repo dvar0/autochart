@@ -8,6 +8,7 @@
 
 import { createSession, tensor, runSession } from "./runtime.mjs";
 import { graphPath } from "./runtime.mjs";
+import { roundMelTables, tableChannels, melRecipe } from "./melTables.mjs";
 
 const CHANNEL_ORDER = ["full", "drums", "bass", "vocals", "other"];
 const FRAME_DURATION = 512 / 22050; // 0.023219954648526078
@@ -82,25 +83,26 @@ function beatMelWindowsForChannel(mel, nMels, nFrames, beatTimes) {
 // take the reference from their input channels alone.
 const DEFAULT_REF_ONLY_MIXES = Object.freeze({ non_drums: ["bass", "vocals", "other"] });
 
-async function buildBeatMel({
+// The stem channels' mel tables (see melTables.mjs), rounded as they are
+// stored. Every channel, the mix included, is padded to the longest one.
+async function stemMelTables({
   melSession,
   fullMono22050,
   stemMonos22050,
-  beatTimes,
-  maxBeats = 1280,
-  audioDuration = null,
-  log = null,
   channelOrder = CHANNEL_ORDER,
   refOnlyMixes = DEFAULT_REF_ONLY_MIXES,
+  recipe = melRecipe(null),
+  log = null,
 }) {
+  const stemNames = channelOrder.filter((name) => name !== "full");
   const channels = {};
-  for (const name of channelOrder) {
-    const mono = name === "full" ? fullMono22050 : stemMonos22050[name];
+  for (const name of stemNames) {
+    const mono = stemMonos22050[name];
     if (!mono) throw new Error(`buildBeatMel: missing ${name} channel audio`);
     channels[name] = mono;
   }
-  let commonLen = 0;
-  for (const name of channelOrder) commonLen = Math.max(commonLen, channels[name].length);
+  let commonLen = fullMono22050.length;
+  for (const name of stemNames) commonLen = Math.max(commonLen, channels[name].length);
 
   function padded(ch) {
     if (ch.length === commonLen) return ch;
@@ -108,7 +110,7 @@ async function buildBeatMel({
     out.set(ch, 0);
     return out;
   }
-  const channelList = channelOrder.map((name) => [name, padded(channels[name])]);
+  const channelList = stemNames.map((name) => [name, padded(channels[name])]);
   for (const [mixName, parts] of Object.entries(refOnlyMixes || {})) {
     const mix = new Float32Array(commonLen);
     for (const name of parts) {
@@ -120,12 +122,51 @@ async function buildBeatMel({
   }
 
   const mels = {};
-  let maxMel = -Infinity;
   for (const [name, mono] of channelList) {
     if (log) log(`  mel: graph on channel ${name} (${mono.length} samples = ${(mono.length / 22050).toFixed(1)}s)`);
-    const { mel, nMels, nFrames } = await runMelGraph(melSession, mono);
-    if (nMels !== 80) throw new Error(`transcriber mel: expected 80 mels, got ${nMels}`);
-    mels[name] = { mel, nMels, nFrames };
+    mels[name] = await runMelGraph(melSession, mono);
+    if (mels[name].nMels !== 80) throw new Error(`transcriber mel: expected 80 mels, got ${mels[name].nMels}`);
+  }
+  return roundMelTables(mels, {
+    recipe,
+    channels: tableChannels(channelOrder, refOnlyMixes),
+    samples: commonLen,
+  });
+}
+
+// melTables: the separation's stored tables; without them they are made
+// from stemMonos22050 first.
+async function buildBeatMel({
+  melSession,
+  fullMono22050,
+  stemMonos22050 = null,
+  melTables = null,
+  beatTimes,
+  maxBeats = 1280,
+  audioDuration = null,
+  log = null,
+  channelOrder = CHANNEL_ORDER,
+  refOnlyMixes = DEFAULT_REF_ONLY_MIXES,
+}) {
+  const tables = melTables || await stemMelTables({
+    melSession, fullMono22050, stemMonos22050, channelOrder, refOnlyMixes, log,
+  });
+  const expected = tableChannels(channelOrder, refOnlyMixes);
+  if (tables.channels.join(",") !== expected.join(",")) {
+    throw new Error(`buildBeatMel: stored mel tables hold ${tables.channels.join(", ")}, the model reads ${expected.join(", ")}`);
+  }
+  let full = fullMono22050;
+  if (full.length < tables.samples) {
+    full = new Float32Array(tables.samples);
+    full.set(fullMono22050, 0);
+  }
+  if (log) log(`  mel: graph on channel full (${full.length} samples = ${(full.length / 22050).toFixed(1)}s)`);
+  const fullMel = await runMelGraph(melSession, full);
+  if (fullMel.nMels !== 80) throw new Error(`transcriber mel: expected 80 mels, got ${fullMel.nMels}`);
+  const mels = { ...tables.mels, full: fullMel };
+  let maxMel = -Infinity;
+  for (const name of ["full", ...tables.channels]) {
+    const { mel } = mels[name];
     for (let i = 0; i < mel.length; i += 1) {
       if (mel[i] > maxMel) maxMel = mel[i];
     }
@@ -184,11 +225,12 @@ async function buildBeatMel({
   }
 
   const beatMask = new Uint8Array(nBeats).fill(1);
-  return { beatMel: out, beatMask, nBeats, nChannels, nFramesFinal, refDb };
+  return { beatMel: out, beatMask, nBeats, nChannels, nFramesFinal, refDb, melTables: tables };
 }
 
 export {
   buildBeatMel,
+  stemMelTables,
   loadMelSession,
   runMelGraph,
   normalizeMelDb,

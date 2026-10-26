@@ -7,7 +7,8 @@ import { demucsOrchestration } from "./manifest.mjs";
 import { loadTables, sessionDevice } from "./runtime.mjs";
 import { loadDemucsSessions, separate, foldStems } from "./demucsSeparate.mjs";
 import { beatOrchestration, loadBeatSessions, detectBeats, medianBpm } from "./beatDetect.mjs";
-import { CHANNEL_ORDER, DEFAULT_REF_ONLY_MIXES, loadMelSession, buildBeatMel } from "./buildBeatMel.mjs";
+import { CHANNEL_ORDER, DEFAULT_REF_ONLY_MIXES, loadMelSession, buildBeatMel, stemMelTables } from "./buildBeatMel.mjs";
+import { melRecipe, tableChannels } from "./melTables.mjs";
 import { computePrefixBias } from "./prefixTables.mjs";
 import { loadEncoderSessions, loadDecoderSession, generate, makeRng } from "./transcribe.mjs";
 import { generateWithForcedSolo } from "./forceSolo.mjs";
@@ -73,6 +74,31 @@ export function transcriberChannels(manifest) {
     : CHANNEL_ORDER;
 }
 
+function transcriberRefMixes(manifest) {
+  const stage = transcriberStageOf(manifest);
+  return stage.refOnlyMixes && typeof stage.refOnlyMixes === "object" ? stage.refOnlyMixes : DEFAULT_REF_ONLY_MIXES;
+}
+
+// The mel tables a model reads (see melTables.mjs): its mel recipe over these channels.
+export function melTableSpec(manifest) {
+  const channelOrder = transcriberChannels(manifest);
+  const refOnlyMixes = transcriberRefMixes(manifest);
+  return {
+    channelOrder,
+    refOnlyMixes,
+    recipe: melRecipe(transcriberStageOf(manifest)),
+    channels: tableChannels(channelOrder, refOnlyMixes),
+  };
+}
+
+// A separation's mel tables from its stems (22.05 kHz mono), made on the CPU
+// so every device stores the same ones.
+export async function makeMelTables({ manifest, fullMono, stemMonos, log = null }) {
+  const { channelOrder, refOnlyMixes, recipe } = melTableSpec(manifest);
+  const melSession = await loadMelSession(manifest, "cpu");
+  return stemMelTables({ melSession, fullMono22050: fullMono, stemMonos22050: stemMonos, channelOrder, refOnlyMixes, recipe, log });
+}
+
 // A model that reads only the mix (Lite) skips separation.
 export function needsStems(manifest) {
   return transcriberChannels(manifest).some((channel) => channel !== "full");
@@ -98,11 +124,12 @@ export async function prefixBiasMaker(manifest) {
 }
 
 // Mel features, prefix, then the autoregressive decode. fullMono and
-// stemMonos are 22.05 kHz mono; beats carries the grid the chart is built on.
+// stemMonos are 22.05 kHz mono (melTables, when stored, stand in for
+// stemMonos); beats carries the grid the chart is built on.
 // onPartial gets the notes committed so far every few beats.
 export async function transcribe({
   manifest, device, settings, knobNames,
-  fullMono, stemMonos, audioDuration,
+  fullMono, stemMonos = null, melTables = null, audioDuration,
   beatTimes, resolution, offset = 0, syncLines = null,
   log = null, onDevice = null, onPartial = null,
 }) {
@@ -110,9 +137,7 @@ export async function transcribe({
   const modelConfig = (transcriberStage && transcriberStage.modelConfig) || {};
   const maxBeats = Number(modelConfig.maxBeats || 1280);
   const channelOrder = transcriberChannels(manifest);
-  const refOnlyMixes = transcriberStage.refOnlyMixes && typeof transcriberStage.refOnlyMixes === "object"
-    ? transcriberStage.refOnlyMixes
-    : DEFAULT_REF_ONLY_MIXES;
+  const refOnlyMixes = transcriberRefMixes(manifest);
   if (modelConfig.inChannels != null && Number(modelConfig.inChannels) !== channelOrder.length) {
     throw new Error(`transcription: model expects ${modelConfig.inChannels} channels but the manifest orders ${channelOrder.length}`);
   }
@@ -142,6 +167,7 @@ export async function transcribe({
     melSession,
     fullMono22050: fullMono,
     stemMonos22050: stemMonos,
+    melTables,
     beatTimes,
     maxBeats,
     audioDuration,

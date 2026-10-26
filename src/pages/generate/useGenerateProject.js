@@ -275,6 +275,13 @@ export function separationStemSet(artifact, stemSetId = "htdemucs") {
   return stemSetId === "htdemucs" ? artifact?.stems || {} : {};
 }
 
+// Whether a separation holds this stem set: its stems, or (usually) only
+// their mel tables, which is all charts need.
+export function hasSeparation(artifact, stemSetId = "htdemucs") {
+  if (artifact?.stemSets?.[stemSetId]?.melTables) return true;
+  return Object.values(separationStemSet(artifact, stemSetId)).some((stem) => stem?.path);
+}
+
 export function demucsAuditionKey(artifactId, stemSetId, stem) {
   return `${artifactId}:${stemSetId}:${stem}`;
 }
@@ -290,11 +297,9 @@ export function separationStemsFor(artifact, generator = null) {
 // its own stems on a separation it hasn't used yet).
 function separationIsCached(artifact, generator = null) {
   if (!artifact) return false;
-  if (generatorStemSetId(generator) !== "htdemucs") {
-    return Object.values(separationStemsFor(artifact, generator)).some((stem) => stem?.path);
-  }
+  if (generatorStemSetId(generator) !== "htdemucs") return hasSeparation(artifact, generatorStemSetId(generator));
   if (artifact.cache?.workspace) return true;
-  return Object.values(artifact.stems || {}).some((stem) => stem?.path);
+  return hasSeparation(artifact);
 }
 
 function demucsArtifactFromResult(result, fallback = {}) {
@@ -1401,8 +1406,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setStatusMsg(`${artifact?.name || "Selected separation"} ${compactSourceVariantLabel(artifact?.sourceTransform || currentSourceTransform)} is active for matching charts.`);
   };
 
-  // `generator` picks the separation model (its stem set); the selected model by default.
-  const prepareDemucsSeparation = async ({ id = "", name = "", makeActive = true, sourceTransform = null, generator: pickedGenerator = selectedGenerator } = {}) => {
+  // `generator` picks the separation model (its stem set); the selected model by
+  // default. needStems: separate again if only the mel tables are kept (to play them).
+  const prepareDemucsSeparation = async ({ id = "", name = "", makeActive = true, sourceTransform = null, generator: pickedGenerator = selectedGenerator, needStems = false } = {}) => {
     // A model that reads only the mix (Lite) separates with the model whose
     // stems it lists.
     const generator = readsStems(pickedGenerator)
@@ -1448,6 +1454,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         name: separationName,
         metadata: details,
         sourceTransform: runSourceTransform,
+        needStems,
       });
       const artifact = demucsArtifactFromResult(result, {
         ...existing,
@@ -1490,6 +1497,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           makeActive: artifact.id === activeDemucsId,
           sourceTransform: artifact.sourceTransform || sourceTransformFromKey(artifact.sourceVariantKey),
           generator: generatorForStemSet(stemSetId) || selectedGenerator,
+          needStems: true,
         });
       }
       const stemInfo = separationStemSet(readyArtifact, stemSetId)?.[stem];
