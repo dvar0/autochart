@@ -14,14 +14,16 @@ import {
 } from "../../engine/web/stemStore.mjs";
 import { getAppSettings } from "../services/appSettings.js";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
+import { LITE_FAMILY, browserNeedsLite } from "../pages/generate/liteOffer.js";
+import { deviceFromProbe } from "../components/DeviceFacts.jsx";
 
 const DEFAULT_DEMUCS_ID = "demucs_default";
 
-// The browser offers only the Fretformer 2 family; Fretformer 1 stays in the
-// desktop app.
+// The browser offers the Fretformer 2 family, plus Lite where it's needed;
+// Fretformer 1 stays in the desktop app.
 const WEB_FAMILY = MODEL_FAMILIES.find((family) => family.id === "fretformer-2");
 const WEB_GENERATORS = engineManifest.generators.filter((generator) =>
-  [WEB_FAMILY.generatorId, WEB_FAMILY.inpaintGeneratorId].includes(generator.id));
+  [WEB_FAMILY.generatorId, WEB_FAMILY.inpaintGeneratorId, LITE_FAMILY.generatorId].includes(generator.id));
 const MAX_LEAD_IN_MS = 30_000;
 
 // Where model folders are served from: the dev server's /models/ (your
@@ -412,6 +414,22 @@ async function readDemucsStem({ path } = {}) {
 // ----- models: which generators the model host has, and what's downloaded -----
 
 let generatorStatusCache = null;
+let needsLitePromise = null;
+
+// Whether this browser can't separate stems in reasonable time, so Lite is
+// offered (and preselected) before anything downloads.
+function deviceNeedsLite() {
+  needsLitePromise ??= probeHardware().then((probe) => browserNeedsLite(deviceFromProbe(probe))).catch(() => false);
+  return needsLitePromise;
+}
+
+// Lite is listed only on a device that needs it, once it's picked, or once
+// it's downloaded; elsewhere it stays out of the model picker.
+async function liteOffered(status) {
+  if (status.downloaded || status.status === "partial") return true;
+  const settings = await getAppSettings().catch(() => ({}));
+  return settings.defaultGeneratorId === LITE_FAMILY.generatorId || (await deviceNeedsLite());
+}
 
 async function generatorStatuses({ fresh = false } = {}) {
   if (generatorStatusCache && !fresh) return generatorStatusCache;
@@ -427,13 +445,17 @@ async function generatorStatuses({ fresh = false } = {}) {
     }
     const { files, cachedFiles } = await modelFolderStatus(manifest);
     const downloaded = cachedFiles === files;
-    return [generator.id, {
+    const status = {
       // Usable either way: a model that isn't downloaded yet downloads on first use.
       ready: true,
       status: downloaded ? "ready" : cachedFiles ? "partial" : "missing",
       downloaded,
       message: downloaded ? "Downloaded." : "Downloads the first time you use it.",
-    }];
+    };
+    if (generator.id === LITE_FAMILY.generatorId && !(await liteOffered(status))) {
+      return [generator.id, { ...status, ready: false, message: "Offered on slower devices." }];
+    }
+    return [generator.id, status];
   }));
   generatorStatusCache = Object.fromEntries(entries);
   return generatorStatusCache;
@@ -460,8 +482,10 @@ async function getManifest() {
       message: ready ? "At least one generator is ready." : "No model is reachable right now.",
     },
     preferences: {
-      defaultGeneratorId: settings.defaultGeneratorId || WEB_FAMILY.generatorId,
+      defaultGeneratorId: settings.defaultGeneratorId
+        || ((await deviceNeedsLite()) ? LITE_FAMILY.generatorId : WEB_FAMILY.generatorId),
       fillInDrafts: settings.fillInDrafts === true,
+      liteOfferDeclined: settings.liteOfferDeclined === true,
     },
   };
 }
@@ -506,11 +530,16 @@ function emitInstall(event) {
   }
 }
 
-// Downloads the chart model now instead of on first use. The Inpaint model is
-// a separate, opt-in download: pass inpaint to get it.
-async function installModels({ inpaint = false } = {}) {
+// Downloads a chart model now instead of on first use: Fretformer 2 by
+// default, or the family a pack id names (Settings passes one). The Inpaint
+// model is a separate, opt-in download: pass inpaint to get it.
+async function installModels(request = {}) {
+  const { inpaint = false } = plainObject(request);
   const statuses = await generatorStatuses({ fresh: true });
-  const family = downloadFamily(statuses);
+  const named = typeof request === "string" && MODEL_FAMILIES.find((item) => item.packId === request);
+  const family = named && statuses[named.generatorId] && statuses[named.generatorId].status !== "unsupported"
+    ? named
+    : downloadFamily(statuses);
   if (!family) throw new Error("No model is reachable right now.");
   const ids = [inpaint ? family.inpaintGeneratorId : family.generatorId];
   emitInstall({ phase: "starting", percent: 0, message: "Preparing download." });

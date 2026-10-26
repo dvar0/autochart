@@ -20,8 +20,8 @@ import {
   normalizeDifficulty, normalizeTranscriberSettings,
 } from "../lib/transcriberSettings.mjs";
 import { loadManifest, releaseSessions, transcriberDevice as pickTranscriberDevice } from "./host.mjs";
-import { ensureModelFiles } from "./modelStore.mjs";
-import { stemKey, loadStems, saveStems } from "./stemStore.mjs";
+import { ensureModelFiles, separationFiles } from "./modelStore.mjs";
+import { stemKey, loadStems, saveStems, storedStemNames } from "./stemStore.mjs";
 import { stereoAt, ffmpegMonoAt, averageMonoAt } from "./audio.mjs";
 
 const TRANSCRIBER_RATE = 22050;
@@ -50,25 +50,54 @@ function withLeadIn(audio, sourceTransform) {
   return { left, right, sampleRate: audio.sampleRate };
 }
 
-// Downloads the model folder's files that aren't cached yet, reported as the
-// "queued" stage so the progress card shows it before the real stages.
-async function prepareModels(job, emit) {
-  const manifest = await loadManifest(job.modelUrl);
+// Downloads the model folder's files that aren't cached yet (or only the
+// listed ones), reported as the given stage so the progress card shows the
+// download in place of that step.
+async function downloadModels(manifest, emit, { stage = "queued", only = null } = {}) {
   let lastPercent = -1;
   const result = await ensureModelFiles(manifest, {
+    only,
     onProgress: ({ loaded, total, file }) => {
       const percent = total ? Math.floor((loaded / total) * 100) : 0;
       if (percent === lastPercent) return;
       lastPercent = percent;
-      emit({ type: "stage", stage: "queued", status: "running", progress: total ? loaded / total : 0, downloading: true });
-      emit({ type: "log", stage: "queued", stream: "stdout", message: `Downloading models: ${percent}% (${file})` });
+      emit({ type: "stage", stage, status: "running", progress: total ? loaded / total : 0, downloading: true });
+      emit({ type: "log", stage, stream: "stdout", message: `Downloading models: ${percent}% (${file})` });
     },
   });
   if (result.downloaded) {
-    emit({ type: "log", stage: "queued", stream: "stdout", message: `Downloaded ${result.downloaded} model files` });
+    emit({ type: "log", stage, stream: "stdout", message: `Downloaded ${result.downloaded} model files` });
   }
+}
+
+function separationKey(job) {
+  return stemKey({
+    audioSha256: job.audioSha256,
+    sourceVariantKey: job.sourceTransform?.key || "lead-in:0",
+    separationId: String(job.separationId || DEFAULT_DEMUCS_ID),
+    stemSet: stemSetOf(job.generator),
+  });
+}
+
+// The model files a run needs before its first step. When the run separates,
+// only Demucs downloads first and the rest follows separation (downloadRest),
+// so a device too slow to separate can switch to Lite without having fetched
+// the rest of the model. Inpaint downloads everything up front.
+async function prepareModels(job, emit, { separationFirst = true } = {}) {
+  const manifest = await loadManifest(job.modelUrl);
+  let separating = false;
+  if (separationFirst && needsStems(manifest)) {
+    const stored = await storedStemNames(separationKey(job));
+    separating = !stored || !demucsOrchestration(manifest).stems.every((name) => stored.includes(name));
+  }
+  await downloadModels(manifest, emit, { only: separating ? separationFiles(manifest) : null });
   emit({ type: "stage", stage: "queued", status: "completed" });
   return manifest;
+}
+
+// After separation: whatever the model still needs, shown as the timing step.
+async function downloadRest(manifest, emit) {
+  await downloadModels(manifest, emit, { stage: "timing" });
 }
 
 // The stems this run's separation needs: from the stem store when this song,
@@ -79,13 +108,7 @@ async function separation(job, manifest, audio, emit) {
     return { stems: [], key: null, cacheHit: false, device: null, skipped: true };
   }
   const orch = demucsOrchestration(manifest);
-  const separationId = String(job.separationId || DEFAULT_DEMUCS_ID);
-  const key = stemKey({
-    audioSha256: job.audioSha256,
-    sourceVariantKey: job.sourceTransform?.key || "lead-in:0",
-    separationId,
-    stemSet: stemSetOf(job.generator),
-  });
+  const key = separationKey(job);
   const cached = await loadStems(key, orch.stems);
   if (cached) {
     emit({ type: "stage", stage: "demucs", status: "completed", cache: "hit", backend: BACKEND });
@@ -98,7 +121,10 @@ async function separation(job, manifest, audio, emit) {
     manifest, device: job.device, left: stereo.left, right: stereo.right,
     log: (message) => emit({ type: "log", stage: "demucs", stream: "stdout", message }),
     onDevice: (device) => emit({ type: "stage", stage: "demucs", status: "running", backend: BACKEND, device }),
-    onProgress: ({ index, total }) => emit({ type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0 }),
+    onProgress: ({ index, total }) => emit({
+      type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0,
+      audioSeconds: stereo.left.length / orch.sampleRate,
+    }),
   });
   await releaseSessions();
   await saveStems(key, out);
@@ -172,6 +198,7 @@ export async function runGenerate(job, emit, runtime) {
   emit({ type: "stage", stage: "audio", status: "completed", backend: BACKEND });
 
   const stems = await separation(job, manifest, audio, emit);
+  await downloadRest(manifest, emit);
   const timed = await timing(job, manifest, settings, audio, emit);
   const { beats } = timed;
 
@@ -345,7 +372,7 @@ export async function runInpaint(job, emit, runtime) {
   const difficulty = normalizeDifficulty(request.difficulty);
   const settings = normalizeTranscriberSettings(job, generator);
   const seed = integerValue(request.seed, settings.seed, { min: 0, max: 2 ** 31 - 2 });
-  const manifest = await prepareModels(job, emit);
+  const manifest = await prepareModels(job, emit, { separationFirst: false });
   const stage = manifest.stages.transcriber;
   if (!stage.fim) throw new Error(`${generator.label} can't regenerate part of a chart.`);
 

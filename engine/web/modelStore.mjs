@@ -122,11 +122,19 @@ export function modelFiles(manifest) {
   return [...files];
 }
 
-// Downloads whatever the folder's manifest needs that isn't cached yet.
-// onProgress gets { loaded, total, file } in bytes across the missing files.
-export async function ensureModelFiles(manifest, { onProgress = null } = {}) {
+// The files stem separation needs (the Demucs graphs).
+export function separationFiles(manifest) {
+  return Object.values(manifest?.graphs || {})
+    .filter((graph) => graph?.file && String(graph.role || "").startsWith("demucs-") && !UNUSED_ROLES.has(graph.role))
+    .map((graph) => graph.file);
+}
+
+// Downloads whatever the folder's manifest needs that isn't cached yet, or
+// only the listed files. onProgress gets { loaded, total, file } in bytes
+// across the missing files.
+export async function ensureModelFiles(manifest, { onProgress = null, only = null } = {}) {
   const missing = [];
-  for (const file of modelFiles(manifest)) {
+  for (const file of only || modelFiles(manifest)) {
     const url = new URL(file, manifest.baseUrl).href;
     if (!(await isCached(url))) missing.push(url);
   }
