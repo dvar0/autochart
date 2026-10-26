@@ -105,6 +105,16 @@ function familyStatus(family, generatorsById, manifestLoaded) {
   return statuses.some((status) => status === "ready") ? "partial" : "missing";
 }
 
+// The browser version downloads each model the first time it's used, and the
+// Inpaint model separately, so a family is ready once its own model is in the
+// browser.
+function webFamilyStatus(family, generatorsById, manifestLoaded) {
+  if (!manifestLoaded) return "checking";
+  const setup = generatorsById.get(family.generatorId)?.setup;
+  if (!setup || setup.status === "unsupported") return "unsupported";
+  return setup.downloaded ? "ready" : "missing";
+}
+
 function StatusPill({ status }) {
   const value = status || "missing";
   return <span className={`setup-status ${value}`}>{humanizeStatus(value)}</span>;
@@ -381,6 +391,7 @@ export default function Settings() {
   const preferences = { defaultGeneratorId: settings.defaultGeneratorId, fillInDrafts: settings.fillInDrafts };
   const defaultGeneratorId = defaultGeneratorIdFrom(generators, preferences);
   const isReady = (generatorId) => Boolean(generatorsById.get(generatorId)?.setup?.ready);
+  const web = isWebApp();
 
   const unsupported = setup?.combinedStatus === "unsupported" || hardware?.supportedPlatform === false;
   const targetPlatform = setup?.platform || hardware?.platform || electronPlatform();
@@ -404,9 +415,10 @@ export default function Settings() {
   const messageTone = typeof message === "object" ? message.tone : "success";
 
   const familyAction = (family) => {
-    const status = familyStatus(family, generatorsById, manifestLoaded);
+    const status = (web ? webFamilyStatus : familyStatus)(family, generatorsById, manifestLoaded);
     const pack = (setup?.packs || []).find((item) => item.id === family.packId);
-    const downloadable = Boolean(pack);
+    const downloadable = web || Boolean(pack);
+    const size = web ? (family.downloadMb ? `${family.downloadMb} MB` : "") : pack ? generationDownloadSize(pack) : "";
     if (status === "checking") return <StatusPill status="checking" />;
     if (status === "ready") return <StatusPill status="ready" />;
     if (status === "unsupported") return <StatusPill status="unsupported" />;
@@ -414,7 +426,7 @@ export default function Settings() {
     const label = installing
       ? "Installing…"
       : status === "missing"
-        ? `Download${downloadable ? ` · ${generationDownloadSize(pack)}` : ""}`
+        ? `Download${size ? ` · ${size}` : ""}`
         : "Repair";
     const reason = !downloadable
       ? "Not available to download yet."
@@ -424,7 +436,7 @@ export default function Settings() {
     return (
       <>
         <button
-          className={(downloadable ? "btn-primary" : "settings-secondary") + " model-action"}
+          className={(downloadable && !family.experimental ? "btn-primary" : "settings-secondary") + " model-action"}
           onClick={() => installModels(family)}
           disabled={!downloadable || Boolean(busy)}
           aria-describedby={`settings-install-reason-${family.id}`}
@@ -446,19 +458,24 @@ export default function Settings() {
     pickable: isReady(family.generatorId),
     reason: `Download ${family.label} first`,
   });
+  const families = MODEL_FAMILIES.filter((family) => !(web && family.desktopOnly));
   const modelRows = [
-    ...MODEL_FAMILIES.filter((family) => !family.experimental).map(familyRow),
+    ...families.filter((family) => !family.experimental).map(familyRow),
     ...BETA_MODELS.map((model) => {
       const family = MODEL_FAMILIES.find((item) => item.id === model.familyId);
       const installed = isReady(model.generatorId);
+      const downloaded = web ? generatorsById.get(model.generatorId)?.setup?.downloaded : installed;
       return {
         ...model,
-        action: installed ? <StatusPill status="ready" /> : <span className="model-row-note">With {family.label}</span>,
+        // In the browser it downloads the first time Inpaint runs.
+        action: downloaded
+          ? <StatusPill status="ready" />
+          : installed ? null : <span className="model-row-note">With {family.label}</span>,
         pickable: installed && settings.fillInDrafts,
         reason: installed ? "Turn on Write whole charts first" : `Download ${family.label} first`,
       };
     }),
-    ...MODEL_FAMILIES.filter((family) => family.experimental).map(familyRow),
+    ...families.filter((family) => family.experimental).map(familyRow),
   ];
 
   const setFillInDrafts = (on) => {

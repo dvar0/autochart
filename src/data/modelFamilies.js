@@ -23,6 +23,8 @@ export const MODEL_FAMILIES = Object.freeze([
     shortLabel: "Fretformer 1",
     generatorId: "autochart.fretformer.v1-onnx",
     packId: "standard-onnx",
+    // Not in the browser version.
+    desktopOnly: true,
   }),
   Object.freeze({
     id: "fretformer-2-lite",
@@ -34,6 +36,7 @@ export const MODEL_FAMILIES = Object.freeze([
     generatorId: "autochart.fretformer.v2-lite-onnx",
     inpaintGeneratorId: "autochart.fretformer.v2-lite-onnx",
     packId: "fretformer-2-lite",
+    downloadMb: 555,
   }),
 ]);
 
