@@ -8,41 +8,6 @@
   "note": "Fretformer 2's Inpaint model: the same graph layout as Fretformer 2 (its own encoder, decoder and prefix tables) plus a fill-in-the-middle decoder that rewrites picked bars. It can also write whole charts.",
   "sampleRate": 44100,
   "graphs": {
-    "demucs_analysis_stft": {
-      "file": "demucs_analysis_stft.onnx",
-      "role": "demucs-analysis-stft",
-      "description": "Demucs HTDemucs analysis STFT (Conv1d complex STFT). Reflect-padded stereo mix flattened to (2, padded_L) -> real/imag spectrograms. Byte-identical to the htdemucs graph (depends only on nfft/hop/window).",
-      "inputs": [
-        {
-          "name": "x",
-          "dtype": "float32",
-          "shape": [
-            "stream",
-            "samples"
-          ]
-        }
-      ],
-      "outputs": [
-        {
-          "name": "real",
-          "dtype": "float32",
-          "shape": [
-            "stream",
-            2049,
-            "time"
-          ]
-        },
-        {
-          "name": "imag",
-          "dtype": "float32",
-          "shape": [
-            "stream",
-            2049,
-            "time"
-          ]
-        }
-      ]
-    },
     "demucs_core_network": {
       "file": "demucs_core_network.onnx",
       "role": "demucs-core-network",
@@ -106,46 +71,6 @@
             1,
             6,
             2,
-            "samples"
-          ]
-        }
-      ]
-    },
-    "demucs_synthesis_istft": {
-      "file": "demucs_synthesis_istft.onnx",
-      "role": "demucs-synthesis-istft",
-      "description": "Demucs HTDemucs synthesis ISTFT (ConvTranspose1d weighted overlap-add). Nyquist bin restored + 2-frame time pad before this graph. Byte-identical to the htdemucs graph.",
-      "inputs": [
-        {
-          "name": "real",
-          "dtype": "float32",
-          "shape": [
-            "stream",
-            2049,
-            "time"
-          ]
-        },
-        {
-          "name": "imag",
-          "dtype": "float32",
-          "shape": [
-            "stream",
-            2049,
-            "time"
-          ]
-        },
-        {
-          "name": "length",
-          "dtype": "int64",
-          "shape": []
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y",
-          "dtype": "float32",
-          "shape": [
-            "stream",
             "samples"
           ]
         }
@@ -430,21 +355,126 @@
       "role": "transcriber-fim-decoder",
       "description": "Fill-in-the-middle decoder for Inpaint (vocab 170: FIM_SUF 167, FIM_MID 168, FIM_HOLE 169). n tokens per call on top of a past cache, causal inside the chunk; step_id must be the cache position (past + i). Serves chunked prefill, one-token sampling steps and teacher-forced seam scoring (every chunk position's logits). Batch fixed to 1. Export + parity (6.1e-5 max logit diff vs PyTorch single steps): training repo scripts/export_fim_decoder_onnx.py.",
       "inputs": [
-        { "name": "token_id", "dtype": "int64", "shape": ["n_tokens"] },
-        { "name": "step_id", "dtype": "int64", "shape": ["n_tokens"] },
-        { "name": "beat_idx", "dtype": "int64", "shape": ["n_tokens"] },
-        { "name": "aligned_memory", "dtype": "float32", "shape": ["n_beats", 512] },
-        { "name": "prefix_bias", "dtype": "float32", "shape": [1, 512] },
-        { "name": "cross_k", "dtype": "float32", "shape": [10, 8, "n_beats", 64] },
-        { "name": "cross_v", "dtype": "float32", "shape": [10, 8, "n_beats", 64] },
-        { "name": "mem_invalid", "dtype": "bool", "shape": [1, 1, "n_beats"] },
-        { "name": "past_self_k", "dtype": "float32", "shape": [10, 1, 8, "past_len", 64] },
-        { "name": "past_self_v", "dtype": "float32", "shape": [10, 1, 8, "past_len", 64] }
+        {
+          "name": "token_id",
+          "dtype": "int64",
+          "shape": [
+            "n_tokens"
+          ]
+        },
+        {
+          "name": "step_id",
+          "dtype": "int64",
+          "shape": [
+            "n_tokens"
+          ]
+        },
+        {
+          "name": "beat_idx",
+          "dtype": "int64",
+          "shape": [
+            "n_tokens"
+          ]
+        },
+        {
+          "name": "aligned_memory",
+          "dtype": "float32",
+          "shape": [
+            "n_beats",
+            512
+          ]
+        },
+        {
+          "name": "prefix_bias",
+          "dtype": "float32",
+          "shape": [
+            1,
+            512
+          ]
+        },
+        {
+          "name": "cross_k",
+          "dtype": "float32",
+          "shape": [
+            10,
+            8,
+            "n_beats",
+            64
+          ]
+        },
+        {
+          "name": "cross_v",
+          "dtype": "float32",
+          "shape": [
+            10,
+            8,
+            "n_beats",
+            64
+          ]
+        },
+        {
+          "name": "mem_invalid",
+          "dtype": "bool",
+          "shape": [
+            1,
+            1,
+            "n_beats"
+          ]
+        },
+        {
+          "name": "past_self_k",
+          "dtype": "float32",
+          "shape": [
+            10,
+            1,
+            8,
+            "past_len",
+            64
+          ]
+        },
+        {
+          "name": "past_self_v",
+          "dtype": "float32",
+          "shape": [
+            10,
+            1,
+            8,
+            "past_len",
+            64
+          ]
+        }
       ],
       "outputs": [
-        { "name": "logits", "dtype": "float32", "shape": ["n_tokens", 170] },
-        { "name": "present_self_k", "dtype": "float32", "shape": [10, 1, 8, "past_len_plus_n", 64] },
-        { "name": "present_self_v", "dtype": "float32", "shape": [10, 1, 8, "past_len_plus_n", 64] }
+        {
+          "name": "logits",
+          "dtype": "float32",
+          "shape": [
+            "n_tokens",
+            170
+          ]
+        },
+        {
+          "name": "present_self_k",
+          "dtype": "float32",
+          "shape": [
+            10,
+            1,
+            8,
+            "past_len_plus_n",
+            64
+          ]
+        },
+        {
+          "name": "present_self_v",
+          "dtype": "float32",
+          "shape": [
+            10,
+            1,
+            8,
+            "past_len_plus_n",
+            64
+          ]
+        }
       ]
     }
   },
@@ -509,13 +539,10 @@
         "callOrder": [
           "remove_spurious_beats",
           "fill_missed_beats",
-          "damped_smooth",
           "prepend_lead_in"
         ],
         "removeSpuriousMinRatio": 0.6,
-        "fillMissedMaxRatio": 1.7,
-        "dampedSmoothGain": 0.15,
-        "dampedSmoothWindow": 9
+        "fillMissedMaxRatio": 1.7
       },
       "coreTraceShapeStrict": true,
       "safety": "The beat core ONNX is only numerically valid at exactly 1500 mel frames. Assert the chunk mel length equals 1500 before every core call; off-shape inference silently corrupts output. The full split -> aggregate -> minimal postproc -> smoother chain mirrors upstream beat_this.inference.split_predict_aggregate + Postprocessor(type=\"minimal\", fps=50) followed by the timing smoother.",

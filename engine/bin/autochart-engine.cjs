@@ -355,7 +355,7 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
   const manifest = await onnxLib.loadModelsManifest(ENGINE_ROOT, job);
   const orch = onnxLib.demucsOrchestration(manifest);
   const requestedDevice = await onnxLib.resolveDevice(
-    resolveOnnxDevice(job), onnxLib.graphPath(manifest, "demucs-analysis-stft")
+    resolveOnnxDevice(job), onnxLib.graphPath(manifest, "beat-mel")
   );
 
   const outputDir = path.resolve(job.outputDir);
