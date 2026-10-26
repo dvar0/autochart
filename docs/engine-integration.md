@@ -51,19 +51,22 @@ decodes on CPU. The CPU backend's separation differs
 slightly from native CPU, so CPU-only browser charts are valid but not identical
 to the desktop's.
 
-Models live in Cache Storage (`modelStore.mjs`) and stems in the origin private
-file system (`stemStore.mjs`), so phones can run short of room. Before a model
+Models live in Cache Storage (`modelStore.mjs`) and separations in the origin
+private file system (`stemStore.mjs`), so phones can run short of room. Before a model
 downloads, `navigator.storage.estimate()` must leave room for it (plus 5%):
 the Generate console and Settings say so and hold the download, and a job
 checks the whole model before separating. If a write still fails for quota,
 the job stops with a `storage_full` error and that model's other files are
 removed. After a run or download the page asks for persistent storage, so the
-browser keeps the models when space runs low. Stems (raw float32, hundreds of
-MB a song) are kept only for songs with a job running: a job for one song
-removes every other song's stems (`removeStemsExcept`), and opening the page
-clears what a closed tab left, unless another tab holds the `autochart-open-tab`
-lock. Each run's analysis audio stays until then, since finished takes export
-from it. Settings in the browser shows
+browser keeps the models when space runs low. A separation is kept as its mel
+tables (see "Separations are kept as mel tables"); stems (raw float32, hundreds
+of MB a song) are stored only when asked for to play them, and only for songs
+with a job running: a job for one song removes every other song's stems
+(`removeStemsExcept`), and opening the page clears the stems and analysis audio
+a closed tab left (`clearLeftovers`), unless another tab holds the
+`autochart-open-tab` lock. Each run's analysis audio stays until then, since
+finished takes export from it. The web downloads the transcriber's mel graph
+with the Demucs graphs, since separating makes the tables. Settings in the browser shows
 what's stored, removes one family's models, or removes every model and stored
 separation (each run's analysis audio stays: its takes play on it).
 
@@ -154,6 +157,33 @@ sets, CFG gating, solo and section markers, legacy beat-map adoption;
 `AUTOCHART_E2E_V2_ID` runs the marker steps against another generator),
 `scripts/test-generator-picker-electron.cjs` (picker, knob swap, payload).
 
+## Separations are kept as mel tables
+
+Stems feed the engine nothing but the transcriber's mel features (beats come
+from the mix), so a separation is stored as those features
+(`engine/lib/onnx/melTables.mjs`, `mel-tables.bin` in the stem folder, about
+1.2 MB per minute of audio) instead of its stems (about 100 MB per minute).
+Right after Demucs, the engine runs the mel graph on each stem channel on the
+CPU, clips 80 dB under the loudest stem, rounds to 1/256 dB and stores the
+result delta-coded and gzipped; then it deletes the stems. The transcriber
+clips 80 dB under its reference, which is at least as loud as any stem, so the
+clip changes nothing, and the rounding leaves charts unchanged (same notes for
+the same seed, checked on CPU and WebGPU with Fretformer, Fretformer 2 and
+full songs). Every generation and Inpaint reads the rounded tables
+(`buildBeatMel({ melTables })`), whether just made or stored, so a seed gives
+the same chart on every later run. The mix's own mel channel is computed from
+the song each run.
+
+Tables are tagged with the mel recipe (`stages.transcriber.melRecipe`, default
+`transcriber-mel-80`) and the stored channels; a model that reads other ones
+separates again. Stems stay when `settings.keepStems` is on (desktop Settings,
+Folders: "Keep separated stems") or the job sets `needStems` (playing a stem
+from the Separation cards); separating again for `needStems` keeps the stored
+tables as they were. A stem folder from before tables were kept gets its
+tables on first use, then loses its stems. Electron's `separationStemSets`
+reports `stemSets[id].melTables` for folders with tables and no stems, and
+the app treats those separations as done (`hasSeparation`).
+
 ## Fretformer 2 Lite
 
 `autochart.fretformer.v2-lite-onnx` ("Fretformer 2 Lite", experimental) is an
@@ -166,8 +196,8 @@ folder holds a fill-in decoder, so Lite fills in its own takes without stems.
 
 On the Inpaint tab a take starts on its own family's Fill-in model (Lite takes
 on Lite, others on Fretformer 2's), and the model picker switches between them.
-Fretformer 2's Fill-in on a Lite take separates first, then caches the stems as
-usual. Lite's generator lists the `htdemucs_6s` stem set
+Fretformer 2's Fill-in on a Lite take separates first, then keeps the
+separation as usual. Lite's generator lists the `htdemucs_6s` stem set
 (`capabilities.usesStemCache: false`), so the separation cards and Separate now
 use Fretformer 2's separation while Lite is selected.
 
