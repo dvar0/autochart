@@ -11,8 +11,8 @@ import {
   removeModelFolder, storageRoom,
 } from "../../engine/web/modelStore.mjs";
 import {
-  clearStems, readStoredAudio, removeStoredStems, saveAnalysisAudio, stemKey, stemPaths, storedStemBytes,
-  storedStemNames,
+  clearStems, readStoredAudio, removeStemsExcept, removeStoredStems, saveAnalysisAudio, stemKey, stemPaths,
+  storedStemBytes, storedStemNames,
 } from "../../engine/web/stemStore.mjs";
 import { getAppSettings } from "../services/appSettings.js";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
@@ -274,9 +274,36 @@ function runSeparation(payload, sourceTransform) {
   };
 }
 
+// Stems are big (raw float32, hundreds of MB a song) and the browser works on
+// one song at a time, so only the songs with a job running keep theirs: a job
+// for one song removes every other song's stems. Each run's analysis audio
+// stays until the page is next opened (a finished take still exports from it).
+const songsInUse = new Map();
+
+async function keepOnlyStemsInUse(jobId, audioSha256) {
+  songsInUse.set(jobId, audioSha256);
+  await removeStemsExcept(new Set(songsInUse.values()));
+}
+
+// Left over from a closed tab: nothing can point at it any more. Skipped while
+// another tab of the app is open (it may be using its stems); each tab holds a
+// shared lock so the others can tell.
+const TAB_LOCK = "autochart-open-tab";
+async function clearLeftoverStems() {
+  const locks = globalThis.navigator?.locks;
+  if (!locks) return;
+  try {
+    const { held = [] } = await locks.query();
+    const otherTabOpen = held.some((lock) => lock.name === TAB_LOCK);
+    locks.request(TAB_LOCK, { mode: "shared" }, () => new Promise(() => {})).catch(() => {});
+    if (!otherTabOpen) await clearStems();
+  } catch { /* leave it */ }
+}
+
 async function baseJob(jobId, payload) {
   const generator = generatorById(payload.generatorId);
   const { audio, audioSha256, sourceTransform } = await prepareAudio(jobId, payload);
+  await keepOnlyStemsInUse(jobId, audioSha256);
   const { separationId, demucsSeparation } = runSeparation(payload, sourceTransform);
   const metadata = plainObject(payload.metadata);
   const job = {
@@ -355,6 +382,8 @@ async function generateChart(payload = {}) {
     if (err?.code === "CANCELED") return { jobId, status: "canceled" };
     emit(jobId, { type: "error", message: err?.message || String(err) });
     throw failedMessage(err, "Generation");
+  } finally {
+    songsInUse.delete(jobId);
   }
 }
 
@@ -389,6 +418,8 @@ async function prepareDemucs(payload = {}) {
   } catch (err) {
     if (err?.code !== "CANCELED") emit(jobId, { type: "error", message: err?.message || String(err) });
     throw failedMessage(err, "Demucs preparation");
+  } finally {
+    songsInUse.delete(jobId);
   }
 }
 
@@ -405,6 +436,8 @@ async function inpaintChart(payload = {}) {
   } catch (err) {
     if (err?.code === "CANCELED") return { jobId, status: "canceled" };
     throw failedMessage(err, "Inpaint");
+  } finally {
+    songsInUse.delete(jobId);
   }
 }
 
@@ -650,6 +683,7 @@ function keepModelsStored() {
 }
 
 export function createWebBridge() {
+  void clearLeftoverStems();
   return {
     platform: "web",
     engine: {

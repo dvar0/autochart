@@ -58,7 +58,12 @@ the Generate console and Settings say so and hold the download, and a job
 checks the whole model before separating. If a write still fails for quota,
 the job stops with a `storage_full` error and that model's other files are
 removed. After a run or download the page asks for persistent storage, so the
-browser keeps the models when space runs low. Settings in the browser shows
+browser keeps the models when space runs low. Stems (raw float32, hundreds of
+MB a song) are kept only for songs with a job running: a job for one song
+removes every other song's stems (`removeStemsExcept`), and opening the page
+clears what a closed tab left, unless another tab holds the `autochart-open-tab`
+lock. Each run's analysis audio stays until then, since finished takes export
+from it. Settings in the browser shows
 what's stored, removes one family's models, or removes every model and stored
 separation (each run's analysis audio stays: its takes play on it).
 

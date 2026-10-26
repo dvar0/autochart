@@ -192,6 +192,22 @@ export async function storedStemBytes() {
   }
 }
 
+// Removes the stored separations of every song but the given audio (sha256s):
+// stems are kept only for the songs being worked on. Analysis audio stays.
+export async function removeStemsExcept(audioSha256s) {
+  const keep = [...audioSha256s].filter(Boolean).map((sha) => `${safePart(sha)}__`);
+  try {
+    const root = await (await navigator.storage.getDirectory()).getDirectoryHandle(ROOT);
+    const names = [];
+    for await (const name of root.keys()) {
+      if (name !== AUDIO_FOLDER && !keep.some((prefix) => name.startsWith(prefix))) names.push(name);
+    }
+    for (const name of names) {
+      try { await root.removeEntry(name, { recursive: true }); } catch { /* in use: next time */ }
+    }
+  } catch { /* nothing stored */ }
+}
+
 // Removes every stored separation (songs separate again when next generated).
 export async function removeStoredStems() {
   try {
