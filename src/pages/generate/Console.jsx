@@ -68,6 +68,9 @@ export default function Console({ project }) {
     ? (MODEL_FAMILIES.find((family) => family.generatorId === generatorId
       || family.id === BETA_MODELS.find((model) => model.generatorId === generatorId)?.familyId)?.downloadMb || 0)
     : null;
+  // ...and when it won't fit on this device, says that instead and holds
+  // Generate until there's room (Settings can remove models).
+  const spaceShort = selectedGeneratorSetup?.spaceShort || null;
   const generateDisabledReason = runActive
     ? stopping
       ? "Stopping the current generation."
@@ -80,7 +83,9 @@ export default function Console({ project }) {
           ? "The chart generation engine is unavailable."
           : selectedGeneratorSetup?.ready === false
             ? selectedGeneratorSetup.message || "Open Setup to install the chart generation package."
-            : "";
+            : spaceShort
+              ? `Not enough space on this device: the model needs ${spaceShort.neededMb} MB, about ${spaceShort.freeMb} MB is free.`
+              : "";
 
   return (
     <aside className="console-rail">
@@ -320,7 +325,7 @@ export default function Console({ project }) {
                 disabled={
                   runActive
                     ? stopping
-                    : busy || !sourceAudioFile || !generatorId || selectedGeneratorSetup?.ready === false
+                    : busy || !sourceAudioFile || !generatorId || selectedGeneratorSetup?.ready === false || Boolean(spaceShort)
                 }
                 aria-describedby="generate-cta-reason"
                 title={generateDisabledReason || "Generate a chart"}
@@ -343,7 +348,12 @@ export default function Console({ project }) {
               </button>
               <span id="generate-cta-reason" className="sr-only">{generateDisabledReason}</span>
               <div className={"reused-line" + (reusedFrom || pendingDownloadMb != null ? "" : " is-empty")} aria-live="polite">
-                {!reusedFrom && pendingDownloadMb != null && !runActive && (
+                {!reusedFrom && spaceShort && !runActive && (
+                  <span className="reused-name is-warn" title={generateDisabledReason}>
+                    <I.download /> Needs {spaceShort.neededMb} MB, about {spaceShort.freeMb} MB free. Remove models in Settings.
+                  </span>
+                )}
+                {!reusedFrom && !spaceShort && pendingDownloadMb != null && !runActive && (
                   <span className="reused-name">
                     <I.download /> {pendingDownloadMb ? `Downloads the model first (${pendingDownloadMb} MB, once)` : "Downloads the model first (once)"}
                   </span>

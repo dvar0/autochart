@@ -20,7 +20,7 @@ import {
   normalizeDifficulty, normalizeTranscriberSettings,
 } from "../lib/transcriberSettings.mjs";
 import { loadManifest, releaseSessions, transcriberDevice as pickTranscriberDevice } from "./host.mjs";
-import { ensureModelFiles, separationFiles } from "./modelStore.mjs";
+import { checkStorageRoom, ensureModelFiles, missingModelFiles, separationFiles } from "./modelStore.mjs";
 import { stemKey, loadStems, saveStems, storedStemNames } from "./stemStore.mjs";
 import { stereoAt, ffmpegMonoAt, averageMonoAt } from "./audio.mjs";
 
@@ -90,6 +90,9 @@ async function prepareModels(job, emit, { separationFirst = true } = {}) {
     const stored = await storedStemNames(separationKey(job));
     separating = !stored || !demucsOrchestration(manifest).stems.every((name) => stored.includes(name));
   }
+  // Checked for the whole model up front, so a full device finds out before
+  // separating rather than after.
+  if (separating) await checkStorageRoom((await missingModelFiles(manifest)).total);
   await downloadModels(manifest, emit, { only: separating ? separationFiles(manifest) : null });
   emit({ type: "stage", stage: "queued", status: "completed" });
   return manifest;

@@ -7,10 +7,12 @@
 import engineManifest from "../../engine/manifest.json";
 import { decodeAudioFile } from "../../engine/web/audio.mjs";
 import {
-  cachedModelSummary, clearModelCache, ensureModelFiles, loadModelManifest, modelFolderStatus,
+  cachedModelSummary, clearModelCache, ensureModelFiles, fitsInRoom, loadModelManifest, modelFolderStatus,
+  removeModelFolder, storageRoom,
 } from "../../engine/web/modelStore.mjs";
 import {
-  clearStems, readStoredAudio, saveAnalysisAudio, stemKey, stemPaths, storedStemNames,
+  clearStems, readStoredAudio, removeStoredStems, saveAnalysisAudio, stemKey, stemPaths, storedStemBytes,
+  storedStemNames,
 } from "../../engine/web/stemStore.mjs";
 import { getAppSettings } from "../services/appSettings.js";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
@@ -136,7 +138,7 @@ function startWorker() {
       finish(null, data.result);
     } else if (data.type === "error") {
       if (data.stack) console.error("[webEngine]", data.stack);
-      finish(Object.assign(new Error(data.message), { stage: active.stage }));
+      finish(Object.assign(new Error(data.message), { stage: active.stage, code: data.code || undefined }));
     }
   };
   worker.onerror = (event) => {
@@ -299,7 +301,8 @@ async function baseJob(jobId, payload) {
 }
 
 function failedMessage(error, verb) {
-  if (error?.code === "CANCELED") return error;
+  // Both already say what happened and what to do.
+  if (error?.code === "CANCELED" || error?.code === "storage_full") return error;
   const stage = error?.stage && error.stage !== "queued" ? ` at ${error.stage}` : "";
   return new Error(`${verb} failed${stage}: ${error?.message || error}`);
 }
@@ -321,6 +324,7 @@ async function generateChart(payload = {}) {
     }
     const analysisAudioPath = await storeAnalysisAudio(jobId, payload.audio.blob, job.audio, job.audioSha256, job.sourceTransform);
     const result = await runJob("generate", jobId, job, transfer);
+    keepModelsStored();
     const stems = await separationStemSets(job.audioSha256, job.sourceTransform, job.separationId);
     const base = result.sourceSeparation || job.demucsSeparation || null;
     const sourceSeparation = base
@@ -363,6 +367,7 @@ async function prepareDemucs(payload = {}) {
     job.separationId = separationId;
     job.demucsSeparation = { id: separationId, name, profile: "Standard Demucs" };
     const result = await runJob("prepareDemucs", jobId, job, transfer);
+    keepModelsStored();
     const stems = await separationStemSets(job.audioSha256, job.sourceTransform, separationId);
     emit(jobId, { type: "stage", stage: "saved", status: "completed" });
     return {
@@ -395,6 +400,7 @@ async function inpaintChart(payload = {}) {
     if (!generator.capabilities?.inpaint) throw new Error(`${generator.label} can't regenerate part of a chart.`);
     job.inpaint = payload.inpaint;
     const result = await runJob("inpaint", jobId, job, transfer);
+    keepModelsStored();
     return { jobId, status: result.status, chartText: result.chartText, inpaint: result.inpaint };
   } catch (err) {
     if (err?.code === "CANCELED") return { jobId, status: "canceled" };
@@ -431,8 +437,14 @@ async function liteOffered(status) {
   return settings.defaultGeneratorId === LITE_FAMILY.generatorId || (await deviceNeedsLite());
 }
 
+// Bytes of each cached model folder, by folder URL.
+function folderBytes(sizes, folderUrl) {
+  return Object.entries(sizes).reduce((sum, [url, bytes]) => sum + (url.startsWith(folderUrl) ? bytes : 0), 0);
+}
+
 async function generatorStatuses({ fresh = false } = {}) {
   if (generatorStatusCache && !fresh) return generatorStatusCache;
+  const [{ sizes }, room] = await Promise.all([cachedModelSummary(), storageRoom()]);
   const entries = await Promise.all(WEB_GENERATORS.map(async (generator) => {
     let manifest = null;
     try {
@@ -450,8 +462,14 @@ async function generatorStatuses({ fresh = false } = {}) {
       ready: true,
       status: downloaded ? "ready" : cachedFiles ? "partial" : "missing",
       downloaded,
+      bytes: folderBytes(sizes, modelUrl(generator)),
       message: downloaded ? "Downloaded." : "Downloads the first time you use it.",
     };
+    // A model that won't fit says so before its download starts.
+    const neededMb = !cachedFiles && MODEL_FAMILIES.find((family) => family.generatorId === generator.id)?.downloadMb;
+    if (neededMb && !fitsInRoom(neededMb * 1e6, room)) {
+      status.spaceShort = { neededMb, freeMb: Math.floor(room.free / 1e6) };
+    }
     if (generator.id === LITE_FAMILY.generatorId && !(await liteOffered(status))) {
       return [generator.id, { ...status, ready: false, message: "Offered on slower devices." }];
     }
@@ -498,7 +516,7 @@ function downloadFamily(statuses) {
 async function scanModels({ fresh = false } = {}) {
   const statuses = await generatorStatuses({ fresh });
   const family = downloadFamily(statuses);
-  const { bytes } = await cachedModelSummary();
+  const [{ bytes }, stemBytes] = await Promise.all([cachedModelSummary(), storedStemBytes()]);
   return {
     schemaVersion: 1,
     scannedAt: Date.now(),
@@ -520,6 +538,7 @@ async function scanModels({ fresh = false } = {}) {
     combinedStatus: Object.values(statuses).some((status) => status.ready) ? "ready" : "missing",
     supportedPlatform: true,
     cachedBytes: bytes,
+    stemBytes,
     message: "Models download into this browser the first time they're used.",
   };
 }
@@ -557,6 +576,7 @@ async function installModels(request = {}) {
     });
   }
   emitInstall({ phase: "complete", percent: 100, message: "Downloaded." });
+  keepModelsStored();
   return { setup: await scanModels({ fresh: true }) };
 }
 
@@ -600,6 +620,35 @@ async function clearBrowserCaches() {
   generatorStatusCache = null;
 }
 
+// Frees room: one family's models ({ packId }: its generator and Inpaint
+// model), or every model and stored separation ({ all: true }). Songs, charts
+// and the audio takes play on stay.
+async function removeModels(request = {}) {
+  const { packId = "", all = false } = plainObject(request);
+  if (all) {
+    await Promise.all([clearModelCache(), removeStoredStems()]);
+  } else {
+    const family = MODEL_FAMILIES.find((item) => item.packId === packId);
+    if (!family) throw new Error("Unknown model.");
+    const ids = [...new Set([family.generatorId, family.inpaintGeneratorId].filter(Boolean))];
+    await Promise.all(ids.map((id) => removeModelFolder(modelUrl(generatorById(id)))));
+  }
+  generatorStatusCache = null;
+  return { setup: await scanModels({ fresh: true }) };
+}
+
+// Asks the browser to keep downloaded models when the device runs low on
+// space, instead of clearing them (and downloading 500 MB again). Chrome
+// decides on its own; Firefox may ask once.
+let keepRequested = false;
+function keepModelsStored() {
+  if (keepRequested || !globalThis.navigator?.storage?.persist) return;
+  keepRequested = true;
+  navigator.storage.persisted()
+    .then((persisted) => (persisted ? true : navigator.storage.persist()))
+    .catch(() => {});
+}
+
 export function createWebBridge() {
   return {
     platform: "web",
@@ -621,6 +670,7 @@ export function createWebBridge() {
       isAvailable: () => true,
       scan: scanModels,
       install: installModels,
+      remove: removeModels,
       clear: clearBrowserCaches,
       onInstallEvent: (callback) => {
         installListeners.add(callback);

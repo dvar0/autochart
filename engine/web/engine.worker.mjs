@@ -75,6 +75,6 @@ if (!isRuntimeThread) self.onmessage = async ({ data }) => {
     const result = await runJob(run, { ...data.job, jobId: id }, post, runtime);
     self.postMessage({ type: "result", id, result });
   } catch (err) {
-    self.postMessage({ type: "error", id, message: String(err?.message || err), stack: String(err?.stack || "") });
+    self.postMessage({ type: "error", id, message: String(err?.message || err), code: err?.code || "", stack: String(err?.stack || "") });
   }
 };

@@ -1471,6 +1471,19 @@ input:focus-visible, select:focus-visible { outline: none; }
 .model-action.settings-secondary { min-height: 34px; padding: 0 14px; font-size: var(--fs-sm); }
 .model-row .settings-secondary { background: var(--surface); }
 .settings-models .install-progress { margin-top: 12px; }
+.model-remove.settings-secondary { width: 34px; min-height: 34px; padding: 0; justify-content: center; }
+.model-remove svg { width: 15px; height: 15px; }
+.model-storage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+.model-storage .settings-secondary { min-height: 34px; padding: 0 14px; gap: 7px; font-size: var(--fs-sm); }
+.model-storage .settings-secondary svg { width: 14px; height: 14px; }
 .perf-modes {
   display: grid;
   gap: 3px;
@@ -6201,6 +6214,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .reused-line .version-badge { width: 20px; height: 20px; font-size: var(--fs-xs); }
 .reused-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reused-name > svg { width: 12px; height: 12px; margin-right: 4px; vertical-align: -2px; }
+.reused-name.is-warn { color: var(--amber-fg); white-space: normal; line-height: 1.4; }
 
 /* More settings popover: hangs off the console's left edge over the stage,
    sized for a quick tweak rather than a page of its own */

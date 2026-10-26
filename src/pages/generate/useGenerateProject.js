@@ -1810,7 +1810,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     } catch (err) {
       // Retain this render's song, media, metadata, and options, even if the
       // controls change before retry. The retry receives a fresh job ID.
-      if (runSettings && retrySource && hardwareMode !== "cpu") {
+      if (runSettings && retrySource && hardwareMode !== "cpu" && err?.code !== "storage_full") {
         cpuRetryRef.current = () => handleGenerate({ hardwareMode: "cpu", settingsSnapshot: runSettings, sourceSnapshot: retrySource });
       }
       setStatusMsg(err.message || "Generation failed");

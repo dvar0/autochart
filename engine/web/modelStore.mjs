@@ -16,6 +16,55 @@ function cacheKey(url) {
   return new URL(url, globalThis.location?.href).href;
 }
 
+// Room the browser gives this site, in bytes: { free, quota, usage }, or null
+// when it won't say. Browsers estimate, so treat it as a guide.
+export async function storageRoom() {
+  try {
+    const { quota, usage } = await globalThis.navigator.storage.estimate();
+    if (!Number.isFinite(quota) || quota <= 0) return null;
+    const used = Number.isFinite(usage) ? usage : 0;
+    return { free: Math.max(0, quota - used), quota, usage: used };
+  } catch {
+    return null;
+  }
+}
+
+function megabytes(bytes) {
+  return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+}
+
+// Thrown when the device has no room for a model. needed and free are bytes
+// (free is null when the browser didn't say).
+export class StorageFullError extends Error {
+  constructor(needed, free) {
+    super(free == null
+      ? "There isn't enough space on this device for the model. Free up space, or remove models in Settings."
+      : `There isn't enough space on this device for the model: it needs ${megabytes(needed)}, about ${megabytes(free)} is free. Free up space, or remove models in Settings.`);
+    this.name = "StorageFullError";
+    this.code = "storage_full";
+    this.needed = needed;
+    this.free = free;
+  }
+}
+
+function isQuotaError(err) {
+  return err?.name === "QuotaExceededError" || err?.code === 22;
+}
+
+// Models take some room beyond their bytes once stored.
+const STORAGE_MARGIN = 1.05;
+
+// Whether bytes fit in a storageRoom() estimate (true when there's none).
+export function fitsInRoom(bytes, room) {
+  return !room || !bytes || bytes * STORAGE_MARGIN <= room.free;
+}
+
+// Throws StorageFullError when bytes won't fit, by the browser's estimate.
+export async function checkStorageRoom(bytes) {
+  const room = await storageRoom();
+  if (!fitsInRoom(bytes, room)) throw new StorageFullError(bytes, room.free);
+}
+
 export async function isCached(url) {
   const cache = await openCache();
   return Boolean(cache && (await cache.match(cacheKey(url))));
@@ -63,8 +112,10 @@ export async function fetchModelFile(url, { onProgress = null } = {}) {
   if (cache) {
     try {
       await cache.put(key, cachedResponse(bytes));
-    } catch {
-      // Out of quota: the run still works, it just downloads again next time.
+    } catch (err) {
+      // Out of room: stop, rather than download it again on every run.
+      if (isQuotaError(err)) throw new StorageFullError(bytes.length, (await storageRoom())?.free ?? null);
+      // Storage unavailable (some private windows): it downloads each time.
     }
   }
   return bytes;
@@ -129,17 +180,15 @@ export function separationFiles(manifest) {
     .map((graph) => graph.file);
 }
 
-// Downloads whatever the folder's manifest needs that isn't cached yet, or
-// only the listed files. onProgress gets { loaded, total, file } in bytes
-// across the missing files.
-export async function ensureModelFiles(manifest, { onProgress = null, only = null } = {}) {
-  const missing = [];
+// The files a model folder still needs (or only the listed ones), with their
+// sizes from the host: { urls, sizes, total }.
+export async function missingModelFiles(manifest, { only = null } = {}) {
+  const urls = [];
   for (const file of only || modelFiles(manifest)) {
     const url = new URL(file, manifest.baseUrl).href;
-    if (!(await isCached(url))) missing.push(url);
+    if (!(await isCached(url))) urls.push(url);
   }
-  if (!missing.length) return { downloaded: 0 };
-  const sizes = await Promise.all(missing.map(async (url) => {
+  const sizes = await Promise.all(urls.map(async (url) => {
     try {
       const head = await fetch(url, { method: "HEAD" });
       return Number(head.headers.get("Content-Length")) || 0;
@@ -147,13 +196,32 @@ export async function ensureModelFiles(manifest, { onProgress = null, only = nul
       return 0;
     }
   }));
-  const total = sizes.reduce((sum, n) => sum + n, 0);
+  return { urls, sizes, total: sizes.reduce((sum, n) => sum + n, 0) };
+}
+
+// Downloads whatever the folder's manifest needs that isn't cached yet, or
+// only the listed files. onProgress gets { loaded, total, file } in bytes
+// across the missing files.
+export async function ensureModelFiles(manifest, { onProgress = null, only = null } = {}) {
+  const { urls: missing, sizes, total } = await missingModelFiles(manifest, { only });
+  if (!missing.length) return { downloaded: 0 };
+  await checkStorageRoom(total);
   let done = 0;
-  for (const [i, url] of missing.entries()) {
-    await fetchModelFile(url, {
-      onProgress: ({ loaded }) => onProgress?.({ loaded: done + loaded, total, file: url.split("/").pop() }),
-    });
-    done += sizes[i];
+  try {
+    for (const [i, url] of missing.entries()) {
+      await fetchModelFile(url, {
+        onProgress: ({ loaded }) => onProgress?.({ loaded: done + loaded, total, file: url.split("/").pop() }),
+      });
+      done += sizes[i];
+    }
+  } catch (err) {
+    // A model that didn't fit gives back the room its other files took: it
+    // can't run without the rest anyway.
+    if (err?.code === "storage_full") {
+      await removeModelFolder(manifest.baseUrl).catch(() => {});
+      throw new StorageFullError(total, err.free);
+    }
+    throw err;
   }
   return { downloaded: missing.length, bytes: total };
 }
@@ -168,21 +236,38 @@ export async function modelFolderStatus(manifest) {
   return { files: files.length, cachedFiles };
 }
 
-// The cached files' total size in bytes, and their URLs.
+// The cached files' total size in bytes, their URLs, and each one's size.
 export async function cachedModelSummary() {
   const cache = await openCache();
-  if (!cache) return { bytes: 0, urls: [] };
+  if (!cache) return { bytes: 0, urls: [], sizes: {} };
   const keys = await cache.keys();
   let bytes = 0;
+  const sizes = {};
   for (const request of keys) {
     const response = await cache.match(request);
-    const length = Number(response?.headers.get("Content-Length"));
-    bytes += Number.isFinite(length) && length > 0 ? length : (await response.clone().blob()).size;
+    if (!response) continue;
+    const length = Number(response.headers.get("Content-Length"));
+    const size = Number.isFinite(length) && length > 0 ? length : (await response.clone().blob()).size;
+    sizes[request.url] = size;
+    bytes += size;
   }
-  return { bytes, urls: keys.map((request) => request.url) };
+  return { bytes, urls: Object.keys(sizes), sizes };
 }
 
+// Removes a model folder's downloaded files (everything cached under it).
+export async function removeModelFolder(folderUrl) {
+  const cache = await openCache();
+  if (!cache) return;
+  const base = cacheKey(folderUrl.endsWith("/") ? folderUrl : `${folderUrl}/`);
+  const keys = await cache.keys();
+  await Promise.all(keys.filter((request) => request.url.startsWith(base)).map((request) => cache.delete(request)));
+}
+
+// Empties the cache rather than deleting it: the engine worker keeps the
+// cache it opened, and files put in a deleted cache are lost.
 export async function clearModelCache() {
-  cachePromise = null;
-  if (globalThis.caches) await caches.delete(CACHE_NAME);
+  const cache = await openCache();
+  if (!cache) return;
+  const keys = await cache.keys();
+  await Promise.all(keys.map((request) => cache.delete(request)));
 }
