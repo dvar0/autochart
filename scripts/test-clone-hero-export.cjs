@@ -62,6 +62,46 @@ async function main() {
       assert.match(exported, /autochart_ai_generated = "true"/);
       assert.match(await ini(), /^charter = Autochart$/m);
     }
+    // The project rides along: autochart.json and the separation's mel tables.
+    const projectFile = await import("../shared/projectFile.js");
+    const melTables = await import("../engine/lib/onnx/melTables.mjs");
+    const tablesDir = path.join(context.cacheFolder, "engine", "features", "x", "stems", "audio_x");
+    await fs.mkdir(tablesDir, { recursive: true });
+    const tablesPath = path.join(tablesDir, melTables.MEL_TABLES_FILE);
+    const mel = new Float32Array(80 * 4).map((_, i) => -i / 8);
+    await fs.writeFile(tablesPath, await melTables.encodeMelTables(melTables.roundMelTables(
+      { drums: { mel, nMels: 80, nFrames: 4 } },
+      { recipe: "transcriber-mel-80", channels: ["drums"], samples: 2048 }
+    )));
+    record.sourceArtifacts = { demucs: { activeId: "demucs_default", items: [{
+      id: "demucs_default", engineId: "demucs_default", sourceVariantKey: "lead-in:0",
+      stems: { drums: { path: path.join(tablesDir, "drums.wav") } },
+      stemSets: { htdemucs: { stems: {}, melTables: { path: tablesPath } } },
+      cache: { workspace: path.dirname(tablesDir) },
+    }] } };
+    record.versions[3].meta = { analysisAudioPath: path.join(root, "nowhere.flac") };
+    await save();
+    await library.exportSongToFolder(context, record.id, dest);
+    const projectText = await fs.readFile(path.join(dest, projectFile.PROJECT_FILE), "utf8");
+    assert(!projectText.includes(root), "autochart.json must not carry this machine's paths");
+    assert.deepEqual(await fs.readFile(path.join(dest, "autochart-tables-htdemucs.bin")), await fs.readFile(tablesPath));
+    assert(await projectFile.tablesFileHeader(await fs.readFile(path.join(dest, "autochart-tables-htdemucs.bin"))));
+    const exportedFile = projectFile.parseProjectFile(projectText);
+    assert.equal(exportedFile.exportedVersionId, "expert");
+    assert.deepEqual(exportedFile.tables, { htdemucs: "autochart-tables-htdemucs.bin" });
+    const chartText = await fs.readFile(path.join(dest, "notes.chart"), "utf8");
+    let restored = await projectFile.restoreProject(exportedFile, chartText);
+    assert.equal(restored.editedChart, false);
+    assert.equal(restored.activeVersionId, "expert");
+    assert.deepEqual(restored.project.versions.map((v) => v.id), ["easy", "medium", "hard", "expert"]);
+    restored = await projectFile.restoreProject(exportedFile, chartText.replace("[ExpertSingle]", "[ExpertSingle] "));
+    assert.equal(restored.editedChart, true, "a notes.chart changed after export comes back as a new take");
+    delete record.sourceArtifacts;
+    delete record.versions[3].meta;
+    await save();
+    await library.exportSongToFolder(context, record.id, dest);
+    await assert.rejects(fs.access(path.join(dest, "autochart-tables-htdemucs.bin")), "a later export drops tables it no longer has");
+
     assert.match(await ini(), /^\[song\]\nname = Untitled\n/);
     assert.match(await ini(), /^artist = Artist name = injected$/m);
     assert.equal((await ini()).match(/^name = /gm).length, 1);
@@ -97,6 +137,13 @@ async function main() {
       await library.exportSongToFolder(context, record.id, dest);
       assert.match(await ini(), /^video = video.webm$/m);
       assert.match(await ini(), /^video_start_time = -2000$/m);
+      const leadIn = await (await import("../shared/projectFile.js")).restoreProject(
+        JSON.parse(await fs.readFile(path.join(dest, "autochart.json"), "utf8")),
+        await fs.readFile(path.join(dest, "notes.chart"), "utf8")
+      );
+      assert.deepEqual(leadIn.project.versions.map((v) => v.id), ["expert"], "only takes on the exported lead-in come back");
+      assert.equal(leadIn.dropped, 3);
+      assert.equal(leadIn.project.versions[0].meta.leadInSilenceMs, 0, "the exported audio already holds the lead-in");
       assert.match(await ini(), /^song_length = 32000$/m);
       await assert.rejects(fs.access(path.join(dest, "background.jpg")));
       const inspected = spawnSync(build.executable, ["-hide_banner", "-i", path.join(dest, "video.webm")], { encoding: "utf8" });

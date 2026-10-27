@@ -1121,6 +1121,39 @@ async function chartForExport(song, versionId) {
   };
 }
 
+// A regular file inside one of the engine cache roots, resolved; "" otherwise.
+async function canonicalCacheFile(filePath, cacheRoots) {
+  if (!filePath) return "";
+  try {
+    const stat = await fs.lstat(filePath);
+    if (stat.isSymbolicLink() || !stat.isFile()) return "";
+    const candidate = await fs.realpath(filePath);
+    for (const cacheRoot of cacheRoots) {
+      try {
+        const canonicalRoot = await fs.realpath(cacheRoot);
+        if (isInsidePath(canonicalRoot, candidate) && canonicalRoot !== candidate) return candidate;
+      } catch {
+        /* unavailable cache root */
+      }
+    }
+  } catch {
+    /* missing cache file */
+  }
+  return "";
+}
+
+// The take's separation as mel tables: [{ name, path }] for the export, so
+// reopening the folder needn't separate the song again. Tables no longer in
+// the cache are left out.
+async function exportTables(song, version, cacheRoots, projectFile) {
+  const tables = [];
+  for (const { stemSet, path: tablesPath } of projectFile.exportableTables(song, version)) {
+    const canonical = await canonicalCacheFile(tablesPath, cacheRoots);
+    if (canonical) tables.push({ stemSet, name: projectFile.tablesFileName(stemSet), path: canonical });
+  }
+  return tables;
+}
+
 function isInsidePath(parent, child) {
   const relative = path.relative(path.resolve(parent), path.resolve(child));
   return relative === "" || (relative && !relative.startsWith("..") && !path.isAbsolute(relative));
@@ -1339,28 +1372,7 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
     legacyCacheFolder ? path.join(legacyCacheFolder, "engine") : "",
     appUserDataPath ? path.join(appUserDataPath, "cache", "engine") : "",
   ].filter(Boolean);
-  let canonicalAnalysisAudio = "";
-  if (analysisAudioPath) {
-    try {
-      const stat = await fs.lstat(analysisAudioPath);
-      if (!stat.isSymbolicLink() && stat.isFile()) {
-        const candidate = await fs.realpath(analysisAudioPath);
-        for (const cacheRoot of engineCacheRoots) {
-          try {
-            const canonicalRoot = await fs.realpath(cacheRoot);
-            if (isInsidePath(canonicalRoot, candidate) && canonicalRoot !== candidate) {
-              canonicalAnalysisAudio = candidate;
-              break;
-            }
-          } catch {
-            /* unavailable cache root */
-          }
-        }
-      }
-    } catch {
-      /* missing analysis cache */
-    }
-  }
+  const canonicalAnalysisAudio = await canonicalCacheFile(analysisAudioPath, engineCacheRoots);
   const hasAnalysisAudio = Boolean(canonicalAnalysisAudio);
   if (leadInSilenceMs > 0 && !hasAnalysisAudio) {
     throw new Error("This chart was generated with lead-in silence, but its padded audio cache is missing. Regenerate the chart before exporting.");
@@ -1386,6 +1398,14 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
   const exportedDurationSec = Number(exportChart.meta?.durationSec) > 0
     ? Number(exportChart.meta.durationSec)
     : Number(song.meta?.durationSec || 0) + leadInSilenceMs / 1000;
+  const projectFile = await import("../shared/projectFile.js");
+  const exportVersion = (song.versions || []).find((v) => v.id === exportChart.versionId) || null;
+  const tables = await exportTables(song, exportVersion, engineCacheRoots, projectFile);
+  const projectJson = await projectFile.buildProjectFile(song, {
+    version: exportVersion,
+    chartText: exportChart.chartText,
+    stemSets: tables.map((table) => table.stemSet),
+  });
   const resolvedDestDir = path.resolve(destDir);
   const parentDir = path.dirname(resolvedDestDir);
   const stageDir = siblingWorkPath(resolvedDestDir, "stage");
@@ -1400,8 +1420,9 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
         // Preserve user-added files, but skip assets this export replaces.
         // YARG resolves names case-insensitively and prefers MIDI over .chart.
         filter: async (source) => {
+          const name = path.basename(source).toLowerCase();
           if (path.dirname(source) !== resolvedDestDir ||
-              !CLONE_HERO_ASSET_SET.has(path.basename(source).toLowerCase())) return true;
+              !(CLONE_HERO_ASSET_SET.has(name) || projectFile.isProjectFileName(name))) return true;
           // A directory with a managed filename may contain user data. As with
           // the previous non-recursive removal, refuse to replace it.
           if ((await fs.lstat(source)).isDirectory()) {
@@ -1433,6 +1454,10 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
     }
     if (backgroundAsset) {
       await writeCloneHeroBackground(backgroundAsset.path, stageDir, bg, exportCacheDir);
+    }
+    await atomicWrite(path.join(stageDir, projectFile.PROJECT_FILE), projectJson);
+    for (const table of tables) {
+      await atomicWrite(path.join(stageDir, table.name), await fs.readFile(table.path));
     }
 
     await syncStagedExport(stageDir);

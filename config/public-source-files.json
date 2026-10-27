@@ -203,6 +203,7 @@
     "shared/chartWriter.js",
     "shared/finalSlots.js",
     "shared/generatedVersion.js",
+    "shared/projectFile.js",
     "src/App.jsx",
     "src/assets/highway/note-cap.png",
     "src/components/DeviceFacts.jsx",

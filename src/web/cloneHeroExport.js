@@ -6,7 +6,8 @@
 
 import { exportChartMetadata } from "../../shared/chartProvenance.js";
 import { decodeAudioFile } from "../../engine/web/audio.mjs";
-import { readStoredAudio } from "../../engine/web/stemStore.mjs";
+import { loadMelTables, readStoredAudio } from "../../engine/web/stemStore.mjs";
+import { buildProjectFile, exportableTables, PROJECT_FILE, tablesFileName } from "../../shared/projectFile.js";
 import { getSongRecord } from "../services/songLibrary.js";
 
 const GAME_AUDIO = new Set(["ogg", "mp3", "opus", "wav"]);
@@ -144,6 +145,17 @@ export async function cloneHeroFiles(songId, versionId = null) {
     ? Number(versionMeta.durationSec)
     : Number(record.meta?.durationSec || 0) + leadInMs / 1000;
   files.push({ name: "song.ini", data: new Blob([buildSongIni({ ...exported.meta, durationSec }, resources)], { type: "text/plain" }) });
+  // The project, and its separation as mel tables, so opening the folder
+  // brings every take back without separating the song again.
+  const stemSets = [];
+  for (const { stemSet, path } of exportableTables(record, version)) {
+    const bytes = path.startsWith("opfs:") ? await loadMelTables(path.slice("opfs:".length)) : null;
+    if (!bytes) continue;
+    stemSets.push(stemSet);
+    files.push({ name: tablesFileName(stemSet), data: new Blob([bytes], { type: "application/octet-stream" }) });
+  }
+  const projectJson = await buildProjectFile(record, { version, chartText: exported.chartText, stemSets });
+  files.push({ name: PROJECT_FILE, data: new Blob([projectJson], { type: "application/json" }) });
   return { record, versionId: version?.id || null, files };
 }
 
