@@ -6655,6 +6655,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .start-feed-wave rect { fill: var(--purple-bri); opacity: .6; }
 .start-feed-wave rect.is-past { opacity: .08; }
 .start-feed-lane { stroke: color-mix(in srgb, var(--text) 8%, transparent); stroke-width: 1.5; }
+.start-feed-edge { stroke: var(--purple-bri); stroke-width: 2; stroke-dasharray: 3 4; opacity: .55; }
 .start-feed-head line { stroke: var(--orange); stroke-width: 3; }
 .start-feed-head rect { fill: var(--orange); stroke: var(--window); stroke-width: 2; }
 .start-feed-wrap .start-highway {

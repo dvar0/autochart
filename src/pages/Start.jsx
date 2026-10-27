@@ -189,9 +189,11 @@ function StartHighway({ hot, startAt }) {
 
 // ---------- the song strip feeding the highway ----------
 
-// The song scrolls past a playhead fixed in the middle; whatever crosses it
-// drops into the highway below as gems. The strip runs TRAVEL_BEATS ahead of
-// the highway, so a loud hit reaches the strikeline as its gem does.
+// The song scrolls past a playhead fixed in the middle, which is the
+// highway's strikeline, as in the editor. TRAVEL_BEATS ahead of it the chart is
+// still being written: audio crossing that charting edge turns into notes,
+// which drop in at the highway's horizon and reach the strikeline as they
+// reach the playhead.
 const FEED_W = 960;
 const FEED_PX_PER_BEAT = 46;
 const FEED_STEP = 0.25; // beats between waveform bars
@@ -229,7 +231,9 @@ function SongFeed({ hot, startAt }) {
     let frame = 0;
     const center = FEED_W / 2;
     const place = (now) => {
-      const songBeat = (Math.max(0, now - startAt) / 1000) / BEAT_SECONDS + TRAVEL_BEATS;
+      const songBeat = (Math.max(0, now - startAt) / 1000) / BEAT_SECONDS;
+      const chartedTo = songBeat + TRAVEL_BEATS;
+      const edge = center + TRAVEL_BEATS * FEED_PX_PER_BEAT;
       const xAt = (beat) => center + (beat - songBeat) * FEED_PX_PER_BEAT;
       const first = Math.ceil((songBeat - center / FEED_PX_PER_BEAT) / FEED_STEP) * FEED_STEP;
       barRefs.current.forEach((node, index) => {
@@ -240,11 +244,11 @@ function SongFeed({ hot, startAt }) {
         node.setAttribute("x", (x - 2).toFixed(2));
         node.setAttribute("y", (FEED_MID - h).toFixed(2));
         node.setAttribute("height", (h * 2).toFixed(2));
-        node.classList.toggle("is-past", x < center);
+        node.classList.toggle("is-past", x < edge);
       });
-      // Behind the playhead the song is charted: its notes sit in the lanes,
-      // each one popping in as it crosses.
-      const charted = feedNotes(songBeat - center / FEED_PX_PER_BEAT - 1, songBeat);
+      // Behind the charting edge the song is charted: its notes sit in the
+      // lanes, each one popping in as it crosses, and dim once played.
+      const charted = feedNotes(songBeat - center / FEED_PX_PER_BEAT - 1, chartedTo);
       noteRefs.current.forEach((node, index) => {
         if (!node) return;
         const note = charted[index];
@@ -253,9 +257,9 @@ function SongFeed({ hot, startAt }) {
           return;
         }
         const [lane, beat] = note;
-        const age = songBeat - beat;
+        const age = chartedTo - beat;
         const pop = Math.min(1, 0.4 + age * 3);
-        node.setAttribute("opacity", "1");
+        node.setAttribute("opacity", beat < songBeat ? "0.35" : "1");
         node.setAttribute("transform", `translate(${xAt(beat).toFixed(2)} ${FEED_LANE_Y[lane]}) scale(${pop.toFixed(3)})`);
         node.style.setProperty("--gem", FRET_COLORS[lane]);
       });
@@ -272,7 +276,7 @@ function SongFeed({ hot, startAt }) {
         label.setAttribute("x", (Math.max(x0, 0) + 8).toFixed(2));
         label.textContent = section[0];
         node.style.setProperty("--sec", FRET_COLORS[section[1]]);
-        node.classList.toggle("is-charted", x0 < center);
+        node.classList.toggle("is-charted", x0 < edge);
       });
       frame = requestAnimationFrame(place);
     };
@@ -317,6 +321,7 @@ function SongFeed({ hot, startAt }) {
           </g>
         ))}
       </g>
+      <line x1={FEED_W / 2 + TRAVEL_BEATS * FEED_PX_PER_BEAT} x2={FEED_W / 2 + TRAVEL_BEATS * FEED_PX_PER_BEAT} y1="28" y2="112" className="start-feed-edge" />
       <g className="start-feed-head">
         <line x1={FEED_W / 2} x2={FEED_W / 2} y1="0" y2="128" />
         <rect x={FEED_W / 2 - 6} y="22.5" width="12" height="9" rx="4.5" />
