@@ -4874,8 +4874,6 @@ video.bg-layer {
   padding: 5px 4px 6px;
   margin: -5px -4px 0;
 }
-.takes-row::-webkit-scrollbar { height: 8px; }
-.takes-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 .take-card {
   flex: 0 0 288px;
   min-width: 0;
@@ -5852,14 +5850,19 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   overflow-y: hidden;
   position: relative;
 }
+.takes-row::-webkit-scrollbar,
 .piano-roll-scroll::-webkit-scrollbar { height: 18px; }
+.takes-row::-webkit-scrollbar-track,
 .piano-roll-scroll::-webkit-scrollbar-track { background: transparent; }
+.takes-row::-webkit-scrollbar-thumb,
 .piano-roll-scroll::-webkit-scrollbar-thumb {
   background: var(--text-faint);
   border: 3px solid transparent;
   background-clip: padding-box;
   border-radius: 99px;
 }
+.takes-row::-webkit-scrollbar-thumb:hover,
+.takes-row::-webkit-scrollbar-thumb:active,
 .piano-roll-scroll::-webkit-scrollbar-thumb:hover,
 .piano-roll-scroll::-webkit-scrollbar-thumb:active { background-color: var(--purple-bri); }
 .piano-roll-content { position: relative; }
