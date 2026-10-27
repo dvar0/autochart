@@ -39,9 +39,25 @@ function laneX(lane, y) {
   return ROAD.width / 2 - half + ((lane + 0.5) * 2 * half) / 5;
 }
 
-// 0 at the horizon, 1 at the strikeline; eased so gems speed up as they near.
-function yAt(progress) {
-  return ROAD.top + (ROAD.strike - ROAD.top) * (progress * 0.55 + progress * progress * 0.45);
+// The road is drawn in perspective: its width shrinks linearly toward a
+// vanishing point above the top edge. Depth is 1 at the strikeline and FAR_DEPTH
+// at the horizon; on-screen size is 1 / depth, so a gem shrinks exactly as its
+// lane does, and moving at a steady depth rate it eases in from the horizon.
+const STRIKE_HALF = halfWidthAt(ROAD.strike);
+const FAR_DEPTH = STRIKE_HALF / ROAD.topHalf;
+
+// Size relative to the strikeline for progress 0 (horizon) to 1 (strikeline).
+function sizeAt(progress) {
+  return 1 / (FAR_DEPTH + (1 - FAR_DEPTH) * progress);
+}
+
+function yForSize(size) {
+  return ROAD.top + ((size * STRIKE_HALF - ROAD.topHalf) * (ROAD.bottom - ROAD.top)) / (ROAD.bottomHalf - ROAD.topHalf);
+}
+
+// Fades a gem or beat line in as it comes over the horizon.
+function horizonFade(progress) {
+  return Math.max(0, Math.min(1, progress / 0.08));
 }
 
 // Loud where the riff has a note, a low rumble in between.
@@ -58,6 +74,7 @@ function waveAmplitude(beat) {
 function StartHighway({ hot, startAt }) {
   const gemRefs = useRef([]);
   const ringRefs = useRef([]);
+  const beatRefs = useRef([]);
   const copies = 2;
 
   useEffect(() => {
@@ -71,16 +88,33 @@ function StartHighway({ hot, startAt }) {
           if (!node) continue;
           const loopBeat = (beat % RIFF_BEATS) + copy * RIFF_BEATS;
           const progress = 1 - (at + RIFF_BEATS - loopBeat) / TRAVEL_BEATS;
-          if (progress < 0 || progress > 1.18) {
+          // Every note is hit: it's gone at the strikeline and its ring flashes.
+          if (progress >= 1 && progress < 1.12) lit[lane] = 1;
+          if (progress < 0 || progress >= 1) {
             node.setAttribute("opacity", "0");
             continue;
           }
-          const y = yAt(progress);
-          const scale = 0.42 + 0.58 * Math.min(1.1, (y - ROAD.top) / (ROAD.strike - ROAD.top));
-          node.setAttribute("transform", `translate(${laneX(lane, y).toFixed(2)} ${y.toFixed(2)}) scale(${scale.toFixed(3)})`);
-          node.setAttribute("opacity", progress > 1 ? String(Math.max(0, 1 - (progress - 1) / 0.18)) : progress < 0.08 ? String(progress / 0.08) : "1");
-          if (progress > 0.97 && progress < 1.08) lit[lane] = 1;
+          const size = sizeAt(progress);
+          const y = yForSize(size);
+          // A flat gem foreshortens more than it narrows as it recedes.
+          const tall = size * (0.55 + 0.45 * size);
+          node.setAttribute("transform", `translate(${laneX(lane, y).toFixed(2)} ${y.toFixed(2)}) scale(${size.toFixed(3)} ${tall.toFixed(3)})`);
+          node.setAttribute("opacity", String(horizonFade(progress)));
         }
+      });
+      // Beat lines ride the road with the gems, one per beat.
+      beatRefs.current.forEach((node, slot) => {
+        if (!node) return;
+        const at = Math.floor(beat) + slot;
+        const progress = 1 - (at - beat) / TRAVEL_BEATS;
+        const y = yForSize(sizeAt(progress));
+        const half = halfWidthAt(y);
+        node.setAttribute("x1", (ROAD.width / 2 - half).toFixed(2));
+        node.setAttribute("x2", (ROAD.width / 2 + half).toFixed(2));
+        node.setAttribute("y1", y.toFixed(2));
+        node.setAttribute("y2", y.toFixed(2));
+        node.setAttribute("opacity", String(horizonFade(progress)));
+        node.classList.toggle("is-bar", at % 4 === 0);
       });
       ringRefs.current.forEach((ring, lane) => ring?.classList.toggle("is-lit", Boolean(lit[lane])));
       frame = requestAnimationFrame(place);
@@ -118,10 +152,9 @@ function StartHighway({ hot, startAt }) {
             className="start-lane-line"
           />
         ))}
-        {[0.18, 0.4, 0.62, 0.84].map((p) => {
-          const y = yAt(p);
-          return <line key={p} x1={cx - halfWidthAt(y)} x2={cx + halfWidthAt(y)} y1={y} y2={y} className="start-beat-line" />;
-        })}
+        {Array.from({ length: TRAVEL_BEATS + 2 }, (_, slot) => (
+          <line key={slot} ref={(node) => { beatRefs.current[slot] = node; }} opacity="0" className="start-beat-line" />
+        ))}
       </g>
       <path d={`M${cx - ROAD.topHalf} ${ROAD.top} L${cx - ROAD.bottomHalf} ${ROAD.bottom}`} className="start-road-edge" />
       <path d={`M${cx + ROAD.topHalf} ${ROAD.top} L${cx + ROAD.bottomHalf} ${ROAD.bottom}`} className="start-road-edge" />

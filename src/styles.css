@@ -6631,6 +6631,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .start-highway { display: block; width: 100%; }
 .start-lane-line { stroke: rgba(255, 255, 255, .12); stroke-width: 1.2; }
 .start-beat-line { stroke: rgba(255, 255, 255, .07); stroke-width: 1.6; }
+.start-beat-line.is-bar { stroke: rgba(255, 255, 255, .16); }
 .start-road-edge { stroke: var(--start-rail); stroke-width: 4; stroke-linecap: round; }
 .start-highway.is-hot .start-road-edge { stroke: var(--purple-bri); }
 .start-ring-glow { fill: var(--gem); opacity: 0; transition: opacity .3s ease-out; }
