@@ -194,3 +194,24 @@ export async function saveImportedSong(result) {
   }
   return saved;
 }
+
+// Imports song folders (from droppedItems.js) one at a time, saving each as
+// it lands, so a stopped or failed run keeps what it finished. Returns the
+// saved projects' ids and titles and why any folder failed.
+export async function importSongFolders(folders, { onProgress, onImported, shouldStop } = {}) {
+  const imported = [];
+  const failed = [];
+  for (const [index, folder] of folders.entries()) {
+    if (shouldStop?.()) break;
+    onProgress?.({ done: index, total: folders.length, name: folder.name });
+    try {
+      const saved = await saveImportedSong(await importSongFolder(folder.files));
+      const project = { id: saved.id, title: saved.meta?.title || folder.name };
+      imported.push(project);
+      onImported?.(project);
+    } catch (error) {
+      failed.push({ name: folder.name || "Song", message: error?.message || String(error) });
+    }
+  }
+  return { imported, failed, stopped: imported.length + failed.length < folders.length };
+}

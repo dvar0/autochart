@@ -491,40 +491,55 @@ input:focus-visible, select:focus-visible { outline: none; }
 .btn-quiet svg { width: 15px; height: 15px; }
 .btn-quiet svg:last-child { width: 12px; height: 12px; color: var(--text-faint); }
 
-/* import dropdown — a true overlay, so it carries shadow */
-.import-wrap { position: relative; }
-.menu-backdrop { position: fixed; inset: 0; z-index: 30; }
-.import-menu {
+/* folder import: drop feedback over the Library, and its progress / Undo notice */
+.library-body { position: relative; }
+.library-drop-veil {
   position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 31;
-  min-width: 260px;
-  display: flex;
-  flex-direction: column;
-  padding: 6px;
+  inset: 10px;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  border: var(--bw) dashed var(--purple);
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--purple-bg) 78%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s;
+}
+.library-drop-veil span { font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 700; color: var(--purple); }
+.library-body.is-drop-hot .library-drop-veil { opacity: 1; }
+.import-notice {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 44px;
+  z-index: 35;
+  width: fit-content;
+  max-width: 560px;
+  margin-inline: auto;
+  padding: 8px 8px 8px 16px;
   background: var(--surface);
   border: 1px solid var(--border-soft);
   border-radius: var(--r-card);
   box-shadow: var(--shadow-pop);
+  font-size: var(--fs-sm);
+  color: var(--text);
   animation: ac-panel-reveal .14s cubic-bezier(.2,.7,.2,1);
 }
-.import-menu-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: left;
-  border: none;
-  background: transparent;
-  border-radius: var(--r-box);
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: .1s;
+.import-notice-row { display: flex; align-items: center; gap: 8px; }
+.import-notice-msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px; }
+.import-notice .btn-quiet { color: var(--purple); font-weight: 600; }
+.import-notice-close {
+  border: none; background: none; cursor: pointer;
+  width: 28px; height: 28px; border-radius: var(--r-box);
+  font-size: 18px; line-height: 1; color: var(--text-faint);
 }
-.import-menu-item:hover { background: var(--purple-bg); }
-.import-menu-item b { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
-.import-menu-item small { font-size: var(--fs-xs); color: var(--text-dim); font-family: var(--font-mono); }
-.import-menu-item:hover b { color: var(--purple); }
+.import-notice-close:hover { color: var(--text); background: var(--surface-2); }
+.import-notice-problems { margin: 6px 8px 2px 0; color: var(--text-dim); }
+.import-notice-problems summary { cursor: pointer; color: var(--red-fg); }
+.import-notice-problems ul { margin: 6px 0 0; padding-left: 18px; max-height: 140px; overflow: auto; }
+.import-notice-problems li { margin: 2px 0; }
+.import-notice-problems b { color: var(--text); font-weight: 600; margin-right: 4px; }
 
 .viewtoggle {
   display: flex; gap: 2px;
@@ -2203,6 +2218,16 @@ input:focus-visible, select:focus-visible { outline: none; }
   border-radius: var(--r-box); padding: 12px 20px; cursor: pointer; transition: .13s;
 }
 .dz-browse svg { width: 17px; height: 17px; }
+.dropzone > .dz-folder {
+  pointer-events: auto;
+  margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  border: none; background: none; padding: 6px 10px; border-radius: var(--r-box);
+  font: 600 var(--fs-sm) var(--font-ui); color: var(--text-dim); cursor: pointer;
+}
+.dropzone > .dz-folder:hover { color: var(--purple); }
+.dropzone > .dz-folder:disabled { opacity: .6; cursor: default; }
+.dz-folder svg { width: 15px; height: 15px; }
+.dz-sub.is-error { color: var(--red-fg); }
 
 /* sparkle decor (brand only) */
 .spark { position: absolute; color: var(--purple-bri); pointer-events: none; opacity: .9; }
@@ -2811,7 +2836,7 @@ video.bg-layer {
 .settings-row .calib { justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) {
   .highway-settings-panel,
-  .import-menu { animation: none; }
+  .import-notice { animation: none; }
 }
 @media (max-width: 760px) {
   .settings-row {

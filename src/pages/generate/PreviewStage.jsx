@@ -5,6 +5,7 @@ import JoinedHighwayCompare from "../../highway/JoinedHighwayCompare.jsx";
 import DensityStrip from "../../highway/DensityStrip.jsx";
 import { activeLyricPhrase, resolveLyricPhrases } from "../../highway/noteFlags.js";
 import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
+import { dragHasFiles, readDrop, songFoldersFromFileList } from "../../services/droppedItems.js";
 import { I } from "../../icons.jsx";
 import { GenerationPreviewStage } from "./LiveGeneration.jsx";
 import { StemSeparationStage } from "./StageAnimations.jsx";
@@ -663,7 +664,7 @@ function DemucsAuditionStage({ project }) {
   );
 }
 
-export default function PreviewStage({ project, ws, highwayRef }) {
+export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolders }) {
   const {
     importedSong,
     background,
@@ -698,6 +699,11 @@ export default function PreviewStage({ project, ws, highwayRef }) {
   const compareCount = regenCompare ? ws.compareCharts.length : selectedCompareVersions.length;
 
   const [dropHot, setDropHot] = useState(false);
+  // An empty project also opens Clone Hero song folders, in its own place.
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderError, setFolderError] = useState("");
+  const folderInputRef = useRef(null);
+  const canOpenFolders = Boolean(onOpenSongFolders) && !sourceAudioFile && !busy;
   const [compareLayout, setCompareLayout] = useState("joined");
   const [comparePlaying, setComparePlaying] = useState(false);
   const [compareProgress, setCompareProgress] = useState({ time: 0, duration: 0 });
@@ -798,11 +804,8 @@ export default function PreviewStage({ project, ws, highwayRef }) {
     comparePreviewRefs.current = comparePreviewRefs.current.slice(0, compareCount);
   }, [compareCount]);
 
-  const dropHasMedia = (e) =>
-    Array.from(e.dataTransfer?.items || []).some((item) => item.kind === "file");
-
   const handleMediaDragOver = (e) => {
-    if (!dropHasMedia(e)) return;
+    if (!dragHasFiles(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     if (!dropHot) setDropHot(true);
@@ -813,11 +816,35 @@ export default function PreviewStage({ project, ws, highwayRef }) {
     setDropHot(false);
   };
 
+  const openSongFolders = async (folders) => {
+    setFolderError("");
+    setFolderBusy(true);
+    try {
+      await onOpenSongFolders(folders);
+    } catch (error) {
+      setFolderError(error?.message || "That folder couldn't be opened.");
+    } finally {
+      setFolderBusy(false);
+    }
+  };
+
   const handleMediaDrop = (e) => {
     e.preventDefault();
     setDropHot(false);
-    const f = e.dataTransfer?.files?.[0];
-    if (f) handleMediaFile(f);
+    if (!canOpenFolders) {
+      const f = e.dataTransfer?.files?.[0];
+      if (f) handleMediaFile(f);
+      return;
+    }
+    if (folderBusy) return;
+    readDrop(e.dataTransfer).then(({ folders, directories, file }) => {
+      if (folders.length) openSongFolders(folders);
+      else if (directories) setFolderError("No Clone Hero song in that folder. It needs a notes.chart and the song's audio.");
+      else if (file) {
+        setFolderError("");
+        handleMediaFile(file);
+      }
+    }).catch(() => setFolderError("That drop couldn't be read."));
   };
 
   const handleCompareLayout = (layout) => {
@@ -980,6 +1007,20 @@ export default function PreviewStage({ project, ws, highwayRef }) {
           onProgress={editing ? ws.onProgress : undefined}
         />
       ) : !track ? (
+        <>
+        <input
+          ref={folderInputRef}
+          type="file"
+          webkitdirectory=""
+          directory=""
+          multiple
+          hidden
+          onChange={(e) => {
+            const folders = songFoldersFromFileList(e.target.files);
+            e.target.value = "";
+            if (folders.length) openSongFolders(folders);
+          }}
+        />
         <label
           className={"dropzone" + (!sourceAudioFile ? " is-empty" : "") + (dropHot ? " hot" : "")}
           onDragOver={handleMediaDragOver}
@@ -1017,17 +1058,34 @@ export default function PreviewStage({ project, ws, highwayRef }) {
           <div className="dz-title">
             {dropHot ? "Drop to import" : sourceAudioFile ? "Media is ready" : "No chart yet"}
           </div>
-          <div className="dz-sub">
-            {sourceAudioFile
+          <div className={"dz-sub" + (folderError ? " is-error" : "")} role={folderError ? "alert" : undefined}>
+            {folderError || (sourceAudioFile
               ? "Generate a chart to preview it."
-              : "Drop a song or music video here, or click to browse."}
+              : canOpenFolders
+                ? "Drop a song, music video or Clone Hero song folder here, or click to browse."
+                : "Drop a song or music video here, or click to browse.")}
           </div>
           {!sourceAudioFile && (
             <span className="dz-browse">
               <I.upload /> Choose Media File
             </span>
           )}
+          {canOpenFolders && (
+            <button
+              type="button"
+              className="dz-folder"
+              disabled={folderBusy}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                folderInputRef.current?.click();
+              }}
+            >
+              <I.folder /> {folderBusy ? "Opening…" : "Open a Clone Hero song folder"}
+            </button>
+          )}
         </label>
+        </>
       ) : (
         <div
           className={`compare-shell compare-shell-${compareLayout}${compareFullscreen ? " is-fullscreen" : ""}`}

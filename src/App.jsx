@@ -5,6 +5,8 @@ import {
   browserHasLocalSongRecords, forgetProject, getSongRecord, hasUnexportedWork, recordToImported,
 } from "./services/songLibrary.js";
 import { subscribeGenerationEvents } from "./services/generation.js";
+import { startBulkImport } from "./services/bulkImport.js";
+import { importSongFolder, saveImportedSong } from "./services/songImport.js";
 import Generate from "./pages/generate/GeneratePage.jsx";
 import Library from "./pages/Library.jsx";
 import Start from "./pages/Start.jsx";
@@ -138,9 +140,37 @@ export default function App() {
     setPage("generate");
   };
 
-  const handleCreateSong = () => {
+  // A new project, optionally started from a song dropped on the Library.
+  const handleCreateSong = (file = null) => {
     const key = crypto.randomUUID();
-    setWorkspace((current) => ({ projects: [...current.projects, { key, songId: null, importedSong: null }], activeProject: key }));
+    setWorkspace((current) => ({ projects: [...current.projects, { key, songId: null, importedSong: null, pendingFile: file }], activeProject: key }));
+    setPage("generate");
+  };
+
+  // Song folders brought into an empty project. One opens in that project's
+  // place; several import into the Library, where the import can be undone,
+  // and the empty project stays as it was.
+  const handleOpenSongFolders = async (key, folders) => {
+    if (folders.length > 1) {
+      if (isWebApp()) throw new Error("That's a folder of songs. Open one song folder at a time here.");
+      setPage("library");
+      startBulkImport(folders).catch((error) => console.warn("[import] Folder import failed:", error));
+      return;
+    }
+    const saved = await saveImportedSong(await importSongFolder(folders[0].files));
+    const data = await recordToImported((await getSongRecord(saved.id)) || saved);
+    // The web holds one song at a time: it opens the way Start opens one.
+    if (isWebApp()) {
+      handleImport(data);
+      return;
+    }
+    setWorkspace((current) => {
+      const rest = current.projects.filter((project) => project.key !== key);
+      const existing = rest.find((project) => project.songId === data.id);
+      if (existing) return { projects: rest, activeProject: existing.key };
+      const next = crypto.randomUUID();
+      return { projects: [...rest, { key: next, songId: data.id, importedSong: data }], activeProject: next };
+    });
     setPage("generate");
   };
 
@@ -224,6 +254,7 @@ export default function App() {
               setPage={setPage}
               onImport={handleImport}
               onCreate={handleCreateSong}
+              openProjectIds={projects.map((project) => project.songId).filter(Boolean)}
               refreshToken={libraryRefresh}
               theme={theme}
               filter={libFilter}
@@ -238,6 +269,7 @@ export default function App() {
               active={page === "generate" && activeProject === project.key}
               importedSong={project.importedSong}
               initialFile={project.pendingFile}
+              onOpenSongFolders={(folders) => handleOpenSongFolders(project.key, folders)}
               onSongTitle={handleSongTitle}
               onSaved={handleLibrarySaved}
               onGeneratedSong={(data) => handleGeneratedSong(project.key, data)}

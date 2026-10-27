@@ -3,13 +3,14 @@ import { I } from "../icons.jsx";
 import { DeviceReadout, UNCHECKED_DEVICE, deviceFact, deviceFromProbe } from "../components/DeviceFacts.jsx";
 import { FRET_COLORS } from "../data/notePalette.js";
 import { MEDIA_ACCEPT } from "../services/mediaMetadata.js";
+import { dragHasFiles, dragLooksLikeFolders, readDrop, songFoldersFromFileList } from "../services/droppedItems.js";
 import { importSongFolder, saveImportedSong } from "../services/songImport.js";
 import { getSongRecord, recordToImported } from "../services/songLibrary.js";
 import { electronHardware } from "../services/runtimeBridge.js";
 
 // The browser version's home: where a project starts. There is no library on
 // the web, so this page is the way in: a new song, or a Clone Hero song folder
-// to keep working on. Above the buttons, a song strip scrolls past a playhead
+// to keep working on, picked or dropped anywhere on the page. Above the buttons, a song strip scrolls past a playhead
 // that feeds a small highway: audio in, chart out. A pill says what this
 // device can do; the model itself downloads with the first song.
 
@@ -419,6 +420,7 @@ function useDeviceState() {
 
 export default function Start({ onSong, onOpenChart, onOpenSettings, confirmCloseSong = () => true }) {
   const [hot, setHot] = useState(false);
+  const [hotFolder, setHotFolder] = useState(false);
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState("");
   const [clockStart] = useState(() => performance.now());
@@ -426,13 +428,13 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
   const folderRef = useRef(null);
   const device = useDeviceState();
 
-  const hasFiles = (event) => Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file");
-
   const handleDragOver = (event) => {
-    if (!hasFiles(event)) return;
+    if (!dragHasFiles(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     if (!hot) setHot(true);
+    const folder = dragLooksLikeFolders(event);
+    if (folder !== hotFolder) setHotFolder(folder);
   };
 
   const handleDragLeave = (event) => {
@@ -440,31 +442,52 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     setHot(false);
   };
 
-  const handleDrop = (event) => {
-    event.preventDefault();
-    setHot(false);
-    const file = event.dataTransfer?.files?.[0];
-    if (file && confirmCloseSong()) onSong(file);
-  };
-
-  const handleFolder = async (event) => {
-    const input = event.target;
-    if (!input.files?.length) return;
-    if (!confirmCloseSong()) {
-      input.value = "";
-      return;
-    }
+  // A folder opens as a Clone Hero song; an Autochart export brings its
+  // takes back with it.
+  const openFolder = async (files) => {
     setOpenError("");
     setOpening(true);
     try {
-      const saved = await saveImportedSong(await importSongFolder(input.files));
+      const saved = await saveImportedSong(await importSongFolder(files));
       onOpenChart(await recordToImported((await getSongRecord(saved.id)) || saved));
     } catch (error) {
       setOpenError(error?.message || "That folder couldn't be opened.");
     } finally {
       setOpening(false);
-      input.value = "";
     }
+  };
+
+  const openSongFolders = (folders, fallback) => {
+    if (folders.length > 1) {
+      setOpenError("That's a folder of songs. Drop one song folder here; the desktop app can import a whole songs folder.");
+      return;
+    }
+    if (!folders.length) {
+      setOpenError(fallback);
+      return;
+    }
+    if (confirmCloseSong()) openFolder(folders[0].files);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setHot(false);
+    if (opening) return;
+    readDrop(event.dataTransfer).then(({ folders, directories, file }) => {
+      if (folders.length || directories) {
+        openSongFolders(folders, "No Clone Hero song in that folder. It needs a notes.chart and the song's audio.");
+      } else if (file && confirmCloseSong()) {
+        setOpenError("");
+        onSong(file);
+      }
+    }).catch(() => setOpenError("That drop couldn't be read. Try Open a Clone Hero song instead."));
+  };
+
+  const handleFolder = (event) => {
+    const input = event.target;
+    const folders = songFoldersFromFileList(input.files);
+    input.value = "";
+    if (folders.length) openSongFolders(folders, "");
   };
 
   const actions = (
@@ -495,7 +518,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
         <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple hidden onChange={handleFolder} />
       </div>
       <p className={"start-hint" + (openError ? " is-error" : "")}>
-        {openError || <><I.shield /> Or drop a song anywhere. It never leaves this device.</>}
+        {openError || <><I.shield /> Or drop a song or song folder anywhere. It never leaves this device.</>}
       </p>
     </>
   );
@@ -520,7 +543,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
           <DesktopNote />
         </div>
       </div>
-      <div className="start-drop-veil" aria-hidden="true"><span>Let go to start</span></div>
+      <div className="start-drop-veil" aria-hidden="true"><span>{hotFolder ? "Let go to open this song" : "Let go to start"}</span></div>
     </div>
   );
 }

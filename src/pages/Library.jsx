@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AlbumArt } from "../components/index.jsx";
 import LibraryFolderPrompt from "../components/LibraryFolderPrompt.jsx";
 import { DIFF } from "../data/difficultyMetadata.js";
@@ -27,7 +27,10 @@ import {
   finalValidationMessage,
 } from "../services/finalChart.js";
 import { exportChart, saveChartToCloneHeroLibrary } from "../services/generation.js";
-import { importSongFolder, saveImportedSong } from "../services/songImport.js";
+import {
+  bulkImportBusy, dismissBulkImport, getBulkImport, startBulkImport, stopBulkImport, subscribeBulkImport, undoBulkImport,
+} from "../services/bulkImport.js";
+import { dragHasFiles, dragLooksLikeFolders, readDrop } from "../services/droppedItems.js";
 import {
   deleteProjectRecord,
   getAllSongRecords,
@@ -467,10 +470,66 @@ function DetailPanel({
   );
 }
 
+// The folder import's progress, then its result with Undo.
+function ImportNotice({ bulk, onStop, onUndo, onDismiss }) {
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const { phase, imported = [], failed = [] } = bulk;
+  let message;
+  if (phase === "running") {
+    message = bulk.stopping
+      ? `Stopping after this song… ${imported.length} imported`
+      : `Importing ${Math.min(bulk.done + 1, bulk.total)} of ${bulk.total}${bulk.name ? ` · ${bulk.name}` : ""}`;
+  } else if (phase === "done") {
+    message = imported.length === 1 ? `Imported “${imported[0].title}”` : `Imported ${plural(imported.length, "song")}`;
+    if (bulk.stopped) message += ` · stopped with ${bulk.total - bulk.done} left`;
+  } else if (phase === "undoing") {
+    message = `Removing ${plural(imported.length, "imported project")}…`;
+  } else {
+    message = `Removed ${plural(bulk.removed, "imported project")}${bulk.disposition === "trash" ? " (moved to Trash)" : ""}`;
+    if (bulk.kept) message += ` · kept ${bulk.kept} that ${bulk.kept === 1 ? "is" : "are"} open`;
+  }
+  const problems = phase === "undone" ? bulk.undoFailed || [] : failed;
+  return (
+    <div className="import-notice" role="status" aria-live="polite">
+      <div className="import-notice-row">
+        <span className="import-notice-msg">{message}</span>
+        {phase === "running" && !bulk.stopping && (
+          <button type="button" className="btn-quiet" onClick={onStop}>Stop</button>
+        )}
+        {phase === "done" && imported.length > 0 && (
+          <button type="button" className="btn-quiet" onClick={onUndo} title="Remove the projects this import created (Ctrl+Z)">
+            Undo
+          </button>
+        )}
+        {(phase === "done" || phase === "undone") && (
+          <button type="button" className="import-notice-close" onClick={onDismiss} aria-label="Dismiss">
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
+      </div>
+      {problems.length > 0 && phase !== "running" && (
+        <details className="import-notice-problems">
+          <summary>
+            {phase === "undone"
+              ? `${plural(problems.length, "project")} couldn't be removed`
+              : `${plural(problems.length, "folder")} couldn't be imported`}
+          </summary>
+          <ul>
+            {problems.map((problem, index) => (
+              <li key={index}><b>{problem.name}</b> {problem.message}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export default function Library({
   setPage,
   onImport,
   onCreate,
+  openProjectIds = [],
   refreshToken = 0,
   theme = "light",
   filter = "all",
@@ -482,13 +541,10 @@ export default function Library({
   const [songs, setSongs] = useState(() => libraryCache?.songs || []);
   const [records, setRecords] = useState(() => libraryCache?.records || []);
   const loaded = Boolean(libraryCache);
-  const [importing, setImporting] = useState(false);
   const [detailAction, setDetailAction] = useState("");
   const libraryFolderGate = useLibraryFolderGate();
-  const [importMenuOpen, setImportMenuOpen] = useState(false);
-  const importMenuRef = useRef(null);
-  const importButtonRef = useRef(null);
-  const importInputRef = useRef(null);
+  const bulk = useSyncExternalStore(subscribeBulkImport, getBulkImport);
+  const [dropHot, setDropHot] = useState("");
   const [importError, setImportError] = useState(null);
   const [statusMsg, setStatusMsg] = useState("");
 
@@ -526,44 +582,72 @@ export default function Library({
     };
   }, [loadLibrary, refreshToken]);
 
-  useEffect(() => {
-    if (!importMenuOpen) return undefined;
-    const firstItem = importMenuRef.current?.querySelector('[role="menuitem"]');
-    firstItem?.focus();
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setImportMenuOpen(false);
-        importButtonRef.current?.focus();
+  // Song folders dropped anywhere on the Library import into it; a song file
+  // starts a new project with it. A folder of song folders imports them all.
+  const handleDragOver = (event) => {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    const next = dragLooksLikeFolders(event) ? "folders" : "file";
+    if (dropHot !== next) setDropHot(next);
+  };
+
+  const handleDragLeave = (event) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setDropHot("");
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setDropHot("");
+    setImportError(null);
+    setStatusMsg("");
+    readDrop(event.dataTransfer).then(({ folders, directories, file }) => {
+      if (folders.length) {
+        if (bulkImportBusy()) setImportError("Songs are still importing. Drop more once they're in.");
+        else startBulkImport(folders).catch((err) => setImportError(err.message || String(err)));
+      } else if (directories) {
+        setImportError("No Clone Hero songs in that folder. Each song needs a notes.chart and its audio.");
+      } else if (file) {
+        onCreate?.(file);
       }
+    }).catch(() => setImportError("That drop couldn't be read."));
+  };
+
+  // Show projects as they land, and pick the first one imported. Coming back
+  // to the Library with an earlier import's notice up leaves the pick alone.
+  const importedCount = bulk?.imported?.length || 0;
+  const firstImportedId = bulk?.imported?.[0]?.id || "";
+  const bulkPhase = bulk?.phase || "";
+  const seenImport = useRef({ count: importedCount, phase: bulkPhase });
+  useEffect(() => {
+    const seen = seenImport.current;
+    if (seen.count === importedCount && seen.phase === bulkPhase) return;
+    seenImport.current = { count: importedCount, phase: bulkPhase };
+    if (!importedCount && bulkPhase !== "undone") return;
+    loadLibrary().then(() => {
+      if (firstImportedId && bulkPhase !== "undone") setSelId(firstImportedId);
+    }).catch(() => {});
+  }, [importedCount, firstImportedId, bulkPhase, loadLibrary]);
+
+  const handleUndoImport = useCallback(() => {
+    undoBulkImport({ keepIds: openProjectIds }).catch((err) => setImportError(err.message || String(err)));
+  }, [openProjectIds]);
+
+  // Ctrl+Z (Cmd+Z) undoes a finished import while its notice is up, unless
+  // a text field has the keyboard.
+  useEffect(() => {
+    if (bulkPhase !== "done" || !importedCount) return undefined;
+    const onKeyDown = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "z") return;
+      const target = event.target;
+      if (target?.closest?.("input, textarea, select, [contenteditable]")) return;
+      event.preventDefault();
+      handleUndoImport();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [importMenuOpen]);
-
-  const handleImportFolder = async (e) => {
-    const input = e.target;
-    const files = input.files;
-    if (!files || !files.length) return;
-    setImportError(null);
-    setStatusMsg("");
-    setImporting(true);
-    try {
-      const result = await importSongFolder(files);
-      const saved = await saveImportedSong(result);
-      await loadLibrary();
-      setSelId(saved.id);
-      const fullRecord = (await getSongRecord(saved.id)) || saved;
-      const payload = await recordToImported(fullRecord);
-      onImport?.(payload);
-      setStatusMsg("Project imported and saved to library.");
-    } catch (err) {
-      setImportError(err.message || String(err));
-    } finally {
-      setImporting(false);
-      input.value = "";
-    }
-  };
+  }, [bulkPhase, importedCount, handleUndoImport]);
 
   const handleToggleFavorite = async (songId) => {
     const current = songs.find((song) => song.id === songId);
@@ -700,11 +784,15 @@ export default function Library({
     return libraryFolderGate.run(() => saveFinalToLibrary(songId), trigger);
   };
 
-  const importBusy = importing;
   const filterNames = { all: "projects", favorites: "favorites" };
 
   return (
-    <div className="ac-body library-body">
+    <div
+      className={"ac-body library-body" + (dropHot ? " is-drop-hot" : "")}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="main">
         <div className="browser-bar">
           <div className="search">
@@ -738,64 +826,13 @@ export default function Library({
               <I.list aria-hidden="true" />
             </button>
           </div>
-          <div className="import-wrap">
-            <button
-              type="button"
-              ref={importButtonRef}
-              className="btn-quiet"
-              onClick={() => setImportMenuOpen((v) => !v)}
-              disabled={importBusy}
-              aria-expanded={importMenuOpen}
-              aria-haspopup="menu"
-              aria-controls="library-import-menu"
-            >
-              <I.inbox aria-hidden="true" /> {importBusy ? "Importing…" : "Import"}
-              <I.chev aria-hidden="true" />
-            </button>
-            {importMenuOpen && (
-              <>
-                <div className="menu-backdrop" onClick={() => setImportMenuOpen(false)} />
-                <div
-                  className="import-menu"
-                  id="library-import-menu"
-                  role="menu"
-                  ref={importMenuRef}
-                  aria-label="Import project"
-                >
-                  <button
-                    type="button"
-                    className="import-menu-item"
-                    role="menuitem"
-                    title="Import an existing Clone Hero song folder"
-                    onClick={() => {
-                      importInputRef.current?.click();
-                      setImportMenuOpen(false);
-                    }}
-                  >
-                    <b>Clone Hero folder</b>
-                    <small>song.ini + notes.chart + audio</small>
-                  </button>
-                </div>
-              </>
-            )}
-            <input
-              ref={importInputRef}
-              type="file"
-              webkitdirectory=""
-              directory=""
-              multiple
-              onChange={(e) => {
-                setImportMenuOpen(false);
-                handleImportFolder(e);
-              }}
-              style={{ display: "none" }}
-            />
-            </div>
           <button
+            type="button"
             className="btn-primary"
-            onClick={onCreate || (() => setPage("generate"))}
+            onClick={() => (onCreate ? onCreate() : setPage("generate"))}
+            title="Start from a song, or open a Clone Hero song folder. You can also drop either onto the Library."
           >
-            <I.plus /> Create project
+            <I.plus /> New project
           </button>
         </div>
 
@@ -811,7 +848,7 @@ export default function Library({
                   ? `Nothing matches “${query.trim()}”.`
                   : filter === "favorites"
                     ? "You haven't starred any projects yet."
-                    : "Nothing here yet. Import a folder or create a project."}
+                    : "Nothing here yet. Start a new project, or drop Clone Hero song folders here."}
               </div>
             </div>
           ) : (
@@ -885,6 +922,10 @@ export default function Library({
         />
       )}
       <LibraryFolderPrompt gate={libraryFolderGate} onOpenSettings={() => setPage?.("settings")} />
+      {bulk && <ImportNotice bulk={bulk} onStop={stopBulkImport} onUndo={handleUndoImport} onDismiss={dismissBulkImport} />}
+      <div className="library-drop-veil" aria-hidden="true">
+        <span>{dropHot === "folders" ? "Drop to import these songs" : "Drop to start a project with this song"}</span>
+      </div>
     </div>
   );
 }

@@ -20,7 +20,7 @@ import { targetLabel } from "../../data/supportedTargets.js";
 // deck; Inpaint and Edit swap them for the editor panel and the song map +
 // piano roll. The stage stays put through every switch: one highway, one
 // playhead.
-export default function GeneratePage({ importedSong, initialFile = null, onSongTitle, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange }) {
+export default function GeneratePage({ importedSong, initialFile = null, onOpenSongFolders, onSongTitle, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange }) {
   const project = useGenerateProject({ importedSong, onSaved, onGeneratedSong, onProjectIdentified, visible: active });
   const highwayRef = useRef(null);
   const ws = useEditWorkspace(project, highwayRef, active);
@@ -85,7 +85,7 @@ export default function GeneratePage({ importedSong, initialFile = null, onSongT
       <div className="main" style={{ padding: 0 }}>
         <div className={"gen-screen" + (editing ? " is-editing" : "")} data-tab={project.workTab}>
           <ProjectBar project={project} />
-          <PreviewStage project={project} ws={ws} highwayRef={highwayRef} />
+          <PreviewStage project={project} ws={ws} highwayRef={highwayRef} onOpenSongFolders={onOpenSongFolders} />
           {editing ? (
             <>
               <EditTimeline project={project} ws={ws} />

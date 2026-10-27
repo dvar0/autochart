@@ -97,7 +97,7 @@ export default function Console({ project }) {
               <span className="step-num">1</span>
               <div>
                 <b>Add media</b>
-                <small>Drop a song or video on the stage.</small>
+                <small>Drop a song, video or song folder on the stage.</small>
               </div>
             </li>
             <li className="console-step">
