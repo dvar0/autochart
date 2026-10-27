@@ -28,6 +28,7 @@ No conventional test framework, linter, or formatter is configured. Custom Node 
 
 - **`src/`** — React 18 SPA (JSX, no TypeScript, no router). Page state is manual (`useState` in `App.jsx`). In Electron, `src/services/` talks to the main process through the preload bridge (`window.autochart`); in a plain browser it uses IndexedDB/localStorage-backed preview storage for UI development, without chart generation or native filesystem export.
 - **`src/data/difficultyMetadata.js`** — shared difficulty metadata used by library and generation surfaces.
+- **`src/lib/coverArt/`** — seeded generated covers for projects without album art (six print styles, drawn in an inlined worker pool via `useCoverArt`); the same title and artist always produce the same cover.
 - **`electron/`** — CommonJS (`.cjs`). Entry: `electron/main.cjs`. `electron/hostContext.cjs` is the settings/library context factory. Loads the Vite dev server in dev, `dist/index.html` in production.
 - **`engine/`** — versioned chart-generation engine pack contract. `engine/manifest.json` advertises generators; `electron/engineManager.cjs` runs jobs via the job/result/event JSON contract and loads results.
 - **`engine/lib/chartTiming.mjs`** — `.chart` tempo-map reading: the imported-chart-sync beat grid and the generated-chart timing stats.

@@ -15,6 +15,7 @@ import {
   tintIsDark,
 } from "../lib/coverColor.js";
 import { I } from "../icons.jsx";
+import useCoverArt from "../hooks/useCoverArt.js";
 import useLibraryFolderGate, { isMissingLibraryFolderError } from "../hooks/useLibraryFolderGate.js";
 import {
   FINAL_ARRANGEMENT_ID,
@@ -53,12 +54,13 @@ let libraryCache = null;
 const CARD_SURFACE = { light: "#f7f7ff", dark: "#313a52" };
 const SLOT_LETTERS = { easy: "E", medium: "M", hard: "H", expert: "X" };
 
-// Resolve a song's accent color: the generated palette's vivid shape color is
-// always available immediately; a real cover image upgrades to its sampled
-// dominant color once extracted (cached, so it's instant on later renders).
+// Resolve a song's accent color: a real cover image gives its sampled dominant
+// color once extracted (cached, so it's instant on later renders); a song
+// without one uses its generated cover's main ink once that has drawn.
 // Also reports whether the tinted card is dark, so text picks readable ink.
 function useAccent(song, theme = "light") {
-  const fallback = song.art?.shape || "#6860b5";
+  const generated = useCoverArt(song.cover ? null : song.artSeed);
+  const fallback = generated?.accent || "#6860b5";
   // Store the raw extracted/palette color; normalize per theme below so a theme
   // toggle re-tames the accent without re-sampling the cover.
   const [raw, setRaw] = useState(
@@ -106,7 +108,7 @@ function Cover({ song, showLabel }) {
       </div>
     );
   }
-  return <AlbumArt art={song.art} label={song.artist} showLabel={showLabel} />;
+  return <AlbumArt seed={song.artSeed} label={song.artist} showLabel={showLabel} />;
 }
 
 function fmtProjectDate(value) {

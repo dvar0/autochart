@@ -2,6 +2,7 @@
 
 import { parseChart } from "../lib/chart/parseChart.js";
 import { buildPlayableTrack } from "../lib/chart/tempoMap.js";
+import { coverArtSeed } from "../lib/coverArt/render.js";
 import {
   createSongFromImport,
   mergeSongRecord,
@@ -337,33 +338,6 @@ function fmtDuration(sec) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-const ART_STYLES = [
-  "neon", "horizon", "burst",
-  "mesh", "beam", "prism", "orbit", "peak", "grid", "arc", "comet",
-  "wave", "aurora", "hex", "flare", "strata", "diamond",
-];
-const ART_PALETTES = [
-  { bg: ["#3a1418", "#0d0608"], shape: "#c0392b" },
-  { bg: ["#101820", "#1c2733"], shape: "#3a8ee6" },
-  { bg: ["#1a1230", "#0c0818"], shape: "#9b59b6" },
-  { bg: ["#12241c", "#06120c"], shape: "#21d07a" },
-  { bg: ["#2a2410", "#120e04"], shape: "#f2c531" },
-  { bg: ["#2a1810", "#120a04"], shape: "#f08a3c" },
-  { bg: ["#0a2628", "#04161a"], shape: "#2ad1c4" },
-  { bg: ["#2a0a24", "#160412"], shape: "#e64986" },
-  { bg: ["#0e1230", "#06081a"], shape: "#6c7ae0" },
-  { bg: ["#1c2a0a", "#101804"], shape: "#a8d63a" },
-];
-
-function artFor(text) {
-  let h = 0;
-  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
-  return {
-    ...ART_PALETTES[h % ART_PALETTES.length],
-    style: ART_STYLES[(h >> 3) % ART_STYLES.length],
-  };
-}
-
 const assetUrlCache = new Map();
 
 function cacheKey(id, kind, fileName = "") {
@@ -425,7 +399,7 @@ export async function recordToCard(rec) {
     fav: Boolean(r.meta?.favorite),
     diff: s.difficulty || "expert",
     style: s.style || "default",
-    art: artFor((m.title || "") + (m.artist || "")),
+    artSeed: coverArtSeed(m.title, m.artist),
     cover: await resolveCoverUrl(r),
     imported: true,
     source: r.source,
