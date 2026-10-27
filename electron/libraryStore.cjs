@@ -996,27 +996,39 @@ function runFfmpeg(args) {
   });
 }
 
-async function writeCloneHeroAudio(src, destDir, sourceFileName, cacheDir) {
+async function writeCloneHeroAudio(src, destDir, sourceFileName, cacheDir, leadInSilenceMs = 0) {
   const destName = cloneHeroAudioName();
   const dest = path.join(destDir, destName);
-  if (isOggAudioAsset(sourceFileName)) {
+  if (isOggAudioAsset(sourceFileName) && !leadInSilenceMs) {
     await fs.copyFile(src, dest, COPYFILE_FICLONE);
     return;
   }
-  const cachePath = await cachePathForSource(cacheDir, src, "song", ".ogg", "ogg-vorbis-q5-v1");
+  // Lead-in silence goes in front the way the engine pads its analysis audio
+  // (engineManager.cjs applySourceTransform), with the bundled FFmpeg's filters.
+  const audio = leadInSilenceMs
+    ? [
+        "-filter_complex",
+        `anullsrc=channel_layout=stereo:sample_rate=48000:d=${leadInSilenceMs / 1000}[s];` +
+          "[0:a:0]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS[a];[s][a]concat=n=2:v=0:a=1[out]",
+        "-map",
+        "[out]",
+      ]
+    : ["-map", "0:a:0", "-vn"];
+  const variant = leadInSilenceMs ? `-lead-in-${leadInSilenceMs}` : "";
+  const cachePath = await cachePathForSource(cacheDir, src, "song", ".ogg", `ogg-vorbis-q5-v1${variant}`);
   try {
     await copyCachedOrTranscode({
       cachePath,
       dest,
-      args: ["-y", "-i", src, "-map", "0:a:0", "-vn", "-c:a", "libvorbis", "-q:a", "5"],
+      args: ["-y", "-i", src, ...audio, "-c:a", "libvorbis", "-q:a", "5"],
     });
   } catch (err) {
     if (!/Unknown encoder 'libvorbis'|Encoder not found/i.test(String(err?.stderr || err?.message || ""))) throw err;
-    const fallbackCachePath = await cachePathForSource(cacheDir, src, "song", ".ogg", "ogg-vorbis-native-q5-v1");
+    const fallbackCachePath = await cachePathForSource(cacheDir, src, "song", ".ogg", `ogg-vorbis-native-q5-v1${variant}`);
     await copyCachedOrTranscode({
       cachePath: fallbackCachePath,
       dest,
-      args: ["-y", "-i", src, "-map", "0:a:0", "-vn", "-ac", "2", "-c:a", "vorbis", "-strict", "-2", "-q:a", "5"],
+      args: ["-y", "-i", src, ...audio, "-ac", "2", "-c:a", "vorbis", "-strict", "-2", "-q:a", "5"],
     });
   }
 }
@@ -1357,7 +1369,13 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
   const exportChart = await chartForExport(song, options.versionId);
   const bg = song.assets?.background;
   const backgroundName = bg?.file ? cloneHeroBackgroundName(bg) : "";
-  const leadInSilenceMs = Number(exportChart.meta?.leadInSilenceMs || 0) || 0;
+  const projectFile = await import("../shared/projectFile.js");
+  const exportVersion = (song.versions || []).find((v) => v.id === exportChart.versionId) || null;
+  // The audio holds the longest lead-in any take was charted with, so the
+  // project file can bring every take back; this take moves later by the rest.
+  const takeLeadInMs = projectFile.versionLeadInMs(exportVersion || { meta: exportChart.meta });
+  const leadInSilenceMs = projectFile.audioLeadInMs(song, exportVersion || { meta: exportChart.meta });
+  const chartText = projectFile.delayChart(exportChart.chartText, leadInSilenceMs - takeLeadInMs).chartText;
   const analysisAudioPath = String(exportChart.meta?.analysisAudioPath || "");
   const configuredCacheFolder =
     userDataPath && typeof userDataPath === "object"
@@ -1372,15 +1390,17 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
     legacyCacheFolder ? path.join(legacyCacheFolder, "engine") : "",
     appUserDataPath ? path.join(appUserDataPath, "cache", "engine") : "",
   ].filter(Boolean);
-  const canonicalAnalysisAudio = await canonicalCacheFile(analysisAudioPath, engineCacheRoots);
-  const hasAnalysisAudio = Boolean(canonicalAnalysisAudio);
-  if (leadInSilenceMs > 0 && !hasAnalysisAudio) {
-    throw new Error("This chart was generated with lead-in silence, but its padded audio cache is missing. Regenerate the chart before exporting.");
-  }
-  const audioAsset = !hasAnalysisAudio && song.assets?.audio
+  // The engine's analysis copy of the take's audio when it holds the export's
+  // lead-in; otherwise (a take with less, or the copy left the cache) the
+  // song's own audio, padded here.
+  const canonicalAnalysisAudio = takeLeadInMs === leadInSilenceMs
+    ? await canonicalCacheFile(analysisAudioPath, engineCacheRoots)
+    : "";
+  const audioAsset = !canonicalAnalysisAudio && song.assets?.audio
     ? await canonicalProjectFile(internalDir, song.assets.audio, "audio asset")
     : null;
-  const audioSourcePath = hasAnalysisAudio ? canonicalAnalysisAudio : audioAsset?.path || "";
+  const audioSourcePath = canonicalAnalysisAudio || audioAsset?.path || "";
+  const padAudioMs = canonicalAnalysisAudio ? 0 : leadInSilenceMs;
   if (!audioSourcePath) throw new Error("Add song audio before exporting to Clone Hero / YARG.");
   const albumAsset = song.assets?.albumArt
     ? await canonicalProjectFile(internalDir, song.assets.albumArt, "album asset")
@@ -1396,14 +1416,12 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
     videoStartTime: bg?.type === "video" && leadInSilenceMs > 0 ? -leadInSilenceMs : 0,
   };
   const exportedDurationSec = Number(exportChart.meta?.durationSec) > 0
-    ? Number(exportChart.meta.durationSec)
+    ? Number(exportChart.meta.durationSec) + (leadInSilenceMs - takeLeadInMs) / 1000
     : Number(song.meta?.durationSec || 0) + leadInSilenceMs / 1000;
-  const projectFile = await import("../shared/projectFile.js");
-  const exportVersion = (song.versions || []).find((v) => v.id === exportChart.versionId) || null;
   const tables = await exportTables(song, exportVersion, engineCacheRoots, projectFile);
   const projectJson = await projectFile.buildProjectFile(song, {
     version: exportVersion,
-    chartText: exportChart.chartText,
+    chartText,
     stemSets: tables.map((table) => table.stemSet),
   });
   const resolvedDestDir = path.resolve(destDir);
@@ -1440,14 +1458,14 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
     } else {
       await fs.mkdir(stageDir);
     }
-    await atomicWrite(path.join(stageDir, "notes.chart"), exportChart.chartText);
+    await atomicWrite(path.join(stageDir, "notes.chart"), chartText);
     await atomicWrite(
       path.join(stageDir, "song.ini"),
       buildSongIni({ ...exportChart.songMeta, durationSec: exportedDurationSec }, exportChart.settings, iniResources)
     );
 
     if (audioSourcePath) {
-      await writeCloneHeroAudio(audioSourcePath, stageDir, path.basename(audioSourcePath), exportCacheDir);
+      await writeCloneHeroAudio(audioSourcePath, stageDir, path.basename(audioSourcePath), exportCacheDir, padAudioMs);
     }
     if (albumAsset) {
       await writeCloneHeroImage(albumAsset.path, path.join(stageDir, cloneHeroAlbumName(albumAsset.name)), exportCacheDir);

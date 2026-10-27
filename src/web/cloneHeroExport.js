@@ -6,8 +6,10 @@
 
 import { exportChartMetadata } from "../../shared/chartProvenance.js";
 import { decodeAudioFile } from "../../engine/web/audio.mjs";
-import { loadMelTables, readStoredAudio } from "../../engine/web/stemStore.mjs";
-import { buildProjectFile, exportableTables, PROJECT_FILE, tablesFileName } from "../../shared/projectFile.js";
+import { loadMelTables } from "../../engine/web/stemStore.mjs";
+import {
+  audioLeadInMs, buildProjectFile, delayChart, exportableTables, PROJECT_FILE, tablesFileName, versionLeadInMs,
+} from "../../shared/projectFile.js";
 import { getSongRecord } from "../services/songLibrary.js";
 
 const GAME_AUDIO = new Set(["ogg", "mp3", "opus", "wav"]);
@@ -87,21 +89,25 @@ function wavFromDecoded({ left, right, sampleRate }) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-async function songAudio(record, exportMeta) {
-  const leadInMs = Number(exportMeta.leadInSilenceMs || 0) || 0;
-  if (leadInMs > 0) {
-    // The chart is timed against the padded audio it was generated from.
-    try {
-      return { name: "song.wav", data: new Blob([await readStoredAudio(exportMeta.analysisAudioPath)], { type: "audio/wav" }) };
-    } catch {
-      throw new Error("This chart was generated with lead-in silence, but its padded audio is no longer stored in this browser. Regenerate the chart before exporting.");
-    }
-  }
+// Lead-in silence goes in front of the song's own audio, so the padded copy a
+// run stored in this browser isn't needed (it may have been cleared).
+function withLeadIn({ left, right, sampleRate }, leadInMs) {
+  const pad = Math.round((leadInMs / 1000) * sampleRate);
+  const padded = (channel) => {
+    const out = new Float32Array(pad + channel.length);
+    out.set(channel, pad);
+    return out;
+  };
+  return { left: padded(left), right: right === left ? padded(left) : padded(right), sampleRate };
+}
+
+async function songAudio(record, leadInMs) {
   const blob = record._blobs?.audio;
   if (!blob) throw new Error("Add song audio before exporting to Clone Hero / YARG.");
   const ext = extOf(record.assets?.audio || blob.name, blob.type);
-  if (GAME_AUDIO.has(ext)) return { name: `song.${ext}`, data: blob };
-  return { name: "song.wav", data: wavFromDecoded(await decodeAudioFile(await blob.arrayBuffer())) };
+  if (!leadInMs && GAME_AUDIO.has(ext)) return { name: `song.${ext}`, data: blob };
+  const decoded = await decodeAudioFile(await blob.arrayBuffer());
+  return { name: "song.wav", data: wavFromDecoded(leadInMs ? withLeadIn(decoded, leadInMs) : decoded) };
 }
 
 // The files of a song's Clone Hero folder for one chart version.
@@ -116,10 +122,14 @@ export async function cloneHeroFiles(songId, versionId = null) {
   if (!chartText) throw new Error("Selected chart version has no notes.chart data.");
   const exported = exportChartMetadata(version || { ...record, chart: { text: chartText } }, record.meta, versions);
   const versionMeta = version?.meta || {};
-  const leadInMs = Number(versionMeta.leadInSilenceMs || 0) || 0;
+  // The audio holds the longest lead-in any take was charted with, so the
+  // project file can bring every take back; this take moves later by the rest.
+  const takeLeadInMs = versionLeadInMs(version);
+  const leadInMs = audioLeadInMs(record, version);
+  const exportedChartText = delayChart(exported.chartText, leadInMs - takeLeadInMs).chartText;
 
-  const files = [{ name: "notes.chart", data: new Blob([exported.chartText], { type: "text/plain" }) }];
-  files.push(await songAudio(record, versionMeta));
+  const files = [{ name: "notes.chart", data: new Blob([exportedChartText], { type: "text/plain" }) }];
+  files.push(await songAudio(record, leadInMs));
   const album = record._blobs?.albumArt;
   if (album) {
     const ext = extOf(record.assets?.albumArt || album.name, album.type);
@@ -142,7 +152,7 @@ export async function cloneHeroFiles(songId, versionId = null) {
     }
   }
   const durationSec = Number(versionMeta.durationSec) > 0
-    ? Number(versionMeta.durationSec)
+    ? Number(versionMeta.durationSec) + (leadInMs - takeLeadInMs) / 1000
     : Number(record.meta?.durationSec || 0) + leadInMs / 1000;
   files.push({ name: "song.ini", data: new Blob([buildSongIni({ ...exported.meta, durationSec }, resources)], { type: "text/plain" }) });
   // The project, and its separation as mel tables, so opening the folder
@@ -154,7 +164,7 @@ export async function cloneHeroFiles(songId, versionId = null) {
     stemSets.push(stemSet);
     files.push({ name: tablesFileName(stemSet), data: new Blob([bytes], { type: "application/octet-stream" }) });
   }
-  const projectJson = await buildProjectFile(record, { version, chartText: exported.chartText, stemSets });
+  const projectJson = await buildProjectFile(record, { version, chartText: exportedChartText, stemSets });
   files.push({ name: PROJECT_FILE, data: new Blob([projectJson], { type: "application/json" }) });
   return { record, versionId: version?.id || null, files };
 }

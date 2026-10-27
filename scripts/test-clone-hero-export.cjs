@@ -141,9 +141,12 @@ async function main() {
         JSON.parse(await fs.readFile(path.join(dest, "autochart.json"), "utf8")),
         await fs.readFile(path.join(dest, "notes.chart"), "utf8")
       );
-      assert.deepEqual(leadIn.project.versions.map((v) => v.id), ["expert"], "only takes on the exported lead-in come back");
-      assert.equal(leadIn.dropped, 3);
-      assert.equal(leadIn.project.versions[0].meta.leadInSilenceMs, 0, "the exported audio already holds the lead-in");
+      assert.deepEqual(leadIn.project.versions.map((v) => v.id), ["easy", "medium", "hard", "expert"], "every take comes back on the exported audio");
+      assert.equal(leadIn.dropped, 0);
+      assert(leadIn.project.versions.every((v) => v.meta.leadInSilenceMs === 0 && v.meta.sourceVariantKey === "lead-in:0"), "the exported audio already holds the lead-in");
+      assert.equal(leadIn.project.versions[3].chart.text, record.versions[3].chart.text, "the take on the exported lead-in is unchanged");
+      assert.equal(leadIn.project.versions[0].chart.text, projectFile.delayChart(record.versions[0].chart.text, 2000).chartText, "takes without it move later by it");
+      assert.equal(leadIn.project.chart.text, leadIn.project.versions[0].chart.text, "the project's own chart moves with its take");
       assert.match(await ini(), /^song_length = 32000$/m);
       await assert.rejects(fs.access(path.join(dest, "background.jpg")));
       const inspected = spawnSync(build.executable, ["-hide_banner", "-i", path.join(dest, "video.webm")], { encoding: "utf8" });
@@ -168,6 +171,46 @@ async function main() {
       }
       assert.deepEqual(await fs.readFile(path.join(dest, "video.webm")), exportedVideo, "cached export must retain the converted video");
     }
+
+    // A take charted without the project's longest lead-in exports on audio
+    // that has it, moved later by it, so its folder still brings every take back.
+    record.versions[1].editHistory = {
+      redos: [{ id: "redo_a", region: { startTick: 192, endTick: 576 }, original: "192,0,96 384,2,0", takes: ["192,1,0"], seams: [0] }],
+      touched: [384],
+      runs: [],
+    };
+    await save();
+    await library.exportSongToFolder(context, record.id, dest, { versionId: "easy" });
+    const easyChart = await fs.readFile(path.join(dest, "notes.chart"), "utf8");
+    const { parseChart } = await import("../src/lib/chart/parseChart.js");
+    const { buildPlayableTrack } = await import("../src/lib/chart/tempoMap.js");
+    const noteTimes = (text) => buildPlayableTrack(parseChart(text), "easy").notes.map((note) => note.time);
+    const originalTimes = noteTimes(record.versions[0].chart.text);
+    assert.equal(noteTimes(easyChart).length, originalTimes.length);
+    noteTimes(easyChart).forEach((time, i) => assert(Math.abs(time - originalTimes[i] - 2) < 1e-6, "notes move later by exactly the lead-in"));
+    assert.match(await ini(), /^video_start_time = -2000$/m);
+    assert.match(await ini(), /^song_length = 32000$/m);
+    const easyPcm = run(["-i", path.join(dest, "song.ogg"), "-ar", "22050", "-ac", "1", "-f", "f32le", "pipe:1"]);
+    assert(Math.abs(easyPcm.length / 4 / 22050 - 32) < 0.1, "the audio holds the project's longest lead-in");
+    assert(easyPcm.subarray(0, 22050 * 4).every((byte) => byte === 0));
+    const easyFile = projectFile.parseProjectFile(await fs.readFile(path.join(dest, projectFile.PROJECT_FILE), "utf8"));
+    assert.equal(easyFile.leadInSilenceMs, 2000);
+    const easyRestore = await projectFile.restoreProject(easyFile, easyChart);
+    assert.equal(easyRestore.editedChart, false);
+    assert.equal(easyRestore.activeVersionId, "easy");
+    assert.deepEqual(easyRestore.project.versions.map((v) => v.id), ["easy", "medium", "hard", "expert"]);
+    assert.deepEqual(easyRestore.project.versions[1].editHistory.redos[0].region, { startTick: 960, endTick: 1344 }, "Inpaint areas move with the take");
+    assert.equal(easyRestore.project.versions[1].editHistory.redos[0].original, "960,0,96 1152,2,0");
+    assert.deepEqual(easyRestore.project.versions[1].editHistory.redos[0].takes, ["960,1,0"]);
+    assert.deepEqual(easyRestore.project.versions[1].editHistory.touched, [1152]);
+    // Exports made before every take fit the audio: a take with more lead-in
+    // than the audio holds can't come back.
+    const older = await projectFile.restoreProject({ ...easyFile, leadInSilenceMs: 1000 }, easyChart);
+    assert.deepEqual(older.project.versions.map((v) => v.id), ["easy", "medium", "hard"]);
+    assert.equal(older.dropped, 1);
+    assert.equal(older.project.versions[0].chart.text, projectFile.delayChart(record.versions[0].chart.text, 1000).chartText);
+    delete record.versions[1].editHistory;
+    await save();
 
     // Keep custom files (including nested managed names), remove competing root
     // assets, and don't read/copy the old media just to discard it afterward.
@@ -278,7 +321,7 @@ async function main() {
     await save();
     await assert.rejects(library.exportSongToFolder(context, record.id, dest), /Add song audio/);
     assert.equal(await ini(), before);
-    console.log("Clone Hero export: four difficulties, metadata/audio, GIF/WebP, VP9/AV1 (8/10-bit) to VP8, cached video, padded timing and failed-conversion preservation passed.");
+    console.log("Clone Hero export: four difficulties, metadata/audio, GIF/WebP, VP9/AV1 (8/10-bit) to VP8, cached video, padded timing, lead-in project restore and failed-conversion preservation passed.");
   } finally {
     if (previousFfmpeg == null) delete process.env.AUTOCHART_FFMPEG_PATH;
     else process.env.AUTOCHART_FFMPEG_PATH = previousFfmpeg;

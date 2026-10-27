@@ -5,6 +5,9 @@
 // export (CommonJS dynamic import), the browser export and the folder import.
 // Kept dependency-free.
 
+import { delayChart } from "./chartDelay.js";
+
+export { delayChart };
 export const PROJECT_FILE = "autochart.json";
 const FORMAT = "autochart-project";
 const VERSION = 1;
@@ -75,14 +78,26 @@ export function versionLeadInMs(version = null) {
   return leadInMs(String(key).match(/^lead-in:(\d+)$/)?.[1]);
 }
 
+// The lead-in silence an export's audio holds: the longest any take of the
+// project was charted with, so every take fits it (restoreProject moves the
+// others later by the difference). The exported take moves by
+// audioLeadInMs - versionLeadInMs(version).
+export function audioLeadInMs(record, version = null) {
+  const versions = Array.isArray(record?.versions) ? record.versions.filter(Boolean) : [];
+  return Math.max(versionLeadInMs(version), ...versions.map((v) => versionLeadInMs(v)));
+}
+
 // The separation a take was charted from: its record item, else the
-// project's active one for the take's lead-in.
-export function separationForVersion(record, version) {
+// project's active one for the take's lead-in. leadIn picks the separation of
+// another lead-in's audio instead (the take's own pick only counts on its own).
+export function separationForVersion(record, version, leadIn = versionLeadInMs(version)) {
   const demucs = record?.sourceArtifacts?.demucs || {};
   const items = Array.isArray(demucs.items) ? demucs.items.filter(Boolean) : [];
-  const variant = `lead-in:${versionLeadInMs(version)}`;
+  const variant = `lead-in:${leadInMs(leadIn)}`;
   const ofVariant = items.filter((item) => (item.sourceVariantKey || item.sourceTransform?.key || "lead-in:0") === variant);
-  const usedId = version?.provenance?.sourceSeparation?.id || version?.provenance?.demucsSeparation?.id || "";
+  const usedId = leadInMs(leadIn) === versionLeadInMs(version)
+    ? version?.provenance?.sourceSeparation?.id || version?.provenance?.demucsSeparation?.id || ""
+    : "";
   const activeId = demucs.activeBySourceVariant?.[variant] || (variant === "lead-in:0" ? demucs.activeId : "");
   return (
     ofVariant.find((item) => usedId && item.id === usedId) ||
@@ -92,10 +107,11 @@ export function separationForVersion(record, version) {
   );
 }
 
-// The stored mel tables of a take's separation: [{ stemSet, path }], where
-// path is the host's own reference (a cache file, or an opfs: key).
+// The stored mel tables of the separation of an export's audio (the
+// project's, see audioLeadInMs): [{ stemSet, path }], where path is the
+// host's own reference (a cache file, or an opfs: key).
 export function exportableTables(record, version) {
-  const item = separationForVersion(record, version);
+  const item = separationForVersion(record, version, audioLeadInMs(record, version));
   const sets = item?.stemSets && typeof item.stemSets === "object" ? item.stemSets : {};
   return Object.entries(sets)
     .filter(([stemSet, set]) => STEM_SET_RE.test(stemSet) && set?.melTables?.path)
@@ -121,7 +137,8 @@ export async function buildProjectFile(record, { version = null, chartText, stem
     version: VERSION,
     exportedVersionId: version?.id || null,
     chartSha256: await sha256Text(chartText),
-    leadInSilenceMs: versionLeadInMs(version),
+    // The exported audio's lead-in, which every take fits.
+    leadInSilenceMs: audioLeadInMs(record, version),
     tables: Object.fromEntries(stemSets.map((stemSet) => [stemSet, tablesFileName(stemSet)])),
     project,
   }, null, 1);
@@ -146,10 +163,24 @@ const ORIGINAL_TRANSFORM = Object.freeze({
   label: "No lead-in",
 });
 
-// The exported audio already holds the lead-in, so a take charted on it
-// plays on the song as it is.
-function withoutLeadIn(version) {
-  const next = { ...version, meta: { ...(version.meta || {}), leadInSilenceMs: 0 } };
+// A take on the exported audio: its lead-in is in the song now, and a take
+// charted with less moves later by the rest (chart, Inpaint history, length).
+function onExportedAudio(version, delayMs) {
+  const delayed = delayChart(version.chart?.text, delayMs);
+  const durationSec = Number(version.meta?.durationSec) || 0;
+  const next = {
+    ...version,
+    meta: {
+      ...(version.meta || {}),
+      leadInSilenceMs: 0,
+      sourceVariantKey: ORIGINAL_TRANSFORM.key,
+      sourceVariantLabel: ORIGINAL_TRANSFORM.label,
+      ...(delayed.ticks && durationSec ? { durationSec: durationSec + delayMs / 1000 } : {}),
+    },
+    ...(delayed.ticks ? { chart: { ...version.chart, text: delayed.chartText } } : {}),
+    ...(delayed.ticks && version.editHistory ? { editHistory: delayEditHistory(version.editHistory, delayed.ticks) } : {}),
+  };
+  if (!versionLeadInMs(version)) return next;
   if (version.provenance) {
     next.provenance = { ...version.provenance, sourceTransform: ORIGINAL_TRANSFORM };
   }
@@ -168,19 +199,52 @@ function withoutLeadIn(version) {
   return next;
 }
 
-// The project an exported folder carries, for its notes.chart text. Takes
-// charted with another lead-in than the exported one can't play on the
-// exported audio and stay out; a notes.chart changed since the export comes
-// back as a new take. Returns { project, activeVersionId, editedChart, dropped }.
+// An edited draft's Inpaint history (chartEditor.js editHistoryFromDoc), its
+// ticks moved later: areas, "tick,fret,sustain" notes, hand-edited ticks.
+function delayEditHistory(history, ticks) {
+  const at = (tick) => (Number.isFinite(tick) ? tick + ticks : tick);
+  const notes = (text) => String(text || "").split(" ").filter(Boolean).map((item) => {
+    const [tick, ...rest] = item.split(",");
+    return [at(Number(tick)), ...rest].join(",");
+  }).join(" ");
+  return {
+    ...history,
+    ...(Array.isArray(history.redos) ? {
+      redos: history.redos.map((redo) => ({
+        ...redo,
+        ...(redo?.region ? { region: { ...redo.region, startTick: at(redo.region.startTick), endTick: at(redo.region.endTick) } } : {}),
+        ...(typeof redo?.original === "string" ? { original: notes(redo.original) } : {}),
+        ...(Array.isArray(redo?.takes) ? { takes: redo.takes.map(notes) } : {}),
+      })),
+    } : {}),
+    ...(Array.isArray(history.touched) ? { touched: history.touched.map(at) } : {}),
+  };
+}
+
+// The project an exported folder carries, for its notes.chart text. Every
+// take comes back on the exported audio, moved later by any lead-in it lacks;
+// only takes charted with more lead-in than the audio holds (from exports
+// made before every take fit the audio) stay out. A notes.chart changed since
+// the export comes back as a new take.
+// Returns { project, activeVersionId, editedChart, dropped }.
 export async function restoreProject(file, chartText) {
   const exportedLeadIn = leadInMs(file.leadInSilenceMs);
   const all = Array.isArray(file.project.versions) ? file.project.versions.filter((v) => v && v.id) : [];
-  const kept = all.filter((version) => versionLeadInMs(version) === exportedLeadIn);
-  const versions = exportedLeadIn ? kept.map(withoutLeadIn) : kept;
+  const kept = all.filter((version) => versionLeadInMs(version) <= exportedLeadIn);
+  const versions = kept.map((version) => onExportedAudio(version, exportedLeadIn - versionLeadInMs(version)));
   const editedChart = (await sha256Text(chartText)) !== file.chartSha256;
   const exportedId = versions.some((v) => v.id === file.exportedVersionId) ? file.exportedVersionId : null;
+  // The project's own chart: the one it was imported with (no lead-in), or a
+  // generated project's first take.
+  const chart = file.project.chart;
+  const twin = chart?.text ? all.find((version) => version.chart?.text === chart.text) : null;
+  const chartDelay = exportedLeadIn - (twin ? versionLeadInMs(twin) : 0);
   return {
-    project: { ...file.project, versions },
+    project: {
+      ...file.project,
+      chart: chart?.text && chartDelay > 0 ? { ...chart, text: delayChart(chart.text, chartDelay).chartText } : chart,
+      versions,
+    },
     activeVersionId: exportedId,
     editedChart,
     dropped: all.length - kept.length,

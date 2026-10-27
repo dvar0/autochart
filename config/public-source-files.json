@@ -199,6 +199,7 @@
     "scripts/verify-runtime-artifacts.cjs",
     "scripts/write-release-checksums.cjs",
     "scripts/yarg-export/Program.cs",
+    "shared/chartDelay.js",
     "shared/chartProvenance.js",
     "shared/chartWriter.js",
     "shared/finalSlots.js",

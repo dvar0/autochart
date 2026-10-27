@@ -203,6 +203,8 @@ function isAllowedAppFile(relative, platform, arch, distAllowlist = new Set()) {
     "shared/generatedVersion.js",
     "shared/chartProvenance.js",
     "shared/finalSlots.js",
+    "shared/projectFile.js",
+    "shared/chartDelay.js",
     "engine/lib/generationStages.cjs",
     "engine/lib/chartTiming.mjs",
     "engine/lib/finishProcess.cjs",

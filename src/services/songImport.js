@@ -129,7 +129,7 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
         .map((f) => ({ stemSet: stemSetOfTablesFile(basename(f)), file: f }))
         .filter(({ stemSet }) => stemSet && file.tables?.[stemSet]);
       if (restore.dropped) {
-        warnings.push(`${restore.dropped} take${restore.dropped === 1 ? " was" : "s were"} made with a different lead-in and couldn't be brought back.`);
+        warnings.push(`${restore.dropped} take${restore.dropped === 1 ? " was" : "s were"} made with more lead-in than this export's audio holds and couldn't be brought back. Exports from this version keep every take.`);
       }
     } else {
       warnings.push(`${PROJECT_FILE} couldn't be read, so only the chart was opened.`);

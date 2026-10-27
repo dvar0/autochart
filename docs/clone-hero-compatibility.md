@@ -16,9 +16,23 @@ Clone Hero scan and playthrough has not been performed in this review.
 | Video | Transcodes to `video.webm` with VP8 and no audio track, including on Linux. | [Clone Hero's FFmpeg guide](https://wiki.clonehero.net/books/guides-and-tutorials/page/converting-mp4-to-webm-using-ffmpeg) |
 | Video timing | Padded generated audio uses negative `video_start_time` to delay the unpadded video by the lead-in duration. | [Custom Content](https://wiki.clonehero.net/books/guides-and-tutorials/page/custom-content) |
 
-Audio conversions produce Vorbis in Ogg. Existing `.ogg` sources are copied;
-their contents are assumed to be valid game audio. The test checks an actual
-WAV-to-Vorbis export and decodes it to verify duration and lead-in silence.
+Audio conversions produce Vorbis in Ogg. Existing `.ogg` sources without
+lead-in are copied; their contents are assumed to be valid game audio. The test
+checks an actual WAV-to-Vorbis export and decodes it to verify duration and
+lead-in silence.
+
+### Lead-in silence
+
+The exported audio holds the longest lead-in any take in the project was
+charted with, not only the exported take's, so the project file can bring
+every take back (below). A take charted with less moves later by the
+difference (`shared/chartDelay.js`): its events move by whole beats, and the
+start becomes one-beat bars (`TS 1`) at a tempo that lasts exactly the
+difference, followed by the chart's own first time signature and tempo, so its
+bars stay aligned. `song_length` and `video_start_time` follow the audio. The
+padding is the engine's cached analysis copy when it holds that lead-in, and
+otherwise the song's own audio with the silence added during export, so an
+export no longer depends on the engine cache.
 
 ## Fixes and verification
 
@@ -69,8 +83,11 @@ tables it no longer has.
 
 Opening such a folder ("Open a Clone Hero song" on the web, Import on the
 desktop) restores the project on the folder's audio and art instead of a
-single imported chart. The exported audio carries the exported take's lead-in,
-so only takes made with that lead-in come back, with their lead-in cleared. A
+single imported chart. Every take comes back with its lead-in cleared, because
+the exported audio already holds it; takes made with less lead-in move later by
+the difference, Inpaint history included. Exports made before this change held
+only the exported take's lead-in, so takes made with more can't come back
+from them, and the import says how many were left out. A
 `notes.chart` whose hash differs is kept as a new take, "Edited outside
 Autochart", and opens. The tables are stored as the song audio's default
 separation (`engine:seedSeparation`, or OPFS in the browser), so the next run
