@@ -263,10 +263,13 @@ function SongFeed({ hot, startAt }) {
         node.setAttribute("transform", `translate(${xAt(beat).toFixed(2)} ${FEED_LANE_Y[lane]}) scale(${pop.toFixed(3)})`);
         node.style.setProperty("--gem", FRET_COLORS[lane]);
       });
+      // Each bar keeps its section until it scrolls off, then wraps to the far
+      // side for a later one, so its color never changes in view.
       const firstSection = Math.floor((songBeat - center / FEED_PX_PER_BEAT) / FEED_SECTION_BEATS);
+      const slots = sectionRefs.current.length;
       sectionRefs.current.forEach((node, index) => {
         if (!node) return;
-        const at = (firstSection + index) * FEED_SECTION_BEATS;
+        const at = (firstSection + ((((index - firstSection) % slots) + slots) % slots)) * FEED_SECTION_BEATS;
         const { section } = feedSection(at);
         const x0 = xAt(at);
         const x1 = xAt(at + FEED_SECTION_BEATS) - 3;
