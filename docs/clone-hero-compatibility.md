@@ -56,6 +56,29 @@ such as `delay`, HOPO settings, or the original video offset. MIDI-only import
 is explicitly unsupported. These limitations also matter when re-exporting an
 imported song; the generated-chart checks do not certify those cases.
 
+## Project file
+
+Every export (desktop folder, Clone Hero / YARG library save, browser ZIP or
+folder) also writes `autochart.json` and the exported take's separation as mel
+tables, `autochart-tables-<stem set>.bin` (`shared/projectFile.js`; tables are
+described in `docs/engine-integration.md`). The games ignore these files.
+`autochart.json` holds the project's takes, edits, final picks and settings,
+with machine paths and browser storage keys removed, plus the exported
+`notes.chart` hash and lead-in. A later export replaces both files and drops
+tables it no longer has.
+
+Opening such a folder ("Open a Clone Hero song" on the web, Import on the
+desktop) restores the project on the folder's audio and art instead of a
+single imported chart. The exported audio carries the exported take's lead-in,
+so only takes made with that lead-in come back, with their lead-in cleared. A
+`notes.chart` whose hash differs is kept as a new take, "Edited outside
+Autochart", and opens. The tables are stored as the song audio's default
+separation (`engine:seedSeparation`, or OPFS in the browser), so the next run
+skips Demucs. Tables for a stem set this install doesn't know are skipped;
+tables from another mel recipe aren't used, and the song separates again. Because the exported audio is
+re-encoded, the mix channel differs slightly from the original, so a seed may
+not reproduce the original take exactly.
+
 ## Save performance
 
 Project staging and exported media now request independent copy-on-write clones,
