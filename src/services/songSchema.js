@@ -181,7 +181,48 @@ export function createSongFromImport(result) {
         : null,
     },
   };
+  if (result.restore) return restoredRecord(record, result.restore);
   return { ...record, versions: normalizeVersions(record) };
+}
+
+// An Autochart export reopened (shared/projectFile.js restoreProject): its
+// project's takes and picks on the folder's audio and art. A notes.chart
+// changed since the export comes back as a new take, and opens.
+function restoredRecord(record, { project, activeVersionId, editedChart, dropped }) {
+  const versions = (Array.isArray(project.versions) ? project.versions : []).map((v) => normalizeVersion(v));
+  let activeId = activeVersionId;
+  if (editedChart || !activeId) {
+    const edited = normalizeVersion(null, {
+      id: newVersionId("edit"),
+      name: editedChart ? "Edited outside Autochart" : "Imported Clone Hero",
+      source: "imported-chart",
+      parentId: activeVersionId || null,
+      settings: { difficulty: record.settings.difficulty, model: "" },
+      meta: {
+        noteCount: record.meta.noteCount,
+        durationSec: record.meta.durationSec,
+        chartProvenance: record.meta.chartProvenance,
+      },
+      chartText: record.chart.text,
+    });
+    versions.push(edited);
+    activeId = edited.id;
+  }
+  const restored = {
+    ...record,
+    source: project.source || record.source,
+    status: project.status || record.status,
+    createdAt: project.createdAt || record.createdAt,
+    meta: { ...record.meta, ...(project.meta || {}), favorite: false },
+    settings: { ...record.settings, ...(project.settings || {}), activeVersionId: activeId },
+    // Left-out takes stay out: the chart a project was imported with comes
+    // back only when it plays on this audio.
+    chart: dropped ? { text: "" } : project.chart?.text ? project.chart : record.chart,
+    arrangements: Array.isArray(project.arrangements) ? project.arrangements : [],
+    provenance: project.provenance || null,
+    versions,
+  };
+  return { ...restored, versions: normalizeVersions(restored) };
 }
 
 /** Normalize legacy IndexedDB rows and in-memory records. */

@@ -12,9 +12,10 @@ import {
 } from "../../engine/web/modelStore.mjs";
 import {
   clearLeftovers, clearStems, hasMelTables, readStoredAudio, removeStemsExcept, removeStoredStems, saveAnalysisAudio,
-  stemKey, stemPaths, storedStemBytes, storedStemNames,
+  saveMelTables, stemKey, stemPaths, storedStemBytes, storedStemNames,
 } from "../../engine/web/stemStore.mjs";
 import { getAppSettings } from "../services/appSettings.js";
+import { tablesFileHeader } from "../../shared/projectFile.js";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
 import { LITE_FAMILY, browserNeedsLite } from "../pages/generate/liteOffer.js";
 import { deviceFromProbe } from "../components/DeviceFacts.jsx";
@@ -449,6 +450,25 @@ async function inpaintChart(payload = {}) {
   }
 }
 
+// Stores mel tables brought in with a song (an exported project) as that
+// song's default separation, so its takes regenerate without separating.
+// tables: [{ stemSet, bytes }]. Tables already stored for the song stay.
+async function seedSeparation(payload = {}) {
+  const blob = payload.audio?.blob;
+  if (!(blob instanceof Blob)) throw new Error("Choose a song file first.");
+  const audioSha256 = await sha256Hex(await blob.arrayBuffer());
+  const transform = sourceTransformFrom({});
+  const known = new Set(WEB_GENERATORS.map(stemSetOf));
+  for (const table of Array.isArray(payload.tables) ? payload.tables : []) {
+    const stemSet = String(table?.stemSet || "");
+    if (!known.has(stemSet) || !(await tablesFileHeader(table.bytes))) continue;
+    const key = stemKey({ audioSha256, sourceVariantKey: transform.key, separationId: DEFAULT_DEMUCS_ID, stemSet });
+    if (!(await hasMelTables(key))) await saveMelTables(key, table.bytes);
+  }
+  const stems = await separationStemSets(audioSha256, transform, DEFAULT_DEMUCS_ID);
+  return { audioSha256, stems: stems.stems, stemSets: stems.stemSets, cache: {} };
+}
+
 async function readDemucsStem({ path } = {}) {
   if (String(path).startsWith(RUN_AUDIO_PREFIX)) {
     const blob = runAudio.get(String(path).slice(RUN_AUDIO_PREFIX.length));
@@ -703,6 +723,7 @@ export function createWebBridge() {
       cancelJob,
       prepareDemucs,
       readDemucsStem,
+      seedSeparation,
       onJobEvent: (callback) => {
         listeners.add(callback);
         return () => listeners.delete(callback);

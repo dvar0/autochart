@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld("autochart", {
     cancelJob: (payload) => ipcRenderer.invoke("engine:cancelJob", payload),
     prepareDemucs: (payload) => ipcRenderer.invoke("engine:prepareDemucs", payload),
     readDemucsStem: (payload) => ipcRenderer.invoke("engine:readDemucsStem", payload),
+    seedSeparation: (payload) => ipcRenderer.invoke("engine:seedSeparation", payload),
     onJobEvent: (callback) => {
       const listener = (_event, payload) => callback(payload);
       ipcRenderer.on("engine:jobEvent", listener);

@@ -158,6 +158,12 @@ async function resolveTimingWorkspace(ownedEngineCacheRoot, audioSha256) {
   return current;
 }
 
+// The folder a stem set's separation of this audio lives in, under
+// <workspace>/<stem set cache dir>. Windows keeps it short for MAX_PATH.
+function stemFolderName(audioSha256, platform = process.platform) {
+  return `audio_${assertAudioSha256(audioSha256)}`.slice(0, platform === "win32" ? 32 : 96);
+}
+
 module.exports = {
   assertAudioSha256,
   assertSafeLeaf,
@@ -166,4 +172,5 @@ module.exports = {
   resolveDemucsWorkspace,
   resolveTimingWorkspace,
   separationIdFromPayload,
+  stemFolderName,
 };

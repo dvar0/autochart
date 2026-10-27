@@ -830,6 +830,13 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle("engine:seedSeparation", async (event, payload = {}) => {
+    const enginePayload = await resolveEnginePayload(event, payload);
+    const settings = await readAppSettings();
+    await prepareCacheDirectory(settings);
+    return engineManager.seedSeparation(userDataPath(), enginePayload, { settings });
+  });
+
   ipcMain.handle("engine:readDemucsStem", async (_event, payload = {}) => {
     try {
       const settings = await readAppSettings();

@@ -121,6 +121,9 @@ function safeDemucsSlug(value, maxLen = 96) {
 }
 
 function demucsCacheSlug(job) {
+  if (/^[a-f0-9]{64}$/i.test(String(job.audioSha256 || ""))) {
+    return demucsWorkspaceSafety.stemFolderName(job.audioSha256, CURRENT_PLATFORM);
+  }
   const maxLen = CURRENT_PLATFORM === "win32" ? 32 : 96;
   return safeDemucsSlug(`audio_${job.audioSha256 || shortStableKey(job)}`, maxLen);
 }

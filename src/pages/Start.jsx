@@ -3,8 +3,8 @@ import { I } from "../icons.jsx";
 import { DeviceReadout, UNCHECKED_DEVICE, deviceFact, deviceFromProbe } from "../components/DeviceFacts.jsx";
 import { FRET_COLORS } from "../data/notePalette.js";
 import { MEDIA_ACCEPT } from "../services/mediaMetadata.js";
-import { importSongFolder } from "../services/songImport.js";
-import { getSongRecord, recordFromImport, recordToImported, saveSongRecord } from "../services/songLibrary.js";
+import { importSongFolder, saveImportedSong } from "../services/songImport.js";
+import { getSongRecord, recordToImported } from "../services/songLibrary.js";
 import { electronHardware } from "../services/runtimeBridge.js";
 
 // The browser version's home: where a project starts. There is no library on
@@ -416,7 +416,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     setOpenError("");
     setOpening(true);
     try {
-      const saved = await saveSongRecord(recordFromImport(await importSongFolder(input.files)));
+      const saved = await saveImportedSong(await importSongFolder(input.files));
       onOpenChart(await recordToImported((await getSongRecord(saved.id)) || saved));
     } catch (error) {
       setOpenError(error?.message || "That folder couldn't be opened.");

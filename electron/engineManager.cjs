@@ -1917,6 +1917,48 @@ async function prepareDemucs(userDataPath, sender, payload, options = {}) {
   }
 }
 
+// Stores mel tables brought in with a song (an exported project) as that
+// audio's default separation, so its takes regenerate without separating.
+// tables: [{ stemSet, bytes }]. Tables already stored for the audio stay.
+async function seedSeparation(userDataPath, payload = {}, { settings = {} } = {}) {
+  const loaded = await loadManifest();
+  if (!loaded.available) throw new Error(loaded.error || "Autochart engine is unavailable.");
+  const manifest = loaded;
+  const stemSets = new Map(manifestStemSets(manifest).map((set) => [set.id, set]));
+  const cachedAudio = await cacheAnalysisAudio(userDataPath, payload.audio, { leadInSilenceMs: 0 }, settings);
+  const workspace = await demucsWorkspaceForId(userDataPath, cachedAudio.sha256, DEFAULT_DEMUCS_ID, settings);
+  const root = cacheRoot(userDataPath, settings);
+  const { tablesFileHeader } = await import("../shared/projectFile.js");
+  for (const table of Array.isArray(payload.tables) ? payload.tables : []) {
+    const stemSet = stemSets.get(String(table?.stemSet || ""));
+    const bytes = Buffer.from(toUint8Array(table?.bytes));
+    if (!stemSet || !bytes.length || !(await tablesFileHeader(bytes))) continue;
+    const dir = path.join(
+      workspace,
+      stemSet.cacheSubdir || "stems",
+      demucsWorkspace.stemFolderName(cachedAudio.sha256)
+    );
+    const tablesPath = path.join(dir, MEL_TABLES_FILE);
+    if (await fileExists(tablesPath)) continue;
+    await ensureRealDirectoryTree(root, dir);
+    await writeVerifiedAtomic(tablesPath, bytes, { rootDirectory: root, label: "Stem mel tables" });
+  }
+  const found = await separationStemSets(workspace, manifest);
+  return {
+    audioSha256: cachedAudio.sha256,
+    stems: found.stems,
+    stemSets: found.stemSets,
+    cache: { workspace },
+  };
+}
+
+function toUint8Array(data) {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  return new Uint8Array(0);
+}
+
 async function readDemucsStem(userDataPath, stemPath, options = {}) {
   const raw = String(stemPath || "").trim();
   if (!raw) throw new Error("No stem path was provided.");
@@ -1958,6 +2000,7 @@ module.exports = {
   cancelJob,
   prepareDemucs,
   readDemucsStem,
+  seedSeparation,
   cacheAudio,
   cacheAnalysisAudio,
   resolveEntryProcess,

@@ -167,6 +167,15 @@ export async function prepareDemucs(input) {
   });
 }
 
+// Stores the mel tables an exported project brought (tables: [{ stemSet,
+// bytes }]) as the song's separation. Resolves to the separation's
+// { audioSha256, stems, stemSets }, or null where the engine can't.
+export async function seedSeparation(input) {
+  if (!hasElectronEngine() || !electronEngine()?.seedSeparation) return null;
+  const audio = await audioPayloadFromInput(input);
+  return electronEngine().seedSeparation({ audio, tables: input.tables });
+}
+
 function toArrayBuffer(data) {
   if (data instanceof ArrayBuffer) return data;
   if (ArrayBuffer.isView(data)) return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);

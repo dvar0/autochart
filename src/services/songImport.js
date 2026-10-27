@@ -1,4 +1,7 @@
 import { chartSongMetadata, provenanceFromMetadata } from "../../shared/chartProvenance.js";
+import {
+  PROJECT_FILE, parseProjectFile, restoreProject, restoredSeparation, stemSetOfTablesFile,
+} from "../../shared/projectFile.js";
 // Imports a Clone Hero song from a picked folder (a <input webkitdirectory>
 // FileList). Browser mode persists Blobs in IndexedDB; Electron keeps selected
 // media path-backed until the main process copies it into project storage.
@@ -6,6 +9,8 @@ import { chartSongMetadata, provenanceFromMetadata } from "../../shared/chartPro
 import { parseChart } from "../lib/chart/parseChart.js";
 import { buildPlayableTrack } from "../lib/chart/tempoMap.js";
 import { readMediaFileMetadata } from "./mediaMetadata.js";
+import { seedSeparation } from "./generation.js";
+import { getStoredAssetSource, recordFromImport, saveSongRecord, updateSongRecord } from "./songLibrary.js";
 
 const AUDIO_EXTS = [".ogg", ".opus", ".mp3", ".wav", ".wave", ".flac", ".m4a", ".aac", ".aiff", ".aif"];
 const ART_STEMS = ["album", "albumart", "artwork", "cover", "coverart", "folder", "front"];
@@ -113,6 +118,24 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
     background = { type: "image" };
   }
 
+  // An Autochart export carries its project: every take comes back.
+  let restore = null;
+  const projectFile = find((n) => n === PROJECT_FILE);
+  if (projectFile) {
+    const file = parseProjectFile(await projectFile.text());
+    if (file) {
+      restore = await restoreProject(file, chartText);
+      restore.tables = files
+        .map((f) => ({ stemSet: stemSetOfTablesFile(basename(f)), file: f }))
+        .filter(({ stemSet }) => stemSet && file.tables?.[stemSet]);
+      if (restore.dropped) {
+        warnings.push(`${restore.dropped} take${restore.dropped === 1 ? " was" : "s were"} made with a different lead-in and couldn't be brought back.`);
+      }
+    } else {
+      warnings.push(`${PROJECT_FILE} couldn't be read, so only the chart was opened.`);
+    }
+  }
+
   const durationSec = track.notes.length
     ? track.notes[track.notes.length - 1].endTime
     : 0;
@@ -137,6 +160,7 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
     audioBuffer: null,
     background,
     warnings,
+    restore,
     // Raw, structured-cloneable pieces for persisting to the song library.
     // (File objects are Blobs, so they store directly in IndexedDB.)
     chartText,
@@ -144,4 +168,29 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
     albumBlob,
     backgroundBlob: bgVideoFile || bgImageFile || null,
   };
+}
+
+// Saves an imported folder as a project. A restored Autochart project also
+// gets its separation back from the mel tables it carried; without them (or
+// when they don't fit the models here) the song separates on its next run.
+export async function saveImportedSong(result) {
+  const saved = await saveSongRecord(recordFromImport(result));
+  const tables = result.restore?.tables || [];
+  if (!tables.length) return saved;
+  try {
+    const separation = await seedSeparation({
+      audioFile: result.audioBlob,
+      audioSource: await getStoredAssetSource(saved.id, saved.assets?.audio),
+      tables: await Promise.all(tables.map(async ({ stemSet, file }) => ({
+        stemSet,
+        bytes: new Uint8Array(await file.arrayBuffer()),
+      }))),
+    });
+    if (separation && Object.keys(separation.stemSets || {}).length) {
+      return await updateSongRecord(saved.id, { sourceArtifacts: { demucs: restoredSeparation(separation) } });
+    }
+  } catch {
+    /* separates on the next run */
+  }
+  return saved;
 }

@@ -27,17 +27,15 @@ import {
   finalValidationMessage,
 } from "../services/finalChart.js";
 import { exportChart, saveChartToCloneHeroLibrary } from "../services/generation.js";
-import { importSongFolder } from "../services/songImport.js";
+import { importSongFolder, saveImportedSong } from "../services/songImport.js";
 import {
   deleteProjectRecord,
   getAllSongRecords,
   getProjectDeletionDetails,
   getSongRecord,
-  recordFromImport,
   recordToCard,
   recordToImported,
   revokeCoverUrl,
-  saveSongRecord,
   setSongFavorite,
   updateSongRecord,
 } from "../services/songLibrary.js";
@@ -552,8 +550,7 @@ export default function Library({
     setImporting(true);
     try {
       const result = await importSongFolder(files);
-      const rec = recordFromImport(result);
-      const saved = await saveSongRecord(rec);
+      const saved = await saveImportedSong(result);
       await loadLibrary();
       setSelId(saved.id);
       const fullRecord = (await getSongRecord(saved.id)) || saved;
