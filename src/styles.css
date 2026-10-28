@@ -3353,56 +3353,6 @@ video.bg-layer {
 }
 .live-stage-board .stage-signal { color: #e6e9ff; }
 
-/* The browser version's first-run model download, over the board's signal. */
-.live-download {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 3;
-  transform: translate(-50%, -50%);
-  width: min(380px, calc(100% - 32px));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 24px 20px;
-  border-radius: var(--r-card);
-  background: color-mix(in srgb, #0b0e1a 92%, transparent);
-  border: var(--bw) solid color-mix(in srgb, #e6e9ff 16%, transparent);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
-  color: #e6e9ff;
-  text-align: center;
-}
-.live-download b {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  opacity: 0.86;
-}
-.live-download-size {
-  font-family: var(--font-display);
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.live-download-size small {
-  font-size: 18px;
-  font-weight: 600;
-  opacity: 0.7;
-}
-.live-download .gen-progressbar {
-  align-self: stretch;
-  background: color-mix(in srgb, #e6e9ff 14%, transparent);
-}
-.live-download .gen-progressbar i { background: var(--purple-bri); }
-.live-download p {
-  margin: 2px 0 0;
-  font-size: var(--fs-xs, 12px);
-  line-height: 1.45;
-  opacity: 0.72;
-  text-wrap: pretty;
-}
 .live-rec.is-download {
   background: var(--purple-bg);
   color: var(--purple);
@@ -4361,6 +4311,14 @@ video.bg-layer {
   gap: 8px;
   padding-top: 14px;
   border-top: 1px solid var(--border-soft);
+  /* On a short screen the button stays at the bottom of the rail while the
+     settings above it scroll. */
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding-bottom: 14px;
+  margin-bottom: -14px;
+  background: var(--window);
 }
 
 /* sticky status toast — visible no matter where the rail is scrolled */
@@ -5656,6 +5614,13 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   .brand .wordmark { font-size: var(--fs-md); }
   .rail-nav { flex-direction: row; flex: none; }
   .rail-section { display: none; }
+  /* The open song stays one tap away in the top bar, as an icon: its title
+     doesn't fit next to Start and Settings. */
+  .rail-section:has(.rail-song) { display: flex; flex: none; padding: 0; }
+  .rail-section:has(.rail-song) .rail-label,
+  .rail-song .rail-item-label { display: none; }
+  .rail-song { justify-content: center; width: 38px; padding: 8px; gap: 0; }
+  .rail-song svg { margin: 0; }
   .rail-spacer { flex: 1; min-width: 4px; }
   .rail-item {
     width: auto;

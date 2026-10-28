@@ -191,6 +191,13 @@ function RegenTab({
   const [nudge, needsSelection] = useNudge();
   const timeSpan = (region) => `${fmtTime(tempo?.tickToSeconds(region.startTick))}–${fmtTime(tempo?.tickToSeconds(region.endTick))}`;
   const percent = pending?.total ? Math.round((100 * pending.done) / pending.total) : 0;
+  const downloadShare = pending?.download?.total ? Math.min(1, pending.download.loaded / pending.download.total) : 0;
+  const pendingShare = pending?.download ? downloadShare : pending?.total ? pending.done / pending.total : 0;
+  const pendingText = !pending ? ""
+    : pending.download ? `Downloading Fill-in · ${Math.round(downloadShare * 100)}%`
+      : pending.separating ? "Separating stems"
+        : !pending.done ? "Loading the song"
+          : pending.tries > 1 ? `Try ${pending.try + 1} of ${pending.tries} · ${percent}%` : `${percent}%`;
 
   return (
     <>
@@ -275,13 +282,11 @@ function RegenTab({
         <div className="generation-actions">
           {pending ? (
             <div className="insp-running">
-              <div className="insp-progress" style={{ "--p": pending.total ? pending.done / pending.total : 0 }}>
+              <div className="insp-progress" style={{ "--p": pendingShare }}>
                 <span />
               </div>
               <div className="insp-running-row">
-                <span>
-                  {!pending.done ? "Loading the song" : pending.tries > 1 ? `Try ${pending.try + 1} of ${pending.tries} · ${percent}%` : `${percent}%`}
-                </span>
+                <span>{pendingText}</span>
                 <button className="insp-link" onClick={onCancelRedo}>Cancel</button>
               </div>
             </div>

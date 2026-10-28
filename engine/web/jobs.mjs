@@ -54,24 +54,34 @@ function withLeadIn(audio, sourceTransform) {
 
 // Downloads the model folder's files that aren't cached yet (or only the
 // listed ones), reported as the given stage so the progress card shows the
-// download in place of that step. `bytes` ({ done, total }) counts across the
-// run's downloads, so the page shows one download even when it comes in two parts.
-async function downloadModels(manifest, emit, bytes, { stage = "queued", only = null } = {}) {
+// download in place of that step. With `quiet`, progress is only kept on it
+// until quiet.show() is called, and reported from then on.
+async function downloadModels(manifest, emit, { stage = "queued", only = null, quiet = null } = {}) {
   let lastPercent = -1;
+  let last = null;
+  const report = ({ loaded, total, file }) => {
+    const percent = total ? Math.floor((loaded / total) * 100) : 0;
+    if (percent === lastPercent) return;
+    lastPercent = percent;
+    emit({
+      type: "stage", stage, status: "running", progress: total ? loaded / total : 0, downloading: true,
+      downloadedBytes: loaded, downloadBytes: total,
+    });
+    emit({ type: "log", stage, stream: "stdout", message: `Downloading models: ${percent}% (${file})` });
+  };
+  if (quiet) {
+    quiet.show = () => {
+      quiet.hidden = false;
+      if (last) report(last);
+    };
+  }
   const result = await ensureModelFiles(manifest, {
     only,
-    onProgress: ({ loaded, total, file }) => {
-      const percent = total ? Math.floor((loaded / total) * 100) : 0;
-      if (percent === lastPercent) return;
-      lastPercent = percent;
-      emit({
-        type: "stage", stage, status: "running", progress: total ? loaded / total : 0, downloading: true,
-        downloadedBytes: bytes.done + loaded, downloadBytes: Math.max(bytes.total, bytes.done + total),
-      });
-      emit({ type: "log", stage, stream: "stdout", message: `Downloading models: ${percent}% (${file})` });
+    onProgress: (progress) => {
+      last = progress;
+      if (!quiet?.hidden) report(progress);
     },
   });
-  bytes.done += result.bytes || 0;
   if (result.downloaded) {
     emit({ type: "log", stage, stream: "stdout", message: `Downloaded ${result.downloaded} model files` });
   }
@@ -87,25 +97,35 @@ function separationKey(job) {
 }
 
 // The model files a run needs before its first step. When the run separates,
-// only Demucs downloads first and the rest follows separation (downloadRest),
-// so a device too slow to separate can switch to Lite without having fetched
-// the rest of the model. Inpaint downloads everything up front.
+// only Demucs downloads first; the rest comes in quietly while it separates
+// (startRest), so the page shows one download, and a device too slow to
+// separate can switch to Lite before all of it is in. Inpaint downloads
+// everything up front.
 async function prepareModels(job, emit, { separationFirst = true } = {}) {
   const manifest = await loadManifest(job.modelUrl);
   const separating = separationFirst && needsStems(manifest) && !(await storedSeparation(job, manifest));
-  const { total } = await missingModelFiles(manifest);
-  job.modelBytes = { done: 0, total };
   // Checked for the whole model up front, so a full device finds out before
   // separating rather than after.
-  if (separating) await checkStorageRoom(total);
-  await downloadModels(manifest, emit, job.modelBytes, { only: separating ? separationFiles(manifest) : null });
+  if (separating) await checkStorageRoom((await missingModelFiles(manifest)).total);
+  await downloadModels(manifest, emit, { only: separating ? separationFiles(manifest) : null });
   emit({ type: "stage", stage: "queued", status: "completed" });
   return manifest;
 }
 
-// After separation: whatever the model still needs, shown as the timing step.
+// Starts downloading the rest of the model during separation, without showing it.
+function startRest(job, manifest, emit) {
+  const quiet = { hidden: true };
+  const promise = downloadModels(manifest, emit, { stage: "timing", quiet });
+  promise.catch(() => {}); // awaited in downloadRest
+  job.rest = { promise, quiet };
+}
+
+// After separation: whatever the model still needs, shown as the timing step
+// if it's still coming.
 async function downloadRest(job, manifest, emit) {
-  await downloadModels(manifest, emit, job.modelBytes, { stage: "timing" });
+  if (!job.rest) return downloadModels(manifest, emit, { stage: "timing" });
+  job.rest.quiet.show?.();
+  await job.rest.promise;
 }
 
 // The stored separation this run can use: its mel tables, plus its stems when
@@ -241,6 +261,7 @@ export async function runGenerate(job, emit, runtime) {
   const audio = withLeadIn(job.audio, job.sourceTransform);
   emit({ type: "stage", stage: "audio", status: "completed", backend: BACKEND });
 
+  startRest(job, manifest, emit);
   const stems = await separation(job, manifest, audio, emit);
   await downloadRest(job, manifest, emit);
   const timed = await timing(job, manifest, settings, audio, emit);

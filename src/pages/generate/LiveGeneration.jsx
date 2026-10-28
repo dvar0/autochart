@@ -4,7 +4,6 @@ import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import LiveNoteStrip from "./LiveNoteStrip.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
 import { describeRunStage, megabytesOf, runDownload, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
-import { browserName } from "../../components/DeviceFacts.jsx";
 import { BETA_MODELS, MODEL_FAMILIES } from "../../data/modelFamilies.js";
 import { I } from "../../icons.jsx";
 
@@ -54,27 +53,6 @@ function modelLabel(generatorId) {
 
 function downloadPercent(download) {
   return download.total ? Math.min(100, (download.loaded / download.total) * 100) : 0;
-}
-
-// The first run's model download, over the board's signal: what's coming
-// down, how much, and that it's only this once. Firefox asks before keeping
-// it, so it says why.
-function DownloadReadout({ download, generatorId }) {
-  return (
-    <div className="live-download" role="status">
-      <b>Downloading {modelLabel(generatorId)}</b>
-      <span className="live-download-size">
-        {megabytesOf(download.loaded)} <small>of {megabytesOf(download.total)} MB</small>
-      </span>
-      <div className="gen-progressbar" aria-hidden="true">
-        <i style={{ width: `${downloadPercent(download)}%` }} />
-      </div>
-      <p>
-        First time only. It stays in this browser, then charting starts.
-        {browserName() === "Firefox" && " If the browser asks to keep it stored, allow it so it doesn't download again."}
-      </p>
-    </div>
-  );
 }
 
 function liveFollowTime(live) {
@@ -267,7 +245,6 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
           // One mounted signal for every wait, so each stage eases into the next.
           <>
             <StageSignal mode={signalMode(phase)} />
-            {download && <DownloadReadout download={download} generatorId={project.genRun?.generatorId} />}
           </>
         )}
       </div>
@@ -280,7 +257,7 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
             <b>{title}</b>
             <small>
               {download
-                ? `Downloading ${modelLabel(project.genRun?.generatorId)}`
+                ? `Downloading ${modelLabel(project.genRun?.generatorId)} · ${megabytesOf(download.loaded)} of ${megabytesOf(download.total)} MB`
                 : separating
                   ? "Separating stems"
                   : [statusLabel(project), beatLabel(live)].filter(Boolean).join(" · ")}

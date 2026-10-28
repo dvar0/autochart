@@ -308,8 +308,12 @@ export default function useEditWorkspace(project, highwayRef, visible = true) {
       knobs: knobBins,
       tries,
       run: editor.startInpaint,
-      onProgress: ({ done, total: of, try: at, notes }) =>
-        setPending((current) => (current ? { ...current, done, total: of ?? current.total, try: at ?? current.try, notes } : current)),
+      onProgress: ({ done, total: of, try: at, notes, download = null, separating = false }) =>
+        setPending((current) => {
+          if (!current) return current;
+          if (download || separating) return { ...current, download, separating };
+          return { ...current, done, total: of ?? current.total, try: at ?? current.try, notes, download: null, separating: false };
+        }),
     });
     jobRef.current = job;
     job.promise

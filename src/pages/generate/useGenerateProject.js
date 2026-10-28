@@ -2512,7 +2512,18 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     const promise = (async () => {
       if (inpaintBlockedReason) throw new Error(inpaintBlockedReason);
       unsubscribe = subscribeGenerationEvents((event) => {
-        if (event?.jobId !== jobId || event.type !== "inpaint_progress") return;
+        if (event?.jobId !== jobId) return;
+        // Before notes come: the browser downloads Fill-in on its first use,
+        // and a song without stored stems separates first.
+        if (event.type === "stage" && event.status === "running") {
+          if (event.downloading && Number(event.downloadBytes) > 0) {
+            onProgress?.({ download: { loaded: Number(event.downloadedBytes) || 0, total: Number(event.downloadBytes) } });
+          } else if (event.stage === "demucs") {
+            onProgress?.({ separating: true });
+          }
+          return;
+        }
+        if (event.type !== "inpaint_progress") return;
         onProgress?.({ done: event.done, total: event.total, try: event.candidate, tries: event.candidates, notes: toNotes(event.regions || []) });
       });
       const result = await inpaintChart({
