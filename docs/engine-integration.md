@@ -310,13 +310,13 @@ application-inspected before staged extraction and promotion. Missing or
 corrupt models or license files block Generate and direct the user back to
 Setup.
 
-Hardware mode controls the ONNX execution provider: Automatic, CUDA, Core ML,
-WebGPU, or CPU. Core ML is available on macOS, while CUDA and WebGPU are
-opportunistic. If ONNX Runtime cannot initialize a selected accelerated
-provider—for example because cuDNN is unavailable—the session loader latches
-the job to CPU instead of failing generation. Automatic requests WebGPU and
-falls back to CPU when the provider cannot initialize; Core ML remains an
-explicit macOS mode.
+Hardware mode controls the ONNX execution provider: Automatic, CUDA, WebGPU,
+or CPU. CUDA and WebGPU are opportunistic. If ONNX Runtime cannot initialize a
+selected accelerated provider—for example because cuDNN is unavailable—the
+session loader latches the job to CPU instead of failing generation. Automatic
+requests WebGPU and falls back to CPU when the provider cannot initialize.
+There is no Core ML mode: on Apple Silicon it ran Demucs on CPU kernels, many
+times slower than WebGPU. A saved Core ML setting becomes WebGPU.
 
 On Windows, a bounded, cached display-adapter inventory identifies machines
 reporting only Microsoft's software display adapters (such as Hyper-V Video).

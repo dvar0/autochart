@@ -20,7 +20,6 @@
     "unverified": "Not yet verified",
     "cuda": "CUDA",
     "webgpu": "WebGPU",
-    "coreml": "Core ML",
     "cpu": "CPU",
     "skipped": "Not required",
     "failed": "Failed"

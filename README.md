@@ -111,8 +111,8 @@ More in [generation tips](docs/generation-tips.md).
 <br>
 
 Any supported system can generate on the CPU. A GPU makes it faster: Autochart
-uses WebGPU or NVIDIA CUDA on Windows and Linux, and WebGPU or Core ML
-(experimental) on Mac. Hardware mode is automatic, and if the GPU doesn't work
+uses WebGPU or NVIDIA CUDA on Windows and Linux, and WebGPU on Mac. Hardware
+mode is automatic, and if the GPU doesn't work
 out, it falls back to the CPU. You can change it in **Settings**.
 
 Leave room for the model (about 700 MB) plus your songs.

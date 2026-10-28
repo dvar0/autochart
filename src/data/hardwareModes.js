@@ -5,13 +5,14 @@ export const HARDWARE_MODES = Object.freeze([
   Object.freeze({ value: "auto", label: "Automatic" }),
   Object.freeze({ value: "webgpu", label: "WebGPU" }),
   Object.freeze({ value: "cuda", label: "CUDA", platforms: ["linux", "win32"] }),
-  Object.freeze({ value: "coreml", label: "Core ML", platforms: ["darwin"] }),
   Object.freeze({ value: "cpu", label: "CPU" }),
 ]);
 
 export function normalizeHardwareMode(value) {
   const mode = String(value || "auto").toLowerCase();
   if (mode === "macos") return "cpu";
+  // Core ML was removed: it ran Demucs on the CPU, far slower than WebGPU.
+  if (mode === "coreml") return "webgpu";
   return HARDWARE_MODES.some((item) => item.value === mode) ? mode : "auto";
 }
 
@@ -30,9 +31,6 @@ export function hardwareModeCaveat(mode, platform) {
   if (normalized === "auto") return "Tries WebGPU, then uses CPU if the provider cannot initialize.";
   if (normalized === "webgpu") return "Provider availability is verified when generation starts; CPU is the fallback.";
   if (normalized === "cuda") return "Requires a compatible NVIDIA CUDA and cuDNN installation; CPU is the fallback.";
-  if (normalized === "coreml") return platform === "darwin"
-    ? "Available on Apple Silicon; CPU is the fallback."
-    : "Core ML is available only on macOS Apple Silicon.";
   return "Runs locally on the CPU without an acceleration provider.";
 }
 

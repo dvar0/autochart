@@ -83,9 +83,11 @@ function normalizeSettings(settings = {}, defaults = {}) {
   const requestedHardwareMode = String(next.hardwareMode || "").toLowerCase();
   next.hardwareMode = requestedHardwareMode === "macos"
     ? "cpu"
-    : ["auto", "cuda", "cpu", "webgpu", "coreml"].includes(requestedHardwareMode)
-      ? requestedHardwareMode
-      : DEFAULT_SETTINGS.hardwareMode;
+    : requestedHardwareMode === "coreml"
+      ? "webgpu"
+      : ["auto", "cuda", "cpu", "webgpu"].includes(requestedHardwareMode)
+        ? requestedHardwareMode
+        : DEFAULT_SETTINGS.hardwareMode;
   next.updateChannel = ["stable", "beta", "experimental"].includes(next.updateChannel)
     ? next.updateChannel
     : DEFAULT_SETTINGS.updateChannel;

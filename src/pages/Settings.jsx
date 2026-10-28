@@ -91,11 +91,7 @@ function gpuName(hardware) {
 function performanceSummary(hardware, unsupported) {
   if (unsupported) return `${friendlyTarget(hardware)} is unsupported.`;
   if (!hardware) return "Checking hardware…";
-  const device = hardware.selectedMode === "cpu"
-    ? hardware.cpu
-    : hardware.selectedMode === "coreml"
-      ? "Apple Silicon"
-      : gpuName(hardware);
+  const device = hardware.selectedMode === "cpu" ? hardware.cpu : gpuName(hardware);
   return `Using ${hardware.selectedModeLabel}${device ? ` · ${device}` : ""}`;
 }
 

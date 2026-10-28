@@ -1,6 +1,6 @@
 "use strict";
 
-// ONNX session loader: EP selection (cpu/webgpu/coreml/cuda/auto), provider probes + runtime latches.
+// ONNX session loader: EP selection (cpu/webgpu/cuda/auto), provider probes + runtime latches.
 // gpu-buffer preferredOutputLocation is WebGPU-only; CUDA throws BatchOrCopyMLValue if pinned.
 // Loading this module installs it as the stage modules' runtime host (runtime.mjs).
 
@@ -20,7 +20,7 @@ function defaultThreads() {
   }
 }
 
-const KNOWN_DEVICES = new Set(["cpu", "webgpu", "coreml", "cuda", "auto"]);
+const KNOWN_DEVICES = new Set(["cpu", "webgpu", "cuda", "auto"]);
 
 function normalizeDevice(value) {
   const dev = String(value || "cpu").trim().toLowerCase();
@@ -77,7 +77,6 @@ let webgpuRuntimeUnavailable = false;
 // CUDA is optional too: hardware discovery can find a GPU while ORT cannot
 // load its provider or matching cuDNN. Keep the rest of that job on CPU.
 let cudaRuntimeUnavailable = false;
-let coremlRuntimeUnavailable = false;
 
 // One-time structured signal for the engine entry to emit as a runtime_fallback
 // event when a GPU EP first fails and the job latches to CPU. Registered once
@@ -94,7 +93,6 @@ function resetAutoDeviceResolution() {
   windowsGraphicsProbe = null;
   webgpuRuntimeUnavailable = false;
   cudaRuntimeUnavailable = false;
-  coremlRuntimeUnavailable = false;
   runtimeFallbackEmitted = false;
 }
 
@@ -175,7 +173,6 @@ async function resolveDevice(requested, probeGraphPath, opts = {}) {
   if (process.env.ELECTRON_RUN_AS_NODE === "1" && dev !== "cpu") return "cpu";
   if (webgpuRuntimeUnavailable) return "cpu";
   if (dev === "cuda" && cudaRuntimeUnavailable) return "cpu";
-  if (dev === "coreml" && coremlRuntimeUnavailable) return "cpu";
   if (dev === "webgpu" || dev === "auto") {
     const softwareReason = await windowsSoftwareGraphicsReason();
     if (softwareReason) {
@@ -183,7 +180,7 @@ async function resolveDevice(requested, probeGraphPath, opts = {}) {
       return "cpu";
     }
   }
-  if (dev === "cpu" || dev === "webgpu" || dev === "coreml" || dev === "cuda") return dev;
+  if (dev === "cpu" || dev === "webgpu" || dev === "cuda") return dev;
   return probeWebgpu(probeGraphPath, opts);
 }
 
@@ -193,7 +190,7 @@ function cacheKey(onnxPath, resolvedDevice, preferredOutputLocation) {
   return `${onnxPath}|${resolvedDevice}|${JSON.stringify(preferredOutputLocation || {})}`;
 }
 function isAcceleratedDevice(device) {
-  return device === "webgpu" || device === "coreml" || device === "cuda";
+  return device === "webgpu" || device === "cuda";
 }
 
 function latchRuntimeFallback(device, reason, log) {
@@ -202,11 +199,9 @@ function latchRuntimeFallback(device, reason, log) {
     autoDeviceResolution = "cpu";
   } else if (device === "cuda") {
     cudaRuntimeUnavailable = true;
-  } else if (device === "coreml") {
-    coremlRuntimeUnavailable = true;
   }
   if (log) {
-    const labels = { cuda: "CUDA", coreml: "Core ML", webgpu: "WebGPU" };
+    const labels = { cuda: "CUDA", webgpu: "WebGPU" };
     log(`[sessionLoader] ${labels[device]} session failed (${reason}); falling back to CPU for the rest of this run`);
   }
   if (!runtimeFallbackEmitted) {

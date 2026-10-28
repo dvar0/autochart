@@ -805,7 +805,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           };
         });
       } else if (event.type === "runtime_fallback") {
-        // The ONNX session loader latched a failed GPU EP (webgpu/cuda/coreml)
+        // The ONNX session loader latched a failed GPU EP (webgpu/cuda)
         // to CPU for the rest of this run. Surface it once on the run so the
         // progress panel can show a quiet inline notice.
         setGenRun((run) =>

@@ -1588,13 +1588,11 @@ function resolveOnnxDevice(job) {
   if (process.env.ELECTRON_RUN_AS_NODE === "1") return "cpu";
   if (hwMode === "cpu") return "cpu";
   if (hwMode === "webgpu") return "webgpu";
-  if (hwMode === "coreml") return "coreml";
   if (hwMode === "cuda") return "cuda";
   if (hwMode === "gpu") return "webgpu";
   const jobDev = String((job && (job.transcriberDevice || job.demucsDevice || job.timingDevice)) || "").trim().toLowerCase();
   if (jobDev === "cpu") return "cpu";
   if (jobDev === "webgpu") return "webgpu";
-  if (jobDev === "coreml") return "coreml";
   if (jobDev === "cuda") return "cuda";
   if (jobDev === "gpu") return "webgpu";
   return "auto";
@@ -1604,7 +1602,7 @@ async function resolveOnnxTranscriberDevice(job, onnxLib, manifest, resolvedDevi
     return { device: "cpu", note: "forced to CPU because ELECTRON_RUN_AS_NODE cannot initialize Dawn" };
   }
   const override = String(process.env.AUTOCHART_ONNX_TRANSCRIBER_DEVICE || "").trim().toLowerCase();
-  if (["cpu", "webgpu", "coreml", "cuda"].includes(override)) {
+  if (["cpu", "webgpu", "cuda"].includes(override)) {
     return { device: override, note: `forced by AUTOCHART_ONNX_TRANSCRIBER_DEVICE` };
   }
   const encoderGraph = onnxLib.graphPath(manifest, "transcriber-encoder");

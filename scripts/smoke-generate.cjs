@@ -26,7 +26,7 @@ Options:
   --cache-folder <path>     Job/cache folder (default: isolated temporary path).
   --projects-folder <path>  Project folder (default: isolated temporary path).
   --asset-base-url <url>    Asset catalog base URL.
-  --hardware <mode>         auto, cuda, webgpu, coreml, or cpu. Default: auto.
+  --hardware <mode>         auto, cuda, webgpu, or cpu. Default: auto.
   --generator <id>          Generator id. Default: the catalog default.
   --generation-timeout-seconds <n>  Cancel generation after n seconds (default: 900; excludes installation).
   --difficulty <value>      easy, medium, hard, or expert. Default: expert.
@@ -98,7 +98,7 @@ function parseArgs(argv) {
   if (args.cacheFolder) args.cacheFolder = path.resolve(args.cacheFolder);
   if (args.projectsFolder) args.projectsFolder = path.resolve(args.projectsFolder);
   if (args.isolationRoot) args.isolationRoot = path.resolve(args.isolationRoot);
-  if (!["auto", "cuda", "webgpu", "coreml", "cpu"].includes(args.hardware)) throw new Error("--hardware must be auto, cuda, webgpu, coreml, or cpu.");
+  if (!["auto", "cuda", "webgpu", "cpu"].includes(args.hardware)) throw new Error("--hardware must be auto, cuda, webgpu, or cpu.");
   if (!Number.isFinite(args.generationTimeoutSeconds) || args.generationTimeoutSeconds <= 0 || args.generationTimeoutSeconds * 1000 > 2147483647) {
     throw new Error("--generation-timeout-seconds must be positive and within the timer range.");
   }

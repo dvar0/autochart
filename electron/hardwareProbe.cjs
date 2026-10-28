@@ -102,11 +102,9 @@ function platformSupport(platform, arch, mode) {
     supportLabel: target.label,
     providerCaveat: mode === "cuda"
       ? "CUDA and cuDNN availability is verified during generation; CPU is the fallback."
-      : mode === "coreml"
-        ? "Core ML availability is verified during generation; CPU is the fallback."
-        : mode === "webgpu"
-          ? "WebGPU availability is verified during generation; CPU is the fallback."
-          : "CPU does not require an acceleration provider.",
+      : mode === "webgpu"
+        ? "WebGPU availability is verified during generation; CPU is the fallback."
+        : "CPU does not require an acceleration provider.",
   };
 }
 

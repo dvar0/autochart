@@ -39,7 +39,8 @@ function listValue(value) {
 function normalizeRequestedHardwareMode(value) {
   const mode = String(value || "auto").trim().toLowerCase();
   if (mode === "macos") return "cpu";
-  return ["auto", "cuda", "cpu", "webgpu", "coreml"].includes(mode) ? mode : "auto";
+  if (mode === "coreml") return "webgpu";
+  return ["auto", "cuda", "cpu", "webgpu"].includes(mode) ? mode : "auto";
 }
 
 function chooseHardwareMode({
@@ -54,11 +55,6 @@ function chooseHardwareMode({
   }
   if (requested === "webgpu" || requested === "auto") {
     return { mode: "webgpu", fallbackReason: "" };
-  }
-  if (requested === "coreml") {
-    return platform === "darwin"
-      ? { mode: "coreml", fallbackReason: "" }
-      : { mode: "cpu", fallbackReason: "Core ML was requested, but it is only available on macOS." };
   }
   if (requested === "cpu") return { mode: "cpu", fallbackReason: "" };
   if (platform === "darwin") {
@@ -76,7 +72,7 @@ function effectiveHardwareMode(settings = {}, platform = CURRENT_PLATFORM, arch 
   const explicit = String(settings.effectiveHardwareMode || settings.selectedHardwareMode || "").trim().toLowerCase();
   if (explicit === "cpu" || explicit === "webgpu") return explicit;
   if (explicit === "cuda") return platform === "darwin" ? "cpu" : "cuda";
-  if (explicit === "coreml") return platform === "darwin" ? "coreml" : "cpu";
+  if (explicit === "coreml") return "webgpu";
   return chooseHardwareMode({
     platform,
     arch,
@@ -88,7 +84,6 @@ function effectiveHardwareMode(settings = {}, platform = CURRENT_PLATFORM, arch 
 function modeLabel(mode) {
   if (mode === "webgpu") return "WebGPU";
   if (mode === "cuda") return "CUDA";
-  if (mode === "coreml") return "Core ML";
   return "CPU";
 }
 

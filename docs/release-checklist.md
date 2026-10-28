@@ -54,10 +54,10 @@ engine, packaging scripts, and the Settings UI:
 | --- | --- | --- | --- | --- | --- |
 | Linux x64 | AppImage | Required | WebGPU; CUDA where available | Provider initialization failure reports and reruns on CPU | 9.0.1 |
 | Windows x64 | NSIS/zip | Required | WebGPU; CUDA where available | Provider initialization failure reports and reruns on CPU | 9.0.1 |
-| macOS Apple Silicon | DMG | Required | WebGPU; experimental Core ML | Provider initialization failure reports and reruns on CPU | 9.0.1 |
+| macOS Apple Silicon | DMG | Required | WebGPU | Provider initialization failure reports and reruns on CPU | 9.0.1 |
 
-The CPU path is the supported generation baseline. WebGPU, CUDA, and Core ML
-are opportunistic accelerators; no release may make an accelerated provider a
+The CPU path is the supported generation baseline. WebGPU and CUDA are
+opportunistic accelerators; no release may make an accelerated provider a
 generation prerequisite. Mark macOS Intel, Windows ARM, and Linux ARM as
 unsupported rather than offering a Generate or setup CTA for them.
 
@@ -65,7 +65,7 @@ unsupported rather than offering a Generate or setup CTA for them.
 
 - [ ] Automatic/WebGPU mode reports the provider initialization result and
   completes on CPU when no adapter is available.
-- [ ] Explicit CUDA and Core ML provider failures report the reason and
+- [ ] Explicit CUDA provider failures report the reason and
   complete on CPU where the target supports that provider.
 - [ ] The UI identifies the selected target and does not present generation
   setup or Generate actions for an unsupported platform/architecture pair.
@@ -154,7 +154,7 @@ diagnostic location.
 Expected result:
 
 - Setup downloads the hash-pinned ONNX model pack from the supplied asset host.
-- Hardware mode is selected correctly, with WebGPU, CUDA, or Core ML falling back to CPU when provider initialization fails.
+- Hardware mode is selected correctly, with WebGPU or CUDA falling back to CPU when provider initialization fails.
 - Generation emits at least one `partial_chart` event with note lines.
 - The final generated chart has note lines and a readable report path.
 - All three direct engine gates run. A WebGPU-less runner may emit the gate's
@@ -357,7 +357,7 @@ Signature status:
 Supported generation targets:
 - Linux x64: CPU, NVIDIA CUDA where available
 - Windows x64: CPU, NVIDIA CUDA where available
-- macOS Apple Silicon: CPU, experimental Core ML
+- macOS Apple Silicon: CPU, WebGPU
 
 Known limitations:
 - .chart import only; notes.mid import is not wired up yet.

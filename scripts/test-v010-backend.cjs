@@ -601,7 +601,7 @@ async function main() {
   assert.equal(hardwareUi.normalizeHardwareMode("macos"), "cpu");
   assert.deepEqual(
     hardwareUi.hardwareModesForPlatform("darwin").map((mode) => mode.value),
-    ["auto", "webgpu", "coreml", "cpu"]
+    ["auto", "webgpu", "cpu"]
   );
   assert.deepEqual(
     hardwareUi.hardwareModesForPlatform("linux").map((mode) => mode.value),
@@ -621,7 +621,7 @@ async function main() {
   assert.ok(sourceReplacement.beginExclusiveMediaTransaction(transactionRef));
 
   assert.equal(hardwareUi.hardwareModeForPlatform("cuda", "darwin"), "cpu");
-  assert.equal(hardwareUi.hardwareModeForPlatform("coreml", "darwin"), "coreml");
+  assert.equal(hardwareUi.hardwareModeForPlatform("coreml", "darwin"), "webgpu");
   assert.equal(second.isCurrent(), true);
   const file = new Blob(["replacement-audio"], { type: "audio/ogg" });
   Object.defineProperty(file, "name", { value: "new_source.ogg" });

@@ -326,9 +326,6 @@ function hardwareDeviceOverrides(settings = {}) {
   if (mode === "webgpu") {
     return { timingDevice: "webgpu", transcriberDevice: "webgpu", demucsDevice: "webgpu" };
   }
-  if (mode === "coreml") {
-    return { timingDevice: "coreml", transcriberDevice: "coreml", demucsDevice: "coreml" };
-  }
   return {};
 }
 

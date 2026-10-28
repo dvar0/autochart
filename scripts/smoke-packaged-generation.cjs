@@ -17,7 +17,7 @@ const ONNX_SMOKE_NOTE_SECTION = "HardSingle";
 const ONNX_SMOKE_SEED = 12345;
 const STDERR_TAIL_LIMIT = 16 * 1024;
 const STDOUT_TAIL_LIMIT = 4 * 1024;
-const SUPPORTED_HARDWARE = new Set(["auto", "cuda", "webgpu", "coreml", "cpu"]);
+const SUPPORTED_HARDWARE = new Set(["auto", "cuda", "webgpu", "cpu"]);
 
 function usage() {
   return `
@@ -29,7 +29,7 @@ Options:
   --arch <arch>            Target Node/ONNX Runtime architecture.
   --models-folder <dir>    Installed chart generation files folder for the target user.
   --audio <file>           Input audio. Default: fixtures/demo/autochart-demo-30s.wav.
-  --hardware <mode>        auto, cuda, webgpu, coreml, or cpu. Default: cpu.
+  --hardware <mode>        auto, cuda, webgpu, or cpu. Default: cpu.
   --scratch-root <dir>     Parent directory for a unique smoke run.
   --check-only             Validate packaged paths without spawning the artifact.
   --help, -h               Show this help.
@@ -77,7 +77,7 @@ function parseArgs(argv) {
     throw new Error(`Unsupported generation target: ${args.platform || "unknown"}-${args.arch || "unknown"}.`);
   }
   if (!SUPPORTED_HARDWARE.has(args.hardware)) {
-    throw new Error("--hardware must be auto, cuda, webgpu, coreml, or cpu.");
+    throw new Error("--hardware must be auto, cuda, webgpu, or cpu.");
   }
 
   args.appOut = path.resolve(args.appOut);

@@ -48,7 +48,7 @@ Options:
   --cache-folder <path>    Override isolated cache for generation smoke gates.
   --projects-folder <path> Override isolated projects storage for the smoke.
   --audio <path>           Audio fixture for both generation smoke gates.
-  --hardware <mode>        auto, cuda, webgpu, coreml, or cpu (default: auto).
+  --hardware <mode>        auto, cuda, webgpu, or cpu (default: auto).
   --public-release         Enforce public source, licensing, and FFmpeg-source gates.
                            Artifacts remain unsigned unless --require-signing is also set.
   --require-signing        Additionally require and verify paid platform signing/notarization.
@@ -100,8 +100,8 @@ function parseArgs(argv) {
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
-  if (!["auto", "cuda", "webgpu", "coreml", "cpu"].includes(args.hardware)) {
-    throw new Error("--hardware must be auto, cuda, webgpu, coreml, or cpu.");
+  if (!["auto", "cuda", "webgpu", "cpu"].includes(args.hardware)) {
+    throw new Error("--hardware must be auto, cuda, webgpu, or cpu.");
   }
   if (args.requireSigning && !args.publicRelease) {
     throw new Error("--require-signing is valid only together with --public-release.");
