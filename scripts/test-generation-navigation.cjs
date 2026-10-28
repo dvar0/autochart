@@ -8,6 +8,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const esbuild = require("esbuild");
+const viteWorkers = require("./esbuild-vite-workers.cjs");
 const library = require("../electron/libraryStore.cjs");
 const { persistGeneratedTake } = require("../electron/generatedTake.cjs");
 const chartWriter = require("../shared/chartWriter.js");
@@ -61,6 +62,7 @@ async function main() {
     });
     ipcMain.handle("window:isFullscreen", () => false);
     await esbuild.build({
+      plugins: [viteWorkers],
       absWorkingDir: ROOT,
       stdin: { contents: 'import React from "react"; import {createRoot} from "react-dom/client"; import App from "./src/App.jsx"; createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);', resolveDir: ROOT, loader: "jsx" },
       bundle: true, outfile: path.join(temp, "app.js"), format: "iife", platform: "browser", jsx: "automatic",

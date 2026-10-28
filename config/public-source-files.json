@@ -146,6 +146,7 @@
     "scripts/assert-package-contents.cjs",
     "scripts/create-demo-audio.cjs",
     "scripts/create-source-release.cjs",
+    "scripts/esbuild-vite-workers.cjs",
     "scripts/ffmpeg-build.sh",
     "scripts/ffmpeg-source-gate.cjs",
     "scripts/ffmpeg-sources.json",

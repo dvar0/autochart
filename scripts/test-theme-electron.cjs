@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, nativeTheme } = require("electron");
 const esbuild = require("esbuild");
+const viteWorkers = require("./esbuild-vite-workers.cjs");
 const settingsStore = require("../electron/settingsStore.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -24,6 +25,8 @@ async function main() {
     assert.equal(settingsStore.normalizeSettings({ theme: "invalid" }).theme, "system");
 
     await esbuild.build({
+
+      plugins: [viteWorkers],
       stdin: {
         contents: `
           import React from "react";
