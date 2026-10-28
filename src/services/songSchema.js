@@ -38,6 +38,8 @@ function normalizeVersion(raw, fallback = {}) {
     },
     chart: { text: chartText },
   };
+  // Library listings say whether a take has a chart instead of carrying it.
+  if (!chartText && raw?.chart?.hasText) version.chart.hasText = true;
   if (raw?.provenance || fallback.provenance) {
     version.provenance = raw?.provenance || fallback.provenance;
   }
@@ -112,7 +114,7 @@ export function normalizeVersions(record) {
   const rawVersions = Array.isArray(record?.versions) ? record.versions : [];
   const versions = rawVersions
     .map((v) => normalizeVersion(v, { settings: record.settings, meta: record.meta }))
-    .filter((v) => v.chart.text);
+    .filter((v) => v.chart.text || v.chart.hasText);
   const imported = importedVersionFromRecord(record);
   if (imported.chart.text && !versions.some((v) => v.id === imported.id)) {
     if (record?.source === "generated") {

@@ -579,7 +579,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("library:listSongs", async () => {
-    return libraryStore.listSongs(await libraryContext());
+    return libraryStore.listSongSummaries(await libraryContext());
   });
 
   ipcMain.handle("library:patchSong", async (event, payload) => {

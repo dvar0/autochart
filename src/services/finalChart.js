@@ -54,7 +54,8 @@ function versionTimingLabel(version) {
 function assignedSlotEntries(slotVersions = {}, order = FINAL_SLOT_ORDER) {
   return order
     .map((difficulty) => [difficulty, slotVersions[difficulty]])
-    .filter(([, version]) => version?.chart?.text);
+    // Library listings say whether a take has a chart instead of carrying it.
+    .filter(([, version]) => version?.chart?.text || version?.chart?.hasText);
 }
 
 export function finalTimingMismatchMessage(slotVersions = {}, order = FINAL_SLOT_ORDER) {

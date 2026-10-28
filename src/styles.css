@@ -743,6 +743,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .art.art-gen { background: var(--surface-2); }
 .art.art-gen img { display: block; animation: art-gen-in .28s ease-out; }
 @keyframes art-gen-in { from { opacity: 0; } to { opacity: 1; } }
+.art.art-gen.drawn img { animation: none; }
 @media (prefers-reduced-motion: reduce) { .art.art-gen img { animation: none; } }
 .art .art-tag {
   position: absolute; left: 0; right: 0; bottom: 0;

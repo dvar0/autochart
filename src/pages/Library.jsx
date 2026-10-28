@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AlbumArt } from "../components/index.jsx";
 import LibraryFolderPrompt from "../components/LibraryFolderPrompt.jsx";
 import { DIFF } from "../data/difficultyMetadata.js";
@@ -270,7 +270,7 @@ function FavoriteButton({ song, onToggleFavorite, className = "" }) {
   );
 }
 
-function GridTile({ song, selected, onSelect, onToggleFavorite }) {
+const GridTile = memo(function GridTile({ song, selected, onSelect, onToggleFavorite }) {
   return (
     <div className={"tile" + (selected ? " sel" : "")}>
       <button
@@ -292,9 +292,9 @@ function GridTile({ song, selected, onSelect, onToggleFavorite }) {
       {song.fav && <FavoriteButton song={song} onToggleFavorite={onToggleFavorite} className="tile-fav" />}
     </div>
   );
-}
+});
 
-function ListRow({ song, selected, onSelect, onToggleFavorite, theme }) {
+const ListRow = memo(function ListRow({ song, selected, onSelect, onToggleFavorite, theme }) {
   const { accent } = useAccent(song, theme);
   return (
     <div className={"row" + (selected ? " sel" : "")} style={{ "--art-accent": accent }}>
@@ -323,6 +323,18 @@ function ListRow({ song, selected, onSelect, onToggleFavorite, theme }) {
       {song.fav && <FavoriteButton song={song} onToggleFavorite={onToggleFavorite} className="row-fav" />}
     </div>
   );
+});
+
+// A refresh that finds a project unchanged keeps its card object, so its tile
+// doesn't render again.
+function reuseUnchangedCards(next, prev = []) {
+  const byId = new Map(prev.map((card) => [card.id, card]));
+  return next.map((card) => {
+    const old = byId.get(card.id);
+    if (!old) return card;
+    const keys = Object.keys(card);
+    return keys.length === Object.keys(old).length && keys.every((key) => card[key] === old[key]) ? old : card;
+  });
 }
 
 function DetailPanel({
@@ -555,9 +567,7 @@ export default function Library({
     const sorted = [...recs].sort(
       (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
     );
-    const projects = await Promise.all(
-      sorted.map(recordToCard)
-    );
+    const projects = reuseUnchangedCards(await Promise.all(sorted.map(recordToCard)), libraryCache?.songs);
     libraryCache = { records: sorted, songs: projects };
     if (!shouldCommit()) {
       return { records: sorted, songs: projects };
@@ -651,8 +661,11 @@ export default function Library({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [bulkPhase, importedCount, handleUndoImport]);
 
-  const handleToggleFavorite = async (songId) => {
-    const current = songs.find((song) => song.id === songId);
+  // Stable across renders so unchanged tiles can skip rendering.
+  const songsRef = useRef(songs);
+  songsRef.current = songs;
+  const handleToggleFavorite = useCallback(async (songId) => {
+    const current = songsRef.current.find((song) => song.id === songId);
     if (!current) return;
     const next = !current.fav;
     setImportError(null);
@@ -663,7 +676,7 @@ export default function Library({
       setSongs((items) => items.map((song) => (song.id === songId ? { ...song, fav: !next } : song)));
       setImportError(err.message || "Could not update project favorite.");
     }
-  };
+  }, []);
 
   // Keep the cache in step with local edits such as favorites.
   useEffect(() => {

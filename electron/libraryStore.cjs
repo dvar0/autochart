@@ -472,6 +472,10 @@ function patchSong(context, payload) {
 async function saveSongUnlocked(context, payload, options = {}) {
   const record = payload?.record;
   if (!record?.id) throw new Error("Song record must include an id.");
+  // A library listing leaves the takes' charts out; saving one would drop them.
+  if (Array.isArray(record.versions) && record.versions.some((v) => v?.chart?.hasText && !v.chart.text)) {
+    throw new Error("Cannot save a project listing; read the project in full first.");
+  }
   const id = safeSongId(record.id);
   const root = await canonicalProjectRoot(context, { create: true });
   const rootStat = await fs.lstat(root);
@@ -787,6 +791,26 @@ async function listSongs(context) {
     }));
   const records = results.filter(Boolean);
   return records.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+// The library page's listing: every project without its takes' chart text
+// and generation provenance, which are nearly all of a manifest's size and
+// would otherwise cross IPC on every visit. Projects are read in full when
+// opened, exported or saved.
+async function listSongSummaries(context) {
+  return (await listSongs(context)).map((record) => ({
+    ...record,
+    versions: Array.isArray(record.versions) ? record.versions.map(versionSummary) : record.versions,
+  }));
+}
+
+function versionSummary({ chart, provenance, ...version }) {
+  const { text, ...chartRest } = chart || {};
+  return {
+    ...version,
+    chart: { ...chartRest, hasText: Boolean(text) },
+    ...(provenance?.sourceTransform ? { provenance: { sourceTransform: provenance.sourceTransform } } : {}),
+  };
 }
 
 function getSong(context, id) {
@@ -1522,6 +1546,7 @@ module.exports = {
   getLibraryRoot,
   saveSong,
   listSongs,
+  listSongSummaries,
   getSong,
   getProjectDeletionDetails,
   assetUrl,

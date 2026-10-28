@@ -377,6 +377,9 @@ async function resolveCoverUrl(rec) {
   return cachedObjectUrl(key, [blob], blob.type || "image/png");
 }
 
+// One formatter for every card; building one per call is slow for a big library.
+const ADDED_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+
 export async function recordToCard(rec) {
   const r = migrateRecord(rec);
   const m = r.meta || {};
@@ -390,11 +393,7 @@ export async function recordToCard(rec) {
     genre: m.genre || "",
     charter: m.charter || "Imported",
     duration: fmtDuration(m.durationSec),
-    added: new Date(r.createdAt).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }),
+    added: ADDED_DATE.format(new Date(r.createdAt)),
     status: r.status || "charted",
     fav: Boolean(r.meta?.favorite),
     diff: s.difficulty || "expert",

@@ -1,13 +1,17 @@
 import { I } from "../icons.jsx";
 import { isWebApp } from "../services/runtimeBridge.js";
+import { useState } from "react";
 import useCoverArt from "../hooks/useCoverArt.js";
+import { peekCoverArt } from "../lib/coverArt/index.js";
 
 // Generated cover for a song without album art: a seeded print drawn off the
-// main thread (see lib/coverArt), faded in once it is ready.
+// main thread (see lib/coverArt), faded in once it is ready. Covers already
+// drawn this session (a revisited page) show at once.
 export function AlbumArt({ seed, label, showLabel }) {
   const art = useCoverArt(seed);
+  const [drawn] = useState(() => seed != null && peekCoverArt(seed) != null);
   return (
-    <div className="art art-gen">
+    <div className={"art art-gen" + (drawn ? " drawn" : "")}>
       {art && (
         <img
           src={art.url}
