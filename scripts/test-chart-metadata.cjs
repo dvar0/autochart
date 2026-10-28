@@ -15,6 +15,13 @@ const library = require("../electron/libraryStore.cjs");
   const { createSongFromImport, migrateRecord } = await import("../src/services/songSchema.js");
   const { importSongFolder } = await import("../src/services/songImport.js");
   const { parseChart } = await import("../src/lib/chart/parseChart.js");
+  const { parseRichText, plainText } = await import("../src/lib/richText.js");
+  const coloredCharter = "<color=#FFDE2B>R</color><color=#2748FE>I</color><b>x</b>";
+  assert.equal(plainText(coloredCharter), "RIx");
+  assert.deepEqual(parseRichText(coloredCharter).map((run) => [run.text, run.color, run.b]), [["R", "#FFDE2B", false], ["I", "#2748FE", false], ["x", null, true]]);
+  assert.equal(plainText("<#f00>red</color> <size=120%>big</size>"), "red big");
+  assert.equal(plainText("<3 Name <Team>"), "<3 Name <Team>", "unknown tags stay as text");
+  assert.equal(parseRichText("<color=bogus>x</color>")[0].color, null);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "autochart-metadata-"));
   try {
     const context = { userDataPath: root, projectsFolder: path.join(root, "projects") };

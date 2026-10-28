@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
 import { I } from "../../icons.jsx";
+import RichText from "../../components/RichText.jsx";
 
 // Anchored popover with outside-click + Escape dismissal. True overlay, so it
 // carries --shadow-pop per the design system.
@@ -135,8 +136,10 @@ export default function ProjectBar({ project }) {
             <input id="project-genre" placeholder="e.g. Rock" value={details.genre || ""} onChange={setField("genre")} />
           </div>
           <div className="field">
-            <label htmlFor="project-charter">Charter</label>
-            <input id="project-charter" value={details.charter || "Autochart"} readOnly />
+            <label id="project-charter-label">Charter</label>
+            <div className="field-static" role="textbox" aria-readonly="true" aria-labelledby="project-charter-label">
+              <RichText value={details.charter || "Autochart"} />
+            </div>
             <small>Generated charts are credited to Autochart. Imported chart credits are preserved.</small>
           </div>
         </BarPopover>

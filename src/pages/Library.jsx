@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AlbumArt } from "../components/index.jsx";
 import LibraryFolderPrompt from "../components/LibraryFolderPrompt.jsx";
+import RichText from "../components/RichText.jsx";
 import { DIFF } from "../data/difficultyMetadata.js";
 import {
   GAME_LIBRARY_NAME,
@@ -15,6 +16,7 @@ import {
   tintIsDark,
 } from "../lib/coverColor.js";
 import { I } from "../icons.jsx";
+import { plainText } from "../lib/richText.js";
 import useCoverArt from "../hooks/useCoverArt.js";
 import useLibraryFolderGate, { isMissingLibraryFolderError } from "../hooks/useLibraryFolderGate.js";
 import {
@@ -316,7 +318,7 @@ const ListRow = memo(function ListRow({ song, selected, onSelect, onToggleFavori
             </div>
             <div className="rt-sub">{song.artist}</div>
           </div>
-          <div className="rcol">{song.charter}</div>
+          <div className="rcol"><RichText value={song.charter} /></div>
           <div className="rcol num">{song.year}</div>
           <div className="rcol num">{song.duration}</div>
         </div>
@@ -701,7 +703,7 @@ export default function Library({
       (s) =>
         s.title.toLowerCase().includes(q) ||
         s.artist.toLowerCase().includes(q) ||
-        s.charter.toLowerCase().includes(q)
+        plainText(s.charter).toLowerCase().includes(q)
     );
   }
 

@@ -2189,7 +2189,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 
 /* ============== SHARED FORM BITS ============== */
 .field label { font-size: var(--fs-sm); color: var(--text-dim); display: block; margin-bottom: 6px; }
-.field input {
+.field input, .field .field-static {
   width: 100%; font-size: var(--fs-md);
   background: var(--surface); color: var(--text);
   border: var(--bw) solid var(--border); border-radius: var(--r-box);
@@ -2198,6 +2198,18 @@ input:focus-visible, select:focus-visible { outline: none; }
 .field input::placeholder { color: var(--text-faint); }
 .field small { display: block; margin-top: 6px; color: var(--text-dim); font-size: var(--fs-xs); line-height: 1.4; }
 .field input:focus { border-color: var(--purple-bd); }
+.field .field-static { line-height: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Unity rich text from song.ini (charter names in color). Charters pick colors
+   for the games' dark screens, so each color keeps its hue but is darkened on
+   the light theme and lightened on the dark one until it reads. */
+.rich-text .rt-b { font-weight: 700; }
+.rich-text .rt-i { font-style: italic; }
+.rich-text .rt-u { text-decoration: underline; }
+.rich-text .rt-s { text-decoration: line-through; }
+.rich-text .rt-u.rt-s { text-decoration: underline line-through; }
+.rich-text [data-color] { color: oklch(from var(--rt-color) min(l, 0.56) c h / max(alpha, 0.6)); }
+.ac-app[data-theme="dark"] .rich-text [data-color] { color: oklch(from var(--rt-color) max(l, 0.72) c h / max(alpha, 0.6)); }
 
 .gen-hint { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--purple); }
 .gen-hint svg { width: 15px; height: 15px; flex: none; }
