@@ -772,6 +772,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
             const frac = Math.max(0, Math.min(1, event.progress));
             next.stageProgress = { ...(run.stageProgress || {}), [event.stage]: frac * 100 };
           }
+          // The browser version's first run downloads the model: bytes across
+          // the whole download, for the live board.
+          if (event.downloading && Number(event.downloadBytes) > 0) {
+            next.download = { loaded: Number(event.downloadedBytes) || 0, total: Number(event.downloadBytes) };
+          }
           // Time the separation so a slow device can be offered Lite. Once
           // it's slow it stays slow for the run, so the offer doesn't flicker.
           if (event.stage === "demucs" && event.status === "running" && !event.downloading) {

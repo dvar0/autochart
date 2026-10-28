@@ -362,8 +362,8 @@ async function generateChart(payload = {}) {
       };
     }
     const analysisAudioPath = await storeAnalysisAudio(jobId, payload.audio.blob, job.audio, job.audioSha256, job.sourceTransform);
+    void keepModelsIfDownloading(generator);
     const result = await runJob("generate", jobId, job, transfer);
-    keepModelsStored();
     const stems = await separationStemSets(job.audioSha256, job.sourceTransform, job.separationId);
     const base = result.sourceSeparation || job.demucsSeparation || null;
     const sourceSeparation = base
@@ -408,8 +408,8 @@ async function prepareDemucs(payload = {}) {
     job.separationId = separationId;
     job.demucsSeparation = { id: separationId, name, profile: "Standard Demucs" };
     job.needStems = Boolean(payload.needStems);
+    void keepModelsIfDownloading(generator);
     const result = await runJob("prepareDemucs", jobId, job, transfer);
-    keepModelsStored();
     const stems = await separationStemSets(job.audioSha256, job.sourceTransform, separationId);
     emit(jobId, { type: "stage", stage: "saved", status: "completed" });
     return {
@@ -443,8 +443,8 @@ async function inpaintChart(payload = {}) {
     const { job, generator, transfer } = await baseJob(jobId, payload);
     if (!generator.capabilities?.inpaint) throw new Error(`${generator.label} can't regenerate part of a chart.`);
     job.inpaint = payload.inpaint;
+    void keepModelsIfDownloading(generator);
     const result = await runJob("inpaint", jobId, job, transfer);
-    keepModelsStored();
     return { jobId, status: result.status, chartText: result.chartText, inpaint: result.inpaint };
   } catch (err) {
     if (err?.code === "CANCELED") return { jobId, status: "canceled" };
@@ -627,6 +627,7 @@ async function installModels(request = {}) {
   if (!family) throw new Error("No model is reachable right now.");
   const ids = [inpaint ? family.inpaintGeneratorId : family.generatorId];
   emitInstall({ phase: "starting", percent: 0, message: "Preparing download." });
+  keepModelsStored();
   for (const [index, id] of ids.entries()) {
     const manifest = await loadModelManifest(modelUrl(generatorById(id)));
     await ensureModelFiles(manifest, {
@@ -641,7 +642,6 @@ async function installModels(request = {}) {
     });
   }
   emitInstall({ phase: "complete", percent: 100, message: "Downloaded." });
-  keepModelsStored();
   return { setup: await scanModels({ fresh: true }) };
 }
 
@@ -707,7 +707,9 @@ async function removeModels(request = {}) {
 
 // Asks the browser to keep downloaded models when the device runs low on
 // space, instead of clearing them (and downloading 500 MB again). Chrome
-// decides on its own; Firefox may ask once.
+// decides on its own; Firefox may ask once. Asked when a download starts
+// (Settings, or a run that downloads its model first), while the page shows
+// it, never out of the blue after a run.
 let keepRequested = false;
 function keepModelsStored() {
   if (keepRequested || !globalThis.navigator?.storage?.persist) return;
@@ -715,6 +717,11 @@ function keepModelsStored() {
   navigator.storage.persisted()
     .then((persisted) => (persisted ? true : navigator.storage.persist()))
     .catch(() => {});
+}
+
+async function keepModelsIfDownloading(generator) {
+  const status = (await generatorStatuses().catch(() => ({})))[generator.id];
+  if (status && !status.downloaded) keepModelsStored();
 }
 
 export function createWebBridge() {

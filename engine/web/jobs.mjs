@@ -54,8 +54,9 @@ function withLeadIn(audio, sourceTransform) {
 
 // Downloads the model folder's files that aren't cached yet (or only the
 // listed ones), reported as the given stage so the progress card shows the
-// download in place of that step.
-async function downloadModels(manifest, emit, { stage = "queued", only = null } = {}) {
+// download in place of that step. `bytes` ({ done, total }) counts across the
+// run's downloads, so the page shows one download even when it comes in two parts.
+async function downloadModels(manifest, emit, bytes, { stage = "queued", only = null } = {}) {
   let lastPercent = -1;
   const result = await ensureModelFiles(manifest, {
     only,
@@ -63,10 +64,14 @@ async function downloadModels(manifest, emit, { stage = "queued", only = null } 
       const percent = total ? Math.floor((loaded / total) * 100) : 0;
       if (percent === lastPercent) return;
       lastPercent = percent;
-      emit({ type: "stage", stage, status: "running", progress: total ? loaded / total : 0, downloading: true });
+      emit({
+        type: "stage", stage, status: "running", progress: total ? loaded / total : 0, downloading: true,
+        downloadedBytes: bytes.done + loaded, downloadBytes: Math.max(bytes.total, bytes.done + total),
+      });
       emit({ type: "log", stage, stream: "stdout", message: `Downloading models: ${percent}% (${file})` });
     },
   });
+  bytes.done += result.bytes || 0;
   if (result.downloaded) {
     emit({ type: "log", stage, stream: "stdout", message: `Downloaded ${result.downloaded} model files` });
   }
@@ -88,17 +93,19 @@ function separationKey(job) {
 async function prepareModels(job, emit, { separationFirst = true } = {}) {
   const manifest = await loadManifest(job.modelUrl);
   const separating = separationFirst && needsStems(manifest) && !(await storedSeparation(job, manifest));
+  const { total } = await missingModelFiles(manifest);
+  job.modelBytes = { done: 0, total };
   // Checked for the whole model up front, so a full device finds out before
   // separating rather than after.
-  if (separating) await checkStorageRoom((await missingModelFiles(manifest)).total);
-  await downloadModels(manifest, emit, { only: separating ? separationFiles(manifest) : null });
+  if (separating) await checkStorageRoom(total);
+  await downloadModels(manifest, emit, job.modelBytes, { only: separating ? separationFiles(manifest) : null });
   emit({ type: "stage", stage: "queued", status: "completed" });
   return manifest;
 }
 
 // After separation: whatever the model still needs, shown as the timing step.
-async function downloadRest(manifest, emit) {
-  await downloadModels(manifest, emit, { stage: "timing" });
+async function downloadRest(job, manifest, emit) {
+  await downloadModels(manifest, emit, job.modelBytes, { stage: "timing" });
 }
 
 // The stored separation this run can use: its mel tables, plus its stems when
@@ -235,7 +242,7 @@ export async function runGenerate(job, emit, runtime) {
   emit({ type: "stage", stage: "audio", status: "completed", backend: BACKEND });
 
   const stems = await separation(job, manifest, audio, emit);
-  await downloadRest(manifest, emit);
+  await downloadRest(job, manifest, emit);
   const timed = await timing(job, manifest, settings, audio, emit);
   const { beats } = timed;
 

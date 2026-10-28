@@ -62,8 +62,8 @@ export default function Console({ project }) {
   const allKnobsAuto = styleKnobs.every((knob) => (generationControls[knob.key] ?? "auto") === "auto");
   const generatorChoices = selectableGenerators || [];
   const changed = changedSettingsSummary(project);
-  // The browser version downloads a model the first time it runs; say so
-  // under Generate until it's in the browser.
+  // The browser version downloads a model the first time it runs; Generate
+  // says so, with the size, until it's in the browser.
   const pendingDownloadMb = selectedGeneratorSetup?.ready && selectedGeneratorSetup.downloaded === false
     ? (MODEL_FAMILIES.find((family) => family.generatorId === generatorId
       || family.id === BETA_MODELS.find((model) => model.generatorId === generatorId)?.familyId)?.downloadMb || 0)
@@ -340,6 +340,10 @@ export default function Console({ project }) {
                   </>
                 ) : runActive ? (
                   "Stop"
+                ) : pendingDownloadMb != null ? (
+                  <>
+                    Download and generate{pendingDownloadMb ? ` · ${pendingDownloadMb} MB` : ""} <I.boltFill />
+                  </>
                 ) : (
                   <>
                     Generate chart <I.boltFill />
@@ -347,15 +351,10 @@ export default function Console({ project }) {
                 )}
               </button>
               <span id="generate-cta-reason" className="sr-only">{generateDisabledReason}</span>
-              <div className={"reused-line" + (reusedFrom || pendingDownloadMb != null ? "" : " is-empty")} aria-live="polite">
+              <div className={"reused-line" + (reusedFrom || spaceShort ? "" : " is-empty")} aria-live="polite">
                 {!reusedFrom && spaceShort && !runActive && (
                   <span className="reused-name is-warn" title={generateDisabledReason}>
                     <I.download /> Needs {spaceShort.neededMb} MB, about {spaceShort.freeMb} MB free. Remove models in Settings.
-                  </span>
-                )}
-                {!reusedFrom && !spaceShort && pendingDownloadMb != null && !runActive && (
-                  <span className="reused-name">
-                    <I.download /> {pendingDownloadMb ? `Downloads the model first (${pendingDownloadMb} MB, once)` : "Downloads the model first (once)"}
                   </span>
                 )}
                 {reusedFrom && (

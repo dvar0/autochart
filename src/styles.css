@@ -3335,6 +3335,61 @@ video.bg-layer {
   pointer-events: none;
 }
 .live-stage-board .stage-signal { color: #e6e9ff; }
+
+/* The browser version's first-run model download, over the board's signal. */
+.live-download {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  width: min(380px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 24px 20px;
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, #0b0e1a 92%, transparent);
+  border: var(--bw) solid color-mix(in srgb, #e6e9ff 16%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  color: #e6e9ff;
+  text-align: center;
+}
+.live-download b {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  opacity: 0.86;
+}
+.live-download-size {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.live-download-size small {
+  font-size: 18px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.live-download .gen-progressbar {
+  align-self: stretch;
+  background: color-mix(in srgb, #e6e9ff 14%, transparent);
+}
+.live-download .gen-progressbar i { background: var(--purple-bri); }
+.live-download p {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs, 12px);
+  line-height: 1.45;
+  opacity: 0.72;
+  text-wrap: pretty;
+}
+.live-rec.is-download {
+  background: var(--purple-bg);
+  color: var(--purple);
+}
 .live-take-viewport .stage-signal { color: var(--purple); }
 
 /* Indeterminate fill for waits without a real percent (separation). */

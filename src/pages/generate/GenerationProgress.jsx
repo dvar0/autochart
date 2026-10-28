@@ -111,7 +111,8 @@ export function describeRunStage(run) {
     const stage = GENERATION_STAGES[i];
     const info = stageInfoFor(run, stage.id);
     if (!info) continue;
-    if (info.status === "running" && info.downloading) return `Downloading the model… ${Math.round(run.stageProgress?.[stage.id] || 0)}%`;
+    // The board shows how much; this stays one line.
+    if (info.status === "running" && info.downloading) return "Downloading the model…";
     if (info.status === "running") return `${stage.label}…`;
     const next = GENERATION_STAGES[i + 1];
     return `${(next || stage).label}…`;
@@ -124,6 +125,17 @@ export function describeRunStage(run) {
 // subsequent chart stage writes the final notes.chart package.
 export function runIsStreaming(run) {
   return Boolean(run?.live);
+}
+
+// { loaded, total } in bytes while the run is downloading the model, else null.
+export function runDownload(run) {
+  if (!run || run.finishedAt || !run.download) return null;
+  const downloading = Object.values(run.stages || {}).some((info) => info?.status === "running" && info.downloading);
+  return downloading ? run.download : null;
+}
+
+export function megabytesOf(bytes) {
+  return Math.round((Number(bytes) || 0) / 1e6);
 }
 
 export function runIsSeparating(run) {

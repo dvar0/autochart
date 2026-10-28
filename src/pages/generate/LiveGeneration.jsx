@@ -3,7 +3,9 @@ import HighwayPreview from "../../highway/HighwayPreview.jsx";
 import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import LiveNoteStrip from "./LiveNoteStrip.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
-import { describeRunStage, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
+import { describeRunStage, megabytesOf, runDownload, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
+import { browserName } from "../../components/DeviceFacts.jsx";
+import { BETA_MODELS, MODEL_FAMILIES } from "../../data/modelFamilies.js";
 import { I } from "../../icons.jsx";
 
 // The live stage and take-card both share runProgressPercent as the single
@@ -31,9 +33,11 @@ function runIsPreparing(run) {
 
 // What the board should show while a first-time generation runs: reading the
 // audio, Demucs separation, then timing and transcription warm-up. As soon as
-// transcription streams a partial chart, the live highway takes over.
+// transcription streams a partial chart, the live highway takes over. The
+// browser version's first run downloads the model on the way.
 function liveBoardPhase(project) {
   if (runIsStreaming(project.genRun)) return "notes";
+  if (runDownload(project.genRun)) return "downloading";
   if (runIsSeparating(project.genRun)) return "separating";
   if (runIsPreparing(project.genRun)) return "preparing";
   return "warming";
@@ -41,6 +45,36 @@ function liveBoardPhase(project) {
 
 function signalMode(phase) {
   return phase === "separating" ? "split" : phase === "preparing" ? "prep" : "beat";
+}
+
+function modelLabel(generatorId) {
+  return (MODEL_FAMILIES.find((family) => family.generatorId === generatorId)
+    || BETA_MODELS.find((model) => model.generatorId === generatorId))?.label || "the model";
+}
+
+function downloadPercent(download) {
+  return download.total ? Math.min(100, (download.loaded / download.total) * 100) : 0;
+}
+
+// The first run's model download, over the board's signal: what's coming
+// down, how much, and that it's only this once. Firefox asks before keeping
+// it, so it says why.
+function DownloadReadout({ download, generatorId }) {
+  return (
+    <div className="live-download" role="status">
+      <b>Downloading {modelLabel(generatorId)}</b>
+      <span className="live-download-size">
+        {megabytesOf(download.loaded)} <small>of {megabytesOf(download.total)} MB</small>
+      </span>
+      <div className="gen-progressbar" aria-hidden="true">
+        <i style={{ width: `${downloadPercent(download)}%` }} />
+      </div>
+      <p>
+        First time only. It stays in this browser, then charting starts.
+        {browserName() === "Firefox" && " If the browser asks to keep it stored, allow it so it doesn't download again."}
+      </p>
+    </div>
+  );
 }
 
 function liveFollowTime(live) {
@@ -74,6 +108,7 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
   const pct = livePercent(project);
   const title = project.details?.title || "Live transcription";
   const separating = phase === "separating";
+  const download = phase === "downloading" ? runDownload(project.genRun) : null;
   const hasSelectedTrack = Boolean(project.track);
   const setLiveStageFocused = project.setLiveStageFocused;
 
@@ -230,25 +265,32 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
           </>
         ) : (
           // One mounted signal for every wait, so each stage eases into the next.
-          <StageSignal mode={signalMode(phase)} />
+          <>
+            <StageSignal mode={signalMode(phase)} />
+            {download && <DownloadReadout download={download} generatorId={project.genRun?.generatorId} />}
+          </>
         )}
       </div>
       {isLive && <div className="live-stage-status">
         <div className="live-stage-status-row">
-          <span className="live-rec"><i aria-hidden="true" />{separating ? "SPLIT" : "REC"}</span>
+          <span className={"live-rec" + (download ? " is-download" : "")}>
+            <i aria-hidden="true" />{download ? "DOWNLOAD" : separating ? "SPLIT" : "REC"}
+          </span>
           <div className="live-stage-status-main">
             <b>{title}</b>
             <small>
-              {separating
-                ? "Separating stems"
-                : [statusLabel(project), beatLabel(live)].filter(Boolean).join(" · ")}
+              {download
+                ? `Downloading ${modelLabel(project.genRun?.generatorId)}`
+                : separating
+                  ? "Separating stems"
+                  : [statusLabel(project), beatLabel(live)].filter(Boolean).join(" · ")}
             </small>
           </div>
-          {!separating && <span className="live-stage-notes">{live?.noteCount || 0} notes</span>}
-          {!separating && <span className="live-stage-pct">{Math.round(pct)}%</span>}
+          {!separating && !download && <span className="live-stage-notes">{live?.noteCount || 0} notes</span>}
+          {!separating && <span className="live-stage-pct">{Math.round(download ? downloadPercent(download) : pct)}%</span>}
         </div>
         <div className="gen-progressbar sm" aria-hidden="true">
-          {separating ? <i className="indeterminate" /> : <i style={{ width: `${pct}%` }} />}
+          {separating ? <i className="indeterminate" /> : <i style={{ width: `${download ? downloadPercent(download) : pct}%` }} />}
         </div>
       </div>}
     </div>
@@ -263,6 +305,7 @@ export function LiveGenerationTakeCard({ project, selected = false, onClick }) {
   // (e.g. a fresh lead-in forced a re-separation), so show the stem-split strip
   // instead of an empty piano roll.
   const separating = runIsSeparating(project.genRun);
+  const download = runDownload(project.genRun);
   const clickable = Boolean(onClick);
 
   return (
@@ -292,7 +335,9 @@ export function LiveGenerationTakeCard({ project, selected = false, onClick }) {
           <i />{separating ? "SPLIT" : "REC"}
         </span>
         <span className="take-name">
-          {separating ? "Separating stems…" : `Generating take · ${Math.round(pct)}%`}
+          {download
+            ? `Downloading the model · ${Math.round(downloadPercent(download))}%`
+            : separating ? "Separating stems…" : `Generating take · ${Math.round(pct)}%`}
         </span>
       </div>
       <div className="live-take-viewport">
