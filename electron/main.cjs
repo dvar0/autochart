@@ -665,7 +665,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("library:exportSong", async (_event, payload) => {
-    const { songId, versionId } = normalizeExportPayload(payload);
+    const { songId, versionId, albumArt } = normalizeExportPayload(payload);
     if (!songId) throw new Error("No project selected to export.");
     const win = BrowserWindow.getFocusedWindow();
     const context = await libraryContext();
@@ -685,7 +685,7 @@ function registerIpcHandlers() {
 
     const selectedRoot = await fs.realpath(path.resolve(result.filePaths[0]));
     const dest = strictChildPath(selectedRoot, defaultName);
-    const out = await libraryStore.exportSongToFolder(context, songId, dest, { versionId });
+    const out = await libraryStore.exportSongToFolder(context, songId, dest, { versionId, albumArt });
     return {
       canceled: false,
       path: out.path,
@@ -695,7 +695,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("library:saveSongToCloneHeroLibrary", async (_event, payload = {}) => {
-    const { songId, versionId } = normalizeExportPayload(payload);
+    const { songId, versionId, albumArt } = normalizeExportPayload(payload);
     if (!songId) throw new Error("No project selected to save.");
 
     const settings = await readAppSettings();
@@ -707,7 +707,7 @@ function registerIpcHandlers() {
       await libraryContext(),
       songId,
       settings.cloneHeroLibraryFolder,
-      { versionId }
+      { versionId, albumArt }
     );
     return {
       path: out.path,

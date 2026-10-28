@@ -239,6 +239,7 @@
     "src/icons.jsx",
     "src/lib/chart/parseChart.js",
     "src/lib/chart/tempoMap.js",
+    "src/lib/coverArt/exportCover.js",
     "src/lib/coverArt/index.js",
     "src/lib/coverArt/render.js",
     "src/lib/coverArt/worker.js",

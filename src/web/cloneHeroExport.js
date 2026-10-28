@@ -10,6 +10,7 @@ import { loadMelTables } from "../../engine/web/stemStore.mjs";
 import {
   audioLeadInMs, buildProjectFile, delayChart, exportableTables, PROJECT_FILE, tablesFileName, versionLeadInMs,
 } from "../../shared/projectFile.js";
+import { exportCover } from "../lib/coverArt/exportCover.js";
 import { getSongRecord } from "../services/songLibrary.js";
 
 const GAME_AUDIO = new Set(["ogg", "mp3", "opus", "wav"]);
@@ -130,8 +131,12 @@ export async function cloneHeroFiles(songId, versionId = null) {
 
   const files = [{ name: "notes.chart", data: new Blob([exportedChartText], { type: "text/plain" }) }];
   files.push(await songAudio(record, leadInMs));
+  // Square art for the games: wide covers cropped, missing ones generated.
   const album = record._blobs?.albumArt;
-  if (album) {
+  const cover = await exportCover(album, record.meta).catch(() => null);
+  if (cover) {
+    files.push({ name: cover.name, data: cover.blob });
+  } else if (album) {
     const ext = extOf(record.assets?.albumArt || album.name, album.type);
     files.push({ name: /^(jpe?g|webp|gif)$/.test(ext) ? "album.jpg" : "album.png", data: album });
   }

@@ -124,7 +124,17 @@ async function main() {
     await jpeg("album.jpg");
     await jpeg("background.jpg");
 
-    const engine = path.join(context.cacheFolder, "engine");
+    // Square art the app prepared replaces the saved cover; a mislabeled or
+    // non-image payload is ignored and the saved cover goes out instead.
+    const pngBytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    await library.exportSongToFolder(context, record.id, dest, { albumArt: { name: "album.png", data: new Uint8Array(pngBytes) } });
+    assert.deepEqual(await fs.readFile(path.join(dest, "album.png")), pngBytes);
+    await assert.rejects(fs.access(path.join(dest, "album.jpg")), "the prepared cover replaces the old album art");
+    await library.exportSongToFolder(context, record.id, dest, { albumArt: { name: "album.jpg", data: new Uint8Array(pngBytes) } });
+    await jpeg("album.jpg");
+    await assert.rejects(fs.access(path.join(dest, "album.png")));
+
+    const engine =path.join(context.cacheFolder, "engine");
     await fs.mkdir(engine, { recursive: true });
     const padded = path.join(engine, "padded.flac");
     run(["-i", path.join(project, "song.wav"), "-filter_complex", "anullsrc=channel_layout=stereo:sample_rate=48000:d=2[s];[0:a]aresample=48000,asetpts=PTS-STARTPTS[a];[s][a]concat=n=2:v=0:a=1[out]", "-map", "[out]", "-c:a", "flac", padded]);

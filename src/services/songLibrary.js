@@ -406,6 +406,17 @@ export async function recordToCard(rec) {
   };
 }
 
+// The song's own album art as a Blob, or null when it has none.
+export async function loadCoverBlob(rec) {
+  if (hasElectronLibrary() && rec.assets?.albumArt) {
+    const url = await getElectronAssetUrl(rec.id, rec.assets.albumArt);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Album art could not be loaded.");
+    return response.blob();
+  }
+  return rec._blobs?.albumArt || rec._idbBlobs?.albumArt || null;
+}
+
 async function loadAudioBuffer(rec) {
   if (hasElectronLibrary() && rec.assets?.audio) {
     // GameEngine currently uses WebAudio decodeAudioData, so playback still

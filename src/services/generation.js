@@ -1,5 +1,6 @@
 import { GAME_LIBRARY_NAME } from "../data/gameLibrary.js";
-import { getSongRecord } from "./songLibrary.js";
+import { exportCover } from "../lib/coverArt/exportCover.js";
+import { getSongRecord, loadCoverBlob } from "./songLibrary.js";
 import {
   electronEngine,
   electronFiles,
@@ -200,8 +201,24 @@ export async function readEngineCacheFile(path) {
   return toArrayBuffer(data);
 }
 
+// The square album art for the song folder, when the saved cover isn't one
+// already. A cover that can't be prepared leaves the export as it was.
+async function exportAlbumArt(songId) {
+  try {
+    const rec = await getSongRecord(songId);
+    if (!rec) return null;
+    const cover = await exportCover(await loadCoverBlob(rec), rec.meta);
+    return cover && { name: cover.name, data: new Uint8Array(await cover.blob.arrayBuffer()) };
+  } catch (error) {
+    console.warn("[export] Album art left as is:", error);
+    return null;
+  }
+}
+
 async function invokeLibraryExport(action, payload) {
   try {
+    const albumArt = await exportAlbumArt(payload.songId);
+    if (albumArt) payload = { ...payload, albumArt };
     return await electronLibrary()[action](payload);
   } catch (error) {
     // Electron prefixes IPC exceptions with internal method names. Show the

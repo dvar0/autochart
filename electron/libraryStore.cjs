@@ -1085,6 +1085,21 @@ async function writeCloneHeroImage(src, dest, cacheDir) {
   });
 }
 
+// Square album art the app prepared for the games (a wide cover cropped, or
+// the generated cover). Anything that isn't a PNG/JPEG under its matching
+// name is ignored and the saved cover is exported instead.
+const PREPARED_ALBUM_MAX_BYTES = 16 * 1024 * 1024;
+function preparedAlbumArt(albumArt) {
+  if (!albumArt || !(albumArt.data instanceof Uint8Array)) return null;
+  const data = Buffer.from(albumArt.data.buffer, albumArt.data.byteOffset, albumArt.data.byteLength);
+  if (!data.length || data.length > PREPARED_ALBUM_MAX_BYTES) return null;
+  const png = data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const jpeg = data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  if (albumArt.name === "album.png" && png) return { name: "album.png", data };
+  if (albumArt.name === "album.jpg" && jpeg) return { name: "album.jpg", data };
+  return null;
+}
+
 function cloneHeroSongFolderName(song, { copy = false } = {}) {
   const title = String(song?.meta?.title || song?.id || "song").trim();
   const artist = String(song?.meta?.artist || "").trim();
@@ -1402,7 +1417,8 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
   const audioSourcePath = canonicalAnalysisAudio || audioAsset?.path || "";
   const padAudioMs = canonicalAnalysisAudio ? 0 : leadInSilenceMs;
   if (!audioSourcePath) throw new Error("Add song audio before exporting to Clone Hero / YARG.");
-  const albumAsset = song.assets?.albumArt
+  const preparedAlbum = preparedAlbumArt(options.albumArt);
+  const albumAsset = !preparedAlbum && song.assets?.albumArt
     ? await canonicalProjectFile(internalDir, song.assets.albumArt, "album asset")
     : null;
   const backgroundAsset = bg?.file
@@ -1467,7 +1483,9 @@ async function exportSongToFolder(userDataPath, songId, destDir, options = {}) {
     if (audioSourcePath) {
       await writeCloneHeroAudio(audioSourcePath, stageDir, path.basename(audioSourcePath), exportCacheDir, padAudioMs);
     }
-    if (albumAsset) {
+    if (preparedAlbum) {
+      await atomicWrite(path.join(stageDir, preparedAlbum.name), preparedAlbum.data);
+    } else if (albumAsset) {
       await writeCloneHeroImage(albumAsset.path, path.join(stageDir, cloneHeroAlbumName(albumAsset.name)), exportCacheDir);
     }
     if (backgroundAsset) {
