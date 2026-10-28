@@ -70,6 +70,8 @@ function autochartWeb() {
 export default defineConfig({
   plugins: [react(), autochartWeb()],
   base: "./",
+  // Its own prebundle cache, so the desktop dev server doesn't invalidate it.
+  cacheDir: "node_modules/.vite-web",
   define: {
     __AUTOCHART_MODEL_HOST__: JSON.stringify(`${DEFAULT_ASSET_BASE_URL.replace(/\/+$/, "")}/`),
   },
@@ -79,6 +81,9 @@ export default defineConfig({
     },
   },
   worker: { format: "es" },
+  // Only the engine worker imports it, so the dev server would find it on the
+  // first Generate and reload the page mid-run.
+  optimizeDeps: { include: ["onnxruntime-web/webgpu"] },
   build: {
     outDir: "dist-web",
     target: "es2022",
@@ -88,6 +93,8 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5174,
     headers: ISOLATION_HEADERS,
+    // Builds of the desktop app or this one aren't sources: don't reload on them.
+    watch: { ignored: ["**/dist/**", "**/dist-web/**"] },
   },
   preview: {
     host: "127.0.0.1",
