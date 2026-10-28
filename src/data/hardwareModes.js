@@ -45,6 +45,7 @@ export function humanizeRuntime(value) {
   const runtime = String(value || "").trim().toLowerCase();
   if (!runtime || runtime.startsWith("unsupported-")) return "Unavailable";
   if (runtime === "onnxruntime-node") return "ONNX Runtime";
+  if (runtime === "onnxruntime-web") return "ONNX Runtime Web";
   if (runtime === "browser-preview") return "Browser preview";
   return humanizeStatus(runtime);
 }

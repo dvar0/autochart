@@ -669,6 +669,9 @@ async function probeHardware() {
     appleSilicon: false,
     nvidia: { detected: false, cudaAvailable: false, gpus: [] },
     gpu: webgpu ? [info.vendor, info.architecture || info.device].filter(Boolean).join(" ") || "WebGPU" : "",
+    // Firefox-based browsers often leave these empty: they don't name the card.
+    gpuDetails: webgpu ? [...new Set([info.vendor, info.architecture, info.device, info.description].filter(Boolean))].join(" · ") : "",
+    webgpuAvailable: webgpu,
     requestedMode,
     selectedMode,
     effectiveHardwareMode: selectedMode,

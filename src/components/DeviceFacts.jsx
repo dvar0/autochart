@@ -13,6 +13,16 @@ export function browserName() {
   return "This browser";
 }
 
+// The browser and its major version, e.g. "Firefox 144". Browsers built on
+// another one (Zen, Brave…) report as that one.
+export function browserLabel() {
+  const ua = navigator.userAgent;
+  const name = browserName();
+  const pattern = { Firefox: /Firefox\/(\d+)/, Edge: /Edg\/(\d+)/, Opera: /OPR\/(\d+)/, Chrome: /Chrome\/(\d+)/, Safari: /Version\/(\d+)/ }[name];
+  const version = pattern && ua.match(pattern)?.[1];
+  return version ? `${name} ${version}` : name;
+}
+
 export const UNCHECKED_DEVICE = {
   checked: false,
   webgpu: false,
@@ -41,7 +51,7 @@ export function deviceFromProbe(probe) {
   };
 }
 
-function memoryText(memoryGb) {
+export function memoryText(memoryGb) {
   if (!Number.isFinite(memoryGb)) return "Not reported by this browser";
   return memoryGb >= 8 ? "8 GB or more" : `About ${memoryGb} GB`;
 }

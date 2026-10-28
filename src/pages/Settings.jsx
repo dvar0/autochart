@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { I } from "../icons.jsx";
 import { generationDownloadSize } from "../components/GenerationPipeline.jsx";
-import { DeviceReadout, UNCHECKED_DEVICE, deviceFromProbe } from "../components/DeviceFacts.jsx";
+import { DeviceReadout, UNCHECKED_DEVICE, browserLabel, deviceFromProbe, memoryText } from "../components/DeviceFacts.jsx";
 import InstallProgress from "../components/InstallProgress.jsx";
 import {
   friendlyTarget,
@@ -122,9 +122,19 @@ function formatSize(bytes) {
   return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 }
 
-function StatusPill({ status }) {
+function StatusPill({ status, label = "" }) {
   const value = status || "missing";
-  return <span className={`setup-status ${value}`}>{humanizeStatus(value)}</span>;
+  return <span className={`setup-status ${value}`}>{label || humanizeStatus(value)}</span>;
+}
+
+// The browser's models count as usable before they're downloaded (they
+// download on first use), so its pill says what's actually in the browser.
+function webModelFilesPill(setup) {
+  if (!setup) return { status: "checking" };
+  const statuses = Object.values(setup.generatorReadiness || {});
+  if (statuses.some((status) => status.downloaded)) return { status: "ready", label: "Downloaded" };
+  if (statuses.some((status) => status.status === "partial")) return { status: "partial", label: "Partly downloaded" };
+  return { status: "missing", label: "Not downloaded" };
 }
 
 function ComponentCard({ component }) {
@@ -160,6 +170,26 @@ function ComponentCard({ component }) {
   );
 }
 
+// What the browser version can see of the device. Browsers don't name the
+// processor, and some don't name the graphics card.
+function WebHardwareDetails({ hardware }) {
+  const webgpu = hardware.webgpuAvailable
+    ? hardware.selectedMode === "webgpu" ? "Available" : "Available, set to processor"
+    : "Not available";
+  const gpu = hardware.webgpuAvailable ? hardware.gpuDetails || "Not named by this browser" : "Not reachable";
+  const threads = hardware.cpuCount ? `${hardware.cpuCount} threads` : "Not reported";
+  return (
+    <div className="hardware-details">
+      <div><span>Browser</span><b>{browserLabel()}</b></div>
+      <div><span>WebGPU</span><b>{webgpu}</b></div>
+      <div><span>GPU</span><b>{gpu}</b></div>
+      <div><span>CPU</span><b>{threads}{hardware.crossOriginIsolated ? "" : ", one used (page not isolated)"}</b></div>
+      <div><span>Memory</span><b>{memoryText(hardware.totalMemoryMb ? hardware.totalMemoryMb / 1024 : null)}</b></div>
+      <div><span>Runtime</span><b>{humanizeRuntime(hardware.selectedRuntimePack)}</b></div>
+    </div>
+  );
+}
+
 // Model file checks, hardware, and the folders the scan looked in. Opens over
 // the page so the main cards keep their layout.
 function DiagnosticsSheet({ setup, hardware, busy, onCheck, onClose }) {
@@ -188,10 +218,12 @@ function DiagnosticsSheet({ setup, hardware, busy, onCheck, onClose }) {
           <div className="advanced-row">
             <div>
               <b>Model files</b>
-              <small>Checks every installed file against its checksum.</small>
+              <small>{isWebApp() ? "Checks which model files this browser has." : "Checks every installed file against its checksum."}</small>
             </div>
             <div className="advanced-row-actions">
-              <StatusPill status={setup ? setup.combinedStatus || setup.standardPack?.status || "missing" : "checking"} />
+              {isWebApp()
+                ? <StatusPill {...webModelFilesPill(setup)} />
+                : <StatusPill status={setup ? setup.combinedStatus || setup.standardPack?.status || "missing" : "checking"} />}
               <button
                 className="settings-secondary"
                 onClick={onCheck}
@@ -205,7 +237,8 @@ function DiagnosticsSheet({ setup, hardware, busy, onCheck, onClose }) {
           {[...chartComponents, ...runtimeComponents].map((component) => (
             <ComponentCard key={component.id} component={component} />
           ))}
-          {hardware && (
+          {hardware && isWebApp() && <WebHardwareDetails hardware={hardware} />}
+          {hardware && !isWebApp() && (
             <div className="hardware-details">
               <div><span>Platform</span><b>{friendlyTarget(hardware)}</b></div>
               {hardware.supportLabel && <div><span>Support</span><b>{humanizeSupportLabel(hardware.supportLabel)}</b></div>}
