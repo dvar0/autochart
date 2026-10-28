@@ -207,6 +207,7 @@ function isAllowedAppFile(relative, platform, arch, distAllowlist = new Set()) {
     "shared/chartDelay.js",
     "engine/lib/generationStages.cjs",
     "engine/lib/chartTiming.mjs",
+    "engine/lib/transcriberSettings.mjs",
     "engine/lib/finishProcess.cjs",
     "engine/lib/onnx/package.json",
     "engine/licenses/beat-this-mit.txt",
