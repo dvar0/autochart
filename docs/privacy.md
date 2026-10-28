@@ -11,12 +11,21 @@ Autochart is local-first. It does not include telemetry, analytics, crash report
 
 ## Network access
 
-Network access is limited to downloading the chart generation package files named by Autochart's shipped, pinned catalog from the package source configured by the user or release configuration. The catalog itself ships with Autochart; setup does not fetch or trust a remote catalog. Autochart does not upload songs, project files, charts, media, diagnostics, or identifiers. After the package is installed, generation runs against local model/runtime files.
+Network access is limited to downloading the chart generation package files named by Autochart's shipped, pinned catalog from the package source configured by the user or release configuration, and to checking for app updates. The catalog itself ships with Autochart; setup does not fetch or trust a remote catalog. Autochart does not upload songs, project files, charts, media, diagnostics, or identifiers. After the package is installed, generation runs against local model/runtime files.
 
 The default package source is the public Autochart model repository on Hugging
 Face, pinned to a fixed commit. Downloads do not require a Hugging Face account
 or token. Like any download host, Hugging Face and its delivery infrastructure
 receive the connection's IP address and requested file URLs.
+
+Once a day, Autochart downloads a small signed file from the latest GitHub
+release to see whether a newer version is out, and the release's picture when
+it has one. The request carries nothing
+about you, your songs or this computer beyond what any download sends (the
+connection's IP address and the requested URL). Turn it off with **Check for
+updates** in Settings; the update sheet's **Check now** still checks when you
+ask. An update only downloads when you choose **Download update**, and its file
+must match the signed checksum before it can install.
 
 A release may bundle the package instead of downloading it; that does not add a new service or data collection path.
 

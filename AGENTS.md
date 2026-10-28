@@ -11,6 +11,7 @@
 - `npm run release:stage -- /new/output /linux/artifacts /windows/artifacts /mac/artifacts` — verify completed native artifacts and stage six public downloads with exact sources/notices in one ZIP; `npm run test:release-staging` checks this consolidation
 - `npm run smoke:generate -- --wipe` — clean-install generation smoke test (downloads the chart generation package, generates from `fixtures/demo/`, asserts streamed `partial_chart` note lines)
 - `npm run test:installer` / `test:ffmpeg-source` — asset-installer and FFmpeg Corresponding Source security harnesses
+- `npm run test:app-updates` — update feed signature, offer/what's-new state, download re-check and AppImage swap (no network); the feed itself comes from `scripts/make-update-feed.cjs` (see `docs/github-release.md`)
 - `npm run test:v010:frontend` / `test:v010:backend` — v0.1.0 UI and backend regression contracts
 - `npm run test:source-chart-timing` / `test:source-chart-stage` — imported-sync beat-grid math and real timing-stage/cache regression checks
 - `npm run test:imported-final-chart` — imported difficulty preservation, final-chart assembly, and durable slot-save checks

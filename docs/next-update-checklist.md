@@ -31,6 +31,25 @@ yet, so setup can't download them until this is done:
   going never offers it again. Lite stays out of the Generate picker until
   it's downloaded.
 
+## App updates and What's new
+
+This is the first release that checks for updates (`electron/appUpdates.cjs`).
+Copies of 0.1.0 can't, so they only hear about it from the release itself.
+
+- [ ] Bump `package.json` to the release version; `src/data/whatsNew.js` has
+  its entry (What's new only shows entries up to the running version).
+- [ ] Update from 0.1.0 with setup done: What's new opens once, and
+  **Download Fretformer 2** opens Settings and starts the download.
+- [ ] Clean install: no What's new after setup.
+- [ ] Publish `update.json` with the release (see
+  [github-release.md](github-release.md)). Before that, test with a feed
+  signed by the real key and served from a test release or local HTTPS:
+  `AUTOCHART_UPDATE_FEED_URL=https://… ` makes a dev build check it.
+- [ ] Per platform, a version older than the feed shows the rail notice, and
+  the update installs: AppImage swaps in place and restarts, the Windows
+  installer updates and reopens, the macOS DMG opens and the app closes.
+  Portable Windows (zip) only offers the download page.
+
 ## Beat map smoother replaced
 
 The damped smoother is gone. Beat This grids now go through spurious/missed-beat

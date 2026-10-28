@@ -72,13 +72,24 @@ from the new tagged commit.
 4. Verify the output checksums. Keep native input directories as private build
    evidence. Omit unused update blockmaps from the public release. Put the
    unsigned Windows/macOS warning and opening steps in the release description.
-5. Create a GitHub draft release from the final tag and attach only those six
-   files. Lead with direct Windows, Mac, and Linux installer links; put portable
+5. Make the update feed: write two to five short user-facing lines in a
+   `notes.json` (`{ "notes": [...], "important": false }`; set `important` only
+   when older versions break, since it opens the update sheet once at launch),
+   then run
+   `AUTOCHART_UPDATE_SIGNING_KEY=/path/to/update-signing-key.pem node scripts/make-update-feed.cjs /new/output notes.json`.
+   It writes `update.json` next to the downloads, signed with the key whose
+   public half is in `electron/appUpdates.cjs`, and refuses a key that doesn't
+   match. Installed copies read `releases/latest/download/update.json`, so the
+   feed goes live when the release is published and marked latest. Keep the
+   signing key out of every repository; without it no installed copy accepts
+   another update.
+6. Create a GitHub draft release from the final tag and attach those six
+   files and `update.json`. Lead with direct Windows, Mac, and Linux installer links; put portable
    Windows in a secondary link. Link the source bundle and checksum file in a
    collapsible section. The bundle's manifest maps each download to its matching
    application and FFmpeg sources. GitHub additionally lists two automatic
    repository source downloads; they do not replace this complete source bundle.
-6. Fill in the tested-machine results, remove untested platforms, check every
+7. Fill in the tested-machine results, remove untested platforms, check every
    download/source link, and publish when ready.
 
 ## Release description draft
