@@ -30,8 +30,12 @@ const WEB_GENERATORS = engineManifest.generators.filter((generator) =>
 const MAX_LEAD_IN_MS = 30_000;
 
 // Where model folders are served from: the dev server's /models/ (your
-// installed models), or the public model host in a build.
-const MODELS_BASE = new URL(import.meta.env.VITE_AUTOCHART_MODELS_URL || "models/", document.baseURI).href;
+// installed models), or in a build the model host revision the desktop app
+// downloads from, so a model update reaches the browser with an app update.
+const MODELS_BASE = new URL(
+  import.meta.env.VITE_AUTOCHART_MODELS_URL || (import.meta.env.DEV ? "models/" : __AUTOCHART_MODEL_HOST__),
+  document.baseURI,
+).href;
 // See vite.web.config.js: only the dev server needs onnxruntime's files pointed at.
 const WASM_BASE = import.meta.env.DEV ? new URL("/ort/", document.baseURI).href : null;
 

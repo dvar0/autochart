@@ -52,7 +52,12 @@ slightly from native CPU, so CPU-only browser charts are valid but not identical
 to the desktop's.
 
 Models live in Cache Storage (`modelStore.mjs`) and separations in the origin
-private file system (`stemStore.mjs`), so phones can run short of room. Before a model
+private file system (`stemStore.mjs`), so phones can run short of room. A build
+loads models from the same pinned model host revision as the desktop app
+(`DEFAULT_ASSET_BASE_URL`). Each downloaded file is checked against its sha256
+in `engine/catalog.json` and cached with that hash; a cached file whose hash
+isn't the catalog's is dropped and downloaded again, so a retrained model with
+the same file names reaches browsers with the app update that lists it. Before a model
 downloads, `navigator.storage.estimate()` must leave room for it (plus 5%):
 the Generate console and Settings say so and hold the download, and a job
 checks the whole model before separating. If a write still fails for quota,

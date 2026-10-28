@@ -2,7 +2,39 @@
 // browser's Cache Storage, so a model downloads a single time per browser.
 // Works in the page and in the engine worker (both have `caches`).
 
+import catalog from "../catalog.json" with { type: "json" };
+
 const CACHE_NAME = "autochart-models-v1";
+
+// The sha256 of every model file this version of the app expects, by
+// "folder/file" (engine/catalog.json). A cached file is used only while its
+// hash matches, so a retrained model with the same file names downloads again.
+// Files the catalog doesn't list are trusted by URL.
+const EXPECTED_SHA256 = new Map(catalog.components.flatMap((component) =>
+  (component.files || []).map((file) => [file.path, file.sha256])));
+const HASH_HEADER = "X-Autochart-Sha256";
+
+function expectedSha256(url) {
+  const parts = new URL(url).pathname.split("/").slice(-2).map(decodeURIComponent);
+  return EXPECTED_SHA256.get(parts.join("/")) || null;
+}
+
+async function sha256Hex(bytes) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function fileName(url) {
+  return decodeURIComponent(new URL(url).pathname.split("/").pop());
+}
+
+class ModelMismatchError extends Error {
+  constructor(url) {
+    super(`${fileName(url)} on the model host doesn't match this version of Autochart. Reload the page and try again.`);
+    this.name = "ModelMismatchError";
+    this.code = "model_mismatch";
+  }
+}
 
 let cachePromise = null;
 
@@ -65,16 +97,44 @@ export async function checkStorageRoom(bytes) {
   if (!fitsInRoom(bytes, room)) throw new StorageFullError(bytes, room.free);
 }
 
-export async function isCached(url) {
-  const cache = await openCache();
-  return Boolean(cache && (await cache.match(cacheKey(url))));
+// Whether a cached response is the file this version of the app expects.
+function isCurrent(key, response) {
+  const expected = expectedSha256(key);
+  return !expected || response.headers.get(HASH_HEADER) === expected;
 }
 
-// Cached with its size, so adding up the cache never has to read the files.
-function cachedResponse(bytes) {
+// The cached copy of a file, or null. A copy from another model version is
+// removed: nothing can use it, and it holds room.
+async function cachedCopy(cache, key) {
+  const hit = cache && (await cache.match(key));
+  if (!hit) return null;
+  if (isCurrent(key, hit)) return hit;
+  await cache.delete(key).catch(() => {});
+  return null;
+}
+
+export async function isCached(url) {
+  return Boolean(await cachedCopy(await openCache(), cacheKey(url)));
+}
+
+// Cached with its size, so adding up the cache never has to read the files,
+// and its hash when the catalog lists one.
+function cachedResponse(bytes, sha256 = null) {
   return new Response(bytes, {
-    headers: { "Content-Type": "application/octet-stream", "Content-Length": String(bytes.length) },
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(bytes.length),
+      ...(sha256 ? { [HASH_HEADER]: sha256 } : {}),
+    },
   });
+}
+
+// The bytes' hash when the catalog expects one; throws when they differ.
+async function verifiedSha256(key, bytes) {
+  const expected = expectedSha256(key);
+  if (!expected) return null;
+  if ((await sha256Hex(bytes)) !== expected) throw new ModelMismatchError(key);
+  return expected;
 }
 
 // The file's bytes, from the cache or the network. onProgress gets
@@ -82,11 +142,11 @@ function cachedResponse(bytes) {
 export async function fetchModelFile(url, { onProgress = null } = {}) {
   const key = cacheKey(url);
   const cache = await openCache();
-  const hit = cache && (await cache.match(key));
+  const hit = await cachedCopy(cache, key);
   if (hit) return new Uint8Array(await hit.arrayBuffer());
 
   const response = await fetch(key);
-  if (!response.ok) throw new Error(`Couldn't download ${key.split("/").pop()} (${response.status})`);
+  if (!response.ok) throw new Error(`Couldn't download ${fileName(key)} (${response.status})`);
   const total = Number(response.headers.get("Content-Length")) || 0;
   let bytes;
   if (onProgress && response.body) {
@@ -109,9 +169,10 @@ export async function fetchModelFile(url, { onProgress = null } = {}) {
   } else {
     bytes = new Uint8Array(await response.arrayBuffer());
   }
+  const sha256 = await verifiedSha256(key, bytes);
   if (cache) {
     try {
-      await cache.put(key, cachedResponse(bytes));
+      await cache.put(key, cachedResponse(bytes, sha256));
     } catch (err) {
       // Out of room: stop, rather than download it again on every run.
       if (isQuotaError(err)) throw new StorageFullError(bytes.length, (await storageRoom())?.free ?? null);
@@ -127,25 +188,32 @@ export async function fetchModelJson(url) {
 
 // The folder's manifest from the network when it can be reached (so a changed
 // model is picked up), else the cached copy, so a downloaded model works offline.
-// null when neither has it.
+// null when neither has it. Either copy must be the version the catalog expects.
 export async function loadModelManifest(folderUrl, { offlineOnly = false } = {}) {
   const baseUrl = new URL(folderUrl.endsWith("/") ? folderUrl : `${folderUrl}/`, globalThis.location?.href);
   const url = new URL("manifest.json", baseUrl).href;
   let bytes = null;
+  let mismatch = null;
   if (!offlineOnly) {
     try {
       const response = await fetch(url, { cache: "no-cache" });
       if (response.ok) {
-        bytes = new Uint8Array(await response.arrayBuffer());
-        const cache = await openCache();
-        try { await cache?.put(url, cachedResponse(bytes)); } catch { /* not cached, fine */ }
+        const fetched = new Uint8Array(await response.arrayBuffer());
+        try {
+          const sha256 = await verifiedSha256(url, fetched);
+          bytes = fetched;
+          const cache = await openCache();
+          try { await cache?.put(url, cachedResponse(bytes, sha256)); } catch { /* not cached, fine */ }
+        } catch (err) {
+          mismatch = err;
+        }
       }
     } catch { /* offline: use the cached copy */ }
   }
   if (!bytes) {
-    const cache = await openCache();
-    const hit = cache && (await cache.match(url));
+    const hit = await cachedCopy(await openCache(), url);
     if (!hit) {
+      if (mismatch) throw mismatch;
       if (offlineOnly) return null;
       throw new Error(`Couldn't reach the model at ${baseUrl.href}`);
     }
@@ -239,6 +307,7 @@ export async function modelFolderStatus(manifest) {
 }
 
 // The cached files' total size in bytes, their URLs, and each one's size.
+// Copies from another model version don't count: they're replaced on use.
 export async function cachedModelSummary() {
   const cache = await openCache();
   if (!cache) return { bytes: 0, urls: [], sizes: {} };
@@ -247,7 +316,7 @@ export async function cachedModelSummary() {
   const sizes = {};
   for (const request of keys) {
     const response = await cache.match(request);
-    if (!response) continue;
+    if (!response || !isCurrent(request.url, response)) continue;
     const length = Number(response.headers.get("Content-Length"));
     const size = Number.isFinite(length) && length > 0 ? length : (await response.clone().blob()).size;
     sizes[request.url] = size;

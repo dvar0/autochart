@@ -1,18 +1,22 @@
 // The browser version: the same app with the engine in a web worker.
 //   npm run web:dev    serves it on http://127.0.0.1:5174/web.html, with your
 //                      installed models at /models/ (AUTOCHART_MODELS_DIR to change)
-//   npm run web:build  writes dist-web/; set VITE_AUTOCHART_MODELS_URL to the model host
+//   npm run web:build  writes dist-web/, loading models from the same pinned model
+//                      host revision as the desktop app (DEFAULT_ASSET_BASE_URL);
+//                      set VITE_AUTOCHART_MODELS_URL to use another host
 // The page must be cross-origin isolated (COOP + COEP headers) for the
 // multithreaded WebAssembly runtime; the host has to send the same headers.
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
 // The dev server's prebundled onnxruntime-web can't find its WebAssembly, so
 // dev serves it at /ort/; a build bundles it as an asset.
 const ORT_DIST = path.resolve("node_modules/onnxruntime-web/dist");
+const { DEFAULT_ASSET_BASE_URL } = createRequire(import.meta.url)("./electron/assetInstaller.cjs");
 const MODELS_DIR = path.resolve(process.env.AUTOCHART_MODELS_DIR || path.join(os.homedir(), ".local/share/autochart/models"));
 
 const ISOLATION_HEADERS = {
@@ -66,6 +70,9 @@ function autochartWeb() {
 export default defineConfig({
   plugins: [react(), autochartWeb()],
   base: "./",
+  define: {
+    __AUTOCHART_MODEL_HOST__: JSON.stringify(`${DEFAULT_ASSET_BASE_URL.replace(/\/+$/, "")}/`),
+  },
   resolve: {
     alias: {
       "@autochart/chart-writer": path.resolve("shared/chartWriter.js"),
