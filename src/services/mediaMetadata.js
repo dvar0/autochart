@@ -2,7 +2,11 @@ const AUDIO_EXTS = [".ogg", ".opus", ".mp3", ".wav", ".wave", ".flac", ".m4a", "
 const VIDEO_EXTS = [".mp4", ".m4v", ".mov", ".webm", ".ogv", ".mkv"];
 export const MAX_METADATA_SCAN_BYTES = 8 * 1024 * 1024;
 
-export const MEDIA_ACCEPT = ["audio/*", "video/*", ...AUDIO_EXTS, ...VIDEO_EXTS].join(",");
+// Android's browsers turn audio and video types into "record" choices and ask
+// for the camera and microphone before showing any files, so there the
+// picker takes any file and a file that isn't a song fails on reading.
+const ANDROID = /Android/i.test(globalThis.navigator?.userAgent || "");
+export const MEDIA_ACCEPT = ANDROID ? undefined : ["audio/*", "video/*", ...AUDIO_EXTS, ...VIDEO_EXTS].join(",");
 
 const TEXT_FRAME_MAP = {
   TIT2: "title",
