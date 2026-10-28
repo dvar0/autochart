@@ -57,6 +57,8 @@ export function Rail({
   libCounts,
   collapsed,
   onToggleCollapse,
+  update = null,
+  onUpdates,
   songTitle = "",
 }) {
   // The browser version has no library and works on one song at a time:
@@ -166,6 +168,22 @@ export function Rail({
           <option value="dark">Dark mode</option>
         </select>
       </label>
+      {/* Always the version; it turns into the update notice when one is out. */}
+      {update && (
+        <button
+          type="button"
+          className={"rail-item quiet rail-version" + (update.update ? " has-update" : "") + (update.update && !update.dismissed ? " fresh" : "")}
+          onClick={onUpdates}
+          title={update.update ? `Autochart ${update.update.version} is out` : `Autochart ${update.currentVersion}`}
+        >
+          <span className="rail-version-icon" aria-hidden="true">
+            {update.update ? <I.download /> : <I.info />}
+          </span>
+          <span className="rail-item-label">
+            {update.update ? `${update.update.version} is out` : `Version ${update.currentVersion}`}
+          </span>
+        </button>
+      )}
     </aside>
   );
 }

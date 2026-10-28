@@ -360,6 +360,22 @@ input:focus-visible, select:focus-visible { outline: none; }
 .rail-theme:focus-within { outline: 2px solid var(--purple); outline-offset: -2px; }
 .rail-theme-chevron { margin-left: auto; display: flex; }
 .rail-theme-chevron svg { width: 12px; height: 12px; }
+/* The version label at the rail's foot; purple with a dot while an update
+   is out and hasn't been looked at. */
+.rail-version { flex-shrink: 0; }
+.rail-version-icon { position: relative; display: flex; }
+.rail-version.has-update { color: var(--purple); }
+.rail-version.fresh .rail-version-icon::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--purple-bri);
+  box-shadow: 0 0 0 2px var(--surface);
+}
 .rail-theme-select {
   position: absolute;
   inset: 0;
@@ -1566,6 +1582,7 @@ input:focus-visible, select:focus-visible { outline: none; }
   font-weight: 600;
 }
 .folder-option .model-switch { margin-left: auto; }
+.settings-about .folder-option { padding: 0 12px 14px 2px; }
 
 /* about */
 .about-links { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -6910,4 +6927,184 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .lib-prompt-actions .btn-quiet svg { width: 15px; height: 15px; color: currentColor; }
 @media (prefers-reduced-motion: reduce) {
   .lib-prompt[open] { animation: none; }
+}
+
+/* ============================================================
+   RELEASE WINDOW — updates and What's new (components/ReleaseCard.jsx)
+   ============================================================ */
+.release-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.release-scrim { position: absolute; inset: 0; background: rgba(12, 16, 28, .5); animation: release-fade .2s ease-out; }
+.release-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  animation: release-pop .38s cubic-bezier(.34, 1.56, .64, 1);
+}
+@keyframes release-pop {
+  from { opacity: 0; transform: translateY(14px) scale(.94); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes release-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .release-card, .release-scrim { animation: none; }
+}
+.release-scroll { overflow-y: auto; min-height: 0; }
+.release-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(10, 12, 24, .45);
+  cursor: pointer;
+}
+.release-close:hover { background: rgba(10, 12, 24, .7); }
+.release-close svg { width: 17px; height: 17px; transform: rotate(45deg); }
+
+/* The hero: the release's picture, or the Start page's little highway on a
+   purple stage with the fret colors along the top. */
+.release-hero-image { display: block; width: 100%; aspect-ratio: 16 / 6; object-fit: cover; }
+.release-hero {
+  --start-road-far: #2d2a5c;
+  --start-road-near: #17152f;
+  --start-rail: #b3abff;
+  position: relative;
+  height: 196px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 110%, #8a6cf0 0%, transparent 60%),
+    linear-gradient(180deg, #2b2160 0%, #46348f 100%);
+}
+.release-hero-frets { display: flex; height: 6px; }
+.release-hero-frets i { flex: 1; }
+.release-hero-road {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 380px;
+  transform: translateX(-50%);
+}
+.release-head { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 22px 28px 4px; }
+.release-kicker {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  color: var(--purple);
+  background: var(--purple-bg);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.release-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-3xl);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+}
+.release-head p { margin: 0; color: var(--text-dim); font-size: var(--fs-md); line-height: 1.45; }
+.release-body { display: flex; flex-direction: column; gap: 16px; padding: 16px 28px 24px; }
+.release-body:empty { display: none; }
+.release-head:has(+ .release-body:empty) { padding-bottom: 24px; }
+
+/* Features as short rows, smaller changes as a quiet list under them. */
+.release-features { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.release-feature { display: flex; align-items: flex-start; gap: 14px; }
+.release-feature-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--gem);
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--gem) 60%, #000);
+}
+.release-feature-icon svg { width: 17px; height: 17px; }
+.release-feature-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; padding-top: 1px; }
+.release-feature-copy b { color: var(--text); font-size: var(--fs-base); font-weight: 700; }
+.release-feature-copy span { color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.45; }
+.release-feature-image { flex: none; width: 112px; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 8px; }
+.release-fixes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.release-fixes b { color: var(--text-faint); font-size: var(--fs-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.release-fixes ul {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.release-fine { margin: 0; color: var(--text-faint); font-size: var(--fs-sm); }
+.release-error { margin: 0; color: var(--red-fg); font-size: var(--fs-sm); }
+
+.release-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px 14px 28px;
+  border-top: 1px solid var(--border-soft);
+}
+.release-foot .settings-secondary { gap: 6px; }
+.release-foot .btn-primary:disabled { opacity: .75; cursor: default; }
+.release-foot .release-done:disabled { opacity: 1; background: var(--green-solid); color: #fff; }
+.release-foot-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-right: auto;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+}
+.release-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.release-link:hover:not(:disabled) { color: var(--purple); text-decoration: underline; }
+.release-link:disabled { opacity: .5; cursor: default; }
+a.release-link { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+a.release-link svg { width: 12px; height: 12px; }
+@media (max-width: 600px) {
+  .release-feature-image { display: none; }
+  .release-foot { flex-wrap: wrap; }
+  .release-head, .release-body { padding-left: 20px; padding-right: 20px; }
 }

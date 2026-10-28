@@ -72,7 +72,8 @@ function waveAmplitude(beat) {
   return Math.max(peak, 0.16 + 0.2 * Math.abs(Math.sin(beat * 1.7) * Math.cos(beat * 0.45)));
 }
 
-function StartHighway({ hot, startAt }) {
+// Also the hero of the release window (components/ReleaseCard.jsx).
+export function StartHighway({ hot, startAt }) {
   const gemRefs = useRef([]);
   const ringRefs = useRef([]);
   const beatRefs = useRef([]);

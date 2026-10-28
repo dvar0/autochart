@@ -522,6 +522,7 @@ async function main() {
       }
     );
     await runNode("Installer/archive security harness", "scripts/test-asset-installer.cjs");
+    await runNode("App update feed and install harness", "scripts/test-app-updates.cjs");
     await runNode("FFmpeg Corresponding Source security harness", "scripts/test-ffmpeg-source-gate.cjs");
     await runNode("Bundled FFmpeg audio behavior", "scripts/test-ffmpeg-audio.cjs");
     await runNode("Application security harness", "scripts/test-application-security.cjs");

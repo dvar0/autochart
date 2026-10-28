@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   fillInDrafts: false,
   liteOfferDeclined: false,
   keepStems: false,
+  checkForUpdates: true,
   defaults: {},
 };
 

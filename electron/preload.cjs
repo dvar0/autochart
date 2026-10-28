@@ -87,6 +87,23 @@ contextBridge.exposeInMainWorld("autochart", {
   notices: {
     open: (key) => ipcRenderer.invoke("notices:open", key),
   },
+  updates: {
+    isAvailable: () => true,
+    get: () => ipcRenderer.invoke("updates:get"),
+    check: () => ipcRenderer.invoke("updates:check"),
+    download: () => ipcRenderer.invoke("updates:download"),
+    image: () => ipcRenderer.invoke("updates:image"),
+    install: () => ipcRenderer.invoke("updates:install"),
+    dismiss: () => ipcRenderer.invoke("updates:dismiss"),
+    markAnnounced: () => ipcRenderer.invoke("updates:markAnnounced"),
+    markWhatsNewSeen: () => ipcRenderer.invoke("updates:markWhatsNewSeen"),
+    openPage: () => ipcRenderer.invoke("updates:openPage"),
+    onState: (callback) => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on("updates:state", listener);
+      return () => ipcRenderer.removeListener("updates:state", listener);
+    },
+  },
   modelSetup: {
     isAvailable: () => true,
     scan: (options) => ipcRenderer.invoke("modelSetup:scan", { fresh: Boolean(options?.fresh) }),

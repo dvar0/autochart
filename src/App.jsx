@@ -14,6 +14,12 @@ import SetupWizard from "./pages/SetupWizard.jsx";
 import Settings from "./pages/Settings.jsx";
 import useResolvedTheme from "./hooks/useResolvedTheme.js";
 import { isWebApp } from "./services/runtimeBridge.js";
+import UpdateSheet from "./components/UpdateSheet.jsx";
+import WhatsNewSheet from "./components/WhatsNewSheet.jsx";
+import {
+  dismissUpdate, getUpdateState, markUpdateAnnounced, markWhatsNewSeen, onUpdateState, updatesAvailable,
+} from "./services/appUpdates.js";
+import { whatsNewBetween } from "./data/whatsNew.js";
 
 export default function App() {
   const [themePreference, setThemePreference] = useState("system");
@@ -36,6 +42,48 @@ export default function App() {
   const [libCounts, setLibCounts] = useState({ all: 0, favorites: 0 });
   const [railCollapsed, setRailCollapsed] = useState(false);
   const mainRef = useRef(null);
+  // Desktop only: the update notice in the rail, and the sheets it opens.
+  const [updateState, setUpdateState] = useState(null);
+  const [sheet, setSheet] = useState(null);
+  const autoOpened = useRef(false);
+
+  useEffect(() => {
+    if (!updatesAvailable()) return undefined;
+    let active = true;
+    getUpdateState().then((state) => active && state && setUpdateState(state)).catch(() => {});
+    const stop = onUpdateState((state) => setUpdateState(state));
+    return () => {
+      active = false;
+      stop();
+    };
+  }, []);
+
+  // After an update, What's new opens once. An important update opens its
+  // sheet once; after that both live behind the rail's version label.
+  useEffect(() => {
+    if (!updateState || page === "setup" || sheet) return;
+    if (updateState.whatsNewSince) {
+      if (autoOpened.current) return;
+      autoOpened.current = true;
+      if (whatsNewBetween(updateState.whatsNewSince, updateState.currentVersion).length) {
+        setSheet({ kind: "whatsNew", since: updateState.whatsNewSince });
+      } else {
+        markWhatsNewSeen().catch(() => {});
+      }
+      return;
+    }
+    if (updateState.announce) {
+      setSheet({ kind: "update" });
+      markUpdateAnnounced().catch(() => {});
+    }
+  }, [updateState, page, sheet]);
+
+  const closeSheet = () => {
+    if (sheet?.kind === "whatsNew" && updateState?.whatsNewSince) markWhatsNewSeen().catch(() => {});
+    if (sheet?.kind === "update" && updateState?.update && !updateState.dismissed) dismissUpdate().catch(() => {});
+    setSheet(null);
+  };
+
 
   useEffect(() => {
     let active = true;
@@ -245,6 +293,8 @@ export default function App() {
           libCounts={libCounts}
           collapsed={railCollapsed}
           onToggleCollapse={handleToggleRail}
+          update={updateState}
+          onUpdates={() => setSheet({ kind: "update" })}
           songTitle={projects.find((project) => project.key === activeProject)?.title || ""}
         />}
         <div className="ac-main" ref={mainRef} tabIndex="-1" aria-label={`${page} page`}>
@@ -281,6 +331,25 @@ export default function App() {
           {page === "settings" && <Settings setPage={setPage} />}
           {page === "setup" && <SetupWizard onDone={handleSetupDone} />}
         </div>
+        {sheet?.kind === "update" && (
+          <UpdateSheet
+            state={updateState}
+            busy={projects.some((project) => project.busy)}
+            onClose={closeSheet}
+            onWhatsNew={() => {
+              if (updateState?.update && !updateState.dismissed) dismissUpdate().catch(() => {});
+              setSheet({ kind: "whatsNew", since: "" });
+            }}
+          />
+        )}
+        {sheet?.kind === "whatsNew" && (
+          <WhatsNewSheet
+            entries={sheet.since
+              ? whatsNewBetween(sheet.since, updateState?.currentVersion)
+              : whatsNewBetween("0.0.0", updateState?.currentVersion).slice(0, 1)}
+            onClose={closeSheet}
+          />
+        )}
       </div>
     </div>
   );

@@ -42,6 +42,8 @@ const DEFAULT_SETTINGS = {
   liteOfferDeclined: false,
   // Keep the separated stems after their mel tables are stored (see engine/lib/onnx/melTables.mjs).
   keepStems: false,
+  // Once a day, look for a newer release (electron/appUpdates.cjs).
+  checkForUpdates: true,
 };
 
 function settingsPath(userDataPath) {
@@ -97,6 +99,7 @@ function normalizeSettings(settings = {}, defaults = {}) {
   next.fillInDrafts = next.fillInDrafts === true;
   next.liteOfferDeclined = next.liteOfferDeclined === true;
   next.keepStems = next.keepStems === true;
+  next.checkForUpdates = next.checkForUpdates !== false;
 
   const storedVersion = Number(settings.cachePathVersion) || 0;
   const legacyCacheFolder = normalizePathSetting(settings.cacheFolder, "cacheFolder");

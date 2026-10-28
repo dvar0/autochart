@@ -1063,6 +1063,8 @@ async function installAssets(settings = {}, options = {}) {
 
 module.exports = {
   DEFAULT_ASSET_BASE_URL,
+  downloadFile,
+  downloadText,
   installAssets,
   __test: {
     FILE_SOURCE_BUNDLED_LICENSE,

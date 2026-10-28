@@ -30,6 +30,7 @@
     "smoke:generate": "node scripts/smoke-generate.cjs",
     "test:installer": "node scripts/test-asset-installer.cjs",
     "test:ffmpeg-source": "node scripts/test-ffmpeg-source-gate.cjs",
+    "test:app-updates": "node scripts/test-app-updates.cjs",
     "test:video-preview": "node scripts/test-video-preview.cjs",
     "test:v010:frontend": "node scripts/test-v010-frontend.cjs",
     "test:highway": "node scripts/test-highway.cjs",

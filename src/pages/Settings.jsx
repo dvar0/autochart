@@ -95,6 +95,9 @@ function performanceSummary(hardware, unsupported) {
   return `Using ${hardware.selectedModeLabel}${device ? ` · ${device}` : ""}`;
 }
 
+const UPDATE_CHECK_HELP =
+  "Once a day, Autochart checks GitHub for a newer version. Nothing about you or your songs is sent.";
+
 // One status for a family's generators: ready, missing, partial (some files),
 // or repair (a file failed verification).
 function familyStatus(family, generatorsById, manifestLoaded) {
@@ -823,6 +826,22 @@ export default function Settings() {
             <div className="settings-card-head">
               <h2 className="settings-card-title" id="settings-about-title">About</h2>
               <span className="settings-card-hint">Everything stays on this computer. No telemetry.</span>
+            </div>
+            <div className="folder-option">
+              <span id="settings-check-updates">Check for updates</span>
+              <i className="ms-info" role="img" aria-label={UPDATE_CHECK_HELP} title={UPDATE_CHECK_HELP}>
+                <I.info />
+              </i>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.checkForUpdates !== false}
+                aria-labelledby="settings-check-updates"
+                className={"model-switch" + (settings.checkForUpdates !== false ? " on" : "")}
+                onClick={() => void updateModelPreference({ checkForUpdates: settings.checkForUpdates === false })}
+              >
+                <span className="model-switch-knob" aria-hidden="true" />
+              </button>
             </div>
             <div className="about-links">{aboutLinks}</div>
           </section>

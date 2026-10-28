@@ -58,3 +58,7 @@ export function hasElectronModelSetup() {
 export function hasElectronHardware() {
   return Boolean(electronHardware()?.isAvailable?.());
 }
+
+export function electronUpdates() {
+  return getAutochartBridge()?.updates || null;
+}

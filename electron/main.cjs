@@ -32,6 +32,7 @@ const {
   waitForReleaseSmokeRenderer,
 } = require("./releaseSmoke.cjs");
 const { resolveNoticePath } = require("./noticePaths.cjs");
+const appUpdatesModule = require("./appUpdates.cjs");
 const fileCapabilities = new FileCapabilityRegistry();
 const releaseSmokePaths = resolveReleaseSmokePaths();
 const releaseSmokeSenderIds = new Set();
@@ -401,6 +402,116 @@ async function resolveEnginePayload(event, payload = {}) {
   };
 }
 
+// ---- app updates (see electron/appUpdates.cjs) ----
+let appUpdates = null;
+let appUpdatesReady = null;
+// Automatic checks run in released builds, never in release smoke runs; a feed
+// override (for testing a staged feed) turns them on in development too.
+const updateFeedOverride = String(process.env.AUTOCHART_UPDATE_FEED_URL || "").trim();
+const updatePreview = !app.isPackaged && process.env.AUTOCHART_UPDATE_PREVIEW === "1"
+  ? require("./updatePreview.cjs").createUpdatePreview({
+    runningVersion: process.env.AUTOCHART_UPDATE_PREVIEW_FROM || undefined,
+    important: process.env.AUTOCHART_UPDATE_PREVIEW_IMPORTANT !== "0",
+    platform: process.platform,
+    arch: process.arch,
+  })
+  : null;
+const automaticUpdateChecks = !releaseSmokePaths && process.env.AUTOCHART_UPDATE_CHECK !== "0" &&
+  (app.isPackaged || Boolean(updateFeedOverride) || Boolean(updatePreview));
+
+function sendUpdateState(state) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("updates:state", state);
+  }
+}
+
+function startAppUpdates() {
+  appUpdates = appUpdatesModule.createAppUpdates({
+    userDataPath: userDataPath(),
+    currentVersion: app.getVersion(),
+    target: `${process.platform}-${process.arch}`,
+    installMode: appUpdatesModule.detectInstallMode({ packaged: app.isPackaged, platform: process.platform }),
+    ...(updateFeedOverride ? { feedUrl: updateFeedOverride } : {}),
+    fetchText: (url, maxBytes) => assetInstaller.downloadText(url, { maxBytes }),
+    downloadFile: assetInstaller.downloadFile,
+    readSettings: readAppSettings,
+    onChange: sendUpdateState,
+    ...(updatePreview ? {
+      currentVersion: updatePreview.currentVersion,
+      installMode: updatePreview.installMode,
+      publicKey: updatePreview.publicKey,
+      fetchText: updatePreview.fetchText,
+      downloadFile: updatePreview.downloadFile,
+      downloadImage: updatePreview.downloadImage,
+    } : {}),
+  });
+  appUpdatesReady = appUpdates.init().catch((error) => {
+    console.warn(`[updates] ${error.message || error}`);
+  });
+  if (!automaticUpdateChecks) return;
+  const checkLater = () => appUpdatesReady.then(() => appUpdates.check()).catch(() => {});
+  setTimeout(checkLater, updatePreview ? 3_000 : 15_000).unref?.();
+  setInterval(checkLater, 6 * 60 * 60 * 1000).unref?.();
+}
+
+async function updatesReady() {
+  await appUpdatesReady;
+  return appUpdates;
+}
+
+// Hands the verified download to the platform's installer and quits.
+async function installDownloadedUpdate() {
+  const updates = await updatesReady();
+  const mode = updates.installMode();
+  const file = await updates.readyFile();
+  if (updatePreview) {
+    await dialog.showMessageBox(BrowserWindow.getAllWindows()[0], {
+      type: "info",
+      title: "Update preview",
+      message: updatePreview.installMessage,
+      detail: "This is the development preview, so nothing was installed.",
+    });
+    return { ok: true };
+  }
+  if (mode === "replace") {
+    const appImage = process.env.APPIMAGE;
+    await appUpdatesModule.replaceAppImage(file, appImage);
+    app.relaunch({ execPath: appImage, args: process.argv.slice(1) });
+    app.exit(0);
+    return { ok: true };
+  }
+  if (mode === "installer") {
+    const child = require("child_process").spawn(file, [], { detached: true, stdio: "ignore" });
+    child.unref();
+    setTimeout(() => app.quit(), 500);
+    return { ok: true };
+  }
+  if (mode === "dmg") {
+    const error = await shell.openPath(file);
+    if (error) throw new Error(error);
+    setTimeout(() => app.quit(), 1500);
+    return { ok: true };
+  }
+  throw new Error("This copy of Autochart updates from the download page.");
+}
+
+function registerUpdateHandlers() {
+  ipcMain.handle("updates:get", async () => (await updatesReady()).snapshot());
+  ipcMain.handle("updates:check", async () => (await updatesReady()).check({ manual: true }));
+  ipcMain.handle("updates:download", async () => (await updatesReady()).fetchUpdate());
+  ipcMain.handle("updates:image", async () => (await updatesReady()).imageDataUrl());
+  ipcMain.handle("updates:install", async () => installDownloadedUpdate());
+  ipcMain.handle("updates:dismiss", async () => (await updatesReady()).dismiss());
+  ipcMain.handle("updates:markAnnounced", async () => (await updatesReady()).markAnnounced());
+  ipcMain.handle("updates:markWhatsNewSeen", async () => (await updatesReady()).markWhatsNewSeen());
+  ipcMain.handle("updates:openPage", async () => {
+    const url = (await updatesReady()).pageUrl();
+    if (!url) return false;
+    await shell.openExternal(url);
+    return true;
+  });
+}
+
 function registerIpcHandlers() {
   ipcMain.handle(
     RELEASE_SMOKE_CHANNEL,
@@ -433,6 +544,7 @@ function registerIpcHandlers() {
     const settings = await updateAppSettings(
       settingsStore.assertRendererSettingsPatch(patch)
     );
+    appUpdates?.setEnabled(settings.checkForUpdates);
     return settingsForRenderer(settings);
   });
 
@@ -957,6 +1069,8 @@ if (hasSingleInstanceLock) {
   app.whenReady().then(() => {
     setupApplicationMenu();
     registerIpcHandlers();
+    registerUpdateHandlers();
+    startAppUpdates();
     registerMediaProtocol();
     createWindow();
     app.on("activate", () => {
