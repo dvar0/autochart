@@ -6,6 +6,7 @@ import DensityStrip from "../../highway/DensityStrip.jsx";
 import { activeLyricPhrase, resolveLyricPhrases } from "../../highway/noteFlags.js";
 import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
 import { dragHasFiles, readDrop, songFoldersFromFileList } from "../../services/droppedItems.js";
+import { SongArchiveError } from "../../services/songArchives.js";
 import { I } from "../../icons.jsx";
 import { GenerationPreviewStage } from "./LiveGeneration.jsx";
 import { StemSeparationStage } from "./StageAnimations.jsx";
@@ -837,14 +838,14 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
       return;
     }
     if (folderBusy) return;
-    readDrop(e.dataTransfer).then(({ folders, directories, file }) => {
+    readDrop(e.dataTransfer).then(({ folders, directories, archives, file }) => {
       if (folders.length) openSongFolders(folders);
-      else if (directories) setFolderError("No Clone Hero song in that folder. It needs a notes.chart and the song's audio.");
+      else if (directories || archives) setFolderError("No Clone Hero song in there. It needs a notes.chart and the song's audio.");
       else if (file) {
         setFolderError("");
         handleMediaFile(file);
       }
-    }).catch(() => setFolderError("That drop couldn't be read."));
+    }).catch((err) => setFolderError(err instanceof SongArchiveError ? err.message : "That drop couldn't be read."));
   };
 
   const handleCompareLayout = (layout) => {

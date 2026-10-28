@@ -20,6 +20,7 @@ platform video/image decoders.
 | Notes | The loader interprets our chords, sustains, force/tap/open markers, resolution, and tempo changes correctly. | [chart note processing](https://github.com/YARC-Official/YARG.Core/blob/3beb94e526558134145bcd3e409428f759001a40/YARG.Core/MoonscraperChartParser/IO/Chart/ChartReader.ProcessLists.cs) |
 | Images/video | PNG/JPEG album art and backgrounds are recognized, as is `video.webm`. Unlike Clone Hero's documented image list, YARG also lists GIF; our conversion remains compatible with both. | [media extensions](https://github.com/YARC-Official/YARG.Core/blob/3beb94e526558134145bcd3e409428f759001a40/YARG.Core/Song/Entries/SongEntry.cs), [media selection](https://github.com/YARC-Official/YARG.Core/blob/3beb94e526558134145bcd3e409428f759001a40/YARG.Core/Song/Entries/Ini/SongEntry.UnpackedIni.cs) |
 | Video delay | A negative start offset delays playback. The game's start and seek calculations agree with our `-2000` ms value for two seconds of lead-in. | [BackgroundManager](https://github.com/YARC-Official/YARG/blob/f5bfbe6996b4af35722d4204a93c6cc5c8f52a45/Assets/Script/Gameplay/BackgroundManager.cs#L339) |
+| Song packages | A `.sng` is scanned like a folder: its metadata stands in for `song.ini`, and files it doesn't know are ignored. | [SngFileFormat](https://github.com/mdsitton/SngFileFormat), [packed SNG entries](https://github.com/YARC-Official/YARG.Core/blob/3beb94e526558134145bcd3e409428f759001a40/YARG.Core/Song/Entries/Ini/SongEntry.Sng.cs) |
 | Ending | Gameplay considers chart length, audio length and an optional end event; `song_length` is not by itself the gameplay cutoff. | [GameManager.FinalizeChart](https://github.com/YARC-Official/YARG/blob/f5bfbe6996b4af35722d4204a93c6cc5c8f52a45/Assets/Script/Gameplay/GameManager.Loading.cs#L364) |
 
 ## Confirmed bug and fix
@@ -48,9 +49,10 @@ AUTOCHART_YARG_CORE_PATH=/tmp/autochart-yarg-core npm run test:yarg-export
 ```
 
 The test uses Autochart's real exporter and final-chart assembler, then runs
-YARG's `CacheHandler.RunScan` and each entry's `LoadChart`. All seven cases
+YARG's `CacheHandler.RunScan` and each entry's `LoadChart`. All eight cases
 passed on Linux x64: Easy/Medium/Hard/Expert, a combined final chart, 480-PPQ
-timing with a negative offset, and padded audio with a delayed video. Assertions
+timing with a negative offset, padded audio with a delayed video, and an export
+packed as a `.sng` (the browser version's default) with an extra unknown file. Assertions
 cover metadata with Unicode/quotes/backslashes, durations, offsets, note types,
 chord frets, sustain ticks, tempo-map times, and video selection. Every case
 starts with conflicting MIDI files in the destination.

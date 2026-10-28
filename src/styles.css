@@ -1312,7 +1312,11 @@ input:focus-visible, select:focus-visible { outline: none; }
 @media (max-width: 1180px) {
   .settings-grid { grid-template-columns: minmax(0, 1fr); }
 }
-/* Browser version: Models | Performance, then About as a quiet footer. */
+/* Browser version: Models beside Performance over Export, then About as a
+   quiet footer. */
+@media (min-width: 1181px) {
+  .settings-grid.is-web .settings-models { grid-row: span 2; }
+}
 .device-readout dl {
   display: grid;
   grid-template-columns: auto 1fr;

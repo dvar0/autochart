@@ -19,6 +19,8 @@ const DEFAULT_SETTINGS = {
   liteOfferDeclined: false,
   keepStems: false,
   checkForUpdates: true,
+  // Browser version: what Export downloads, "sng" or "zip".
+  exportFormat: "sng",
   defaults: {},
 };
 

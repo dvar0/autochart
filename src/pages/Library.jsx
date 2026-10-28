@@ -32,6 +32,7 @@ import {
   bulkImportBusy, dismissBulkImport, getBulkImport, startBulkImport, stopBulkImport, subscribeBulkImport, undoBulkImport,
 } from "../services/bulkImport.js";
 import { dragHasFiles, dragLooksLikeFolders, readDrop } from "../services/droppedItems.js";
+import { SongArchiveError } from "../services/songArchives.js";
 import {
   deleteProjectRecord,
   getAllSongRecords,
@@ -614,16 +615,16 @@ export default function Library({
     setDropHot("");
     setImportError(null);
     setStatusMsg("");
-    readDrop(event.dataTransfer).then(({ folders, directories, file }) => {
+    readDrop(event.dataTransfer).then(({ folders, directories, archives, file }) => {
       if (folders.length) {
         if (bulkImportBusy()) setImportError("Songs are still importing. Drop more once they're in.");
         else startBulkImport(folders).catch((err) => setImportError(err.message || String(err)));
-      } else if (directories) {
-        setImportError("No Clone Hero songs in that folder. Each song needs a notes.chart and its audio.");
+      } else if (directories || archives) {
+        setImportError("No Clone Hero songs in there. Each song needs a notes.chart and its audio.");
       } else if (file) {
         onCreate?.(file);
       }
-    }).catch(() => setImportError("That drop couldn't be read."));
+    }).catch((err) => setImportError(err instanceof SongArchiveError ? err.message : "That drop couldn't be read."));
   };
 
   // Show projects as they land, and pick the first one imported. Coming back

@@ -1,8 +1,11 @@
 // Reads what was dropped or picked into song folders or a single media file.
 // A song folder is any folder holding notes.chart, notes.mid or song.ini; a
 // folder without one is searched for song folders inside it, so a whole
-// Clone Hero songs directory comes in as all of its songs. Each song folder
-// is a plain list of its own files, the shape importSongFolder() reads.
+// Clone Hero songs directory comes in as all of its songs. A .sng or .zip
+// opens as the song folders packed in it. Each song folder is a plain list of
+// its own files, the shape importSongFolder() reads.
+
+import { isSongArchive, songFoldersFromArchive } from "./songArchives.js";
 
 const SONG_FILES = new Set(["notes.chart", "notes.mid", "notes.midi", "song.ini"]);
 const MAX_DEPTH = 8;
@@ -56,8 +59,9 @@ async function collectSongFolders(entry, depth, folders) {
 }
 
 /**
- * Reads a drop into { folders, file }. `folders` lists every song folder
- * found; `file` is the first loose file when no song folder was dropped.
+ * Reads a drop into { folders, directories, archives, file }. `folders` lists
+ * every song folder found; `file` is the first loose file when no song folder
+ * was dropped.
  * The DataTransfer is only readable during the drop event, so call this
  * from the handler before awaiting anything else.
  */
@@ -70,15 +74,32 @@ export function readDrop(dataTransfer) {
     const directories = entries.filter((entry) => entry?.isDirectory);
     for (const entry of directories) await collectSongFolders(entry, 0, folders);
     const fileEntries = entries.filter((entry) => entry?.isFile);
-    const files = fileEntries.length ? await Promise.all(fileEntries.map(entryFile)) : directories.length ? [] : looseFiles;
+    const picked = fileEntries.length ? await Promise.all(fileEntries.map(entryFile)) : directories.length ? [] : looseFiles;
+    for (const archive of picked.filter(isSongArchive)) folders.push(...await songFoldersFromArchive(archive));
+    const files = picked.filter((file) => !isSongArchive(file));
     // A song's files dropped without their folder still make one song.
     if (isSongFolder(files)) folders.push({ name: "", files });
     return {
       folders,
       directories: directories.length,
+      archives: picked.length - files.length,
       file: folders.length ? null : files[0] || null,
     };
   })();
+}
+
+/**
+ * The song folders in picked files: any .sng or .zip among them, and the rest
+ * as one song (a song folder's files picked together), for the importer to
+ * explain if it isn't one.
+ */
+export async function songFoldersFromPickedFiles(fileList) {
+  const picked = Array.from(fileList || []);
+  const folders = [];
+  for (const archive of picked.filter(isSongArchive)) folders.push(...await songFoldersFromArchive(archive));
+  const files = picked.filter((file) => !isSongArchive(file));
+  if (files.length) folders.push({ name: "", files });
+  return folders;
 }
 
 /**

@@ -23,7 +23,7 @@ Check(CacheHandler.Progress.BadSongCount == 0, "YARG reported bad songs");
 foreach (var item in expected.RootElement.EnumerateArray())
 {
     var id = item.GetProperty("id").GetString()!;
-    var entry = entries.Single(song => Path.GetFileName(song.ActualLocation) == id);
+    var entry = entries.Single(song => Path.GetFileNameWithoutExtension(song.ActualLocation) == id);
     Check(entry.Name.ToString() == item.GetProperty("title").GetString(), $"{id}: title");
     Check(entry.Charter.ToString() == "Autochart", $"{id}: fixed charter credit");
     Check(entry.Genre.ToString() == "Progressive Rock", $"{id}: musical genre");

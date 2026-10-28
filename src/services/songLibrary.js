@@ -55,7 +55,7 @@ async function blobToPayload(blob, fallbackName, fallbackMime, role) {
   };
 }
 
-function mimeFromFile(fileName, fallback = "application/octet-stream") {
+export function mimeFromFile(fileName, fallback = "application/octet-stream") {
   const name = String(fileName || "").toLowerCase();
   if (name.endsWith(".png")) return "image/png";
   if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";

@@ -3,7 +3,12 @@ import { I } from "../icons.jsx";
 import { DeviceReadout, UNCHECKED_DEVICE, deviceFact, deviceFromProbe } from "../components/DeviceFacts.jsx";
 import { FRET_COLORS } from "../data/notePalette.js";
 import { MEDIA_ACCEPT } from "../services/mediaMetadata.js";
-import { dragHasFiles, dragLooksLikeFolders, readDrop, songFoldersFromFileList } from "../services/droppedItems.js";
+
+// A Clone Hero song as one file (.sng, .zip), or its folder's files picked
+// together. Android gets no list (see MEDIA_ACCEPT).
+const SONG_ACCEPT = MEDIA_ACCEPT && [".sng", ".zip", ".chart", ".ini", ".png", ".jpg", ".jpeg", MEDIA_ACCEPT].join(",");
+import { dragHasFiles, dragLooksLikeFolders, readDrop, songFoldersFromPickedFiles } from "../services/droppedItems.js";
+import { SongArchiveError } from "../services/songArchives.js";
 import { importSongFolder, saveImportedSong } from "../services/songImport.js";
 import { getSongRecord, recordToImported } from "../services/songLibrary.js";
 import { electronHardware } from "../services/runtimeBridge.js";
@@ -419,6 +424,8 @@ function useDeviceState() {
 
 // ---------- page ----------
 
+const NO_SONG = "No Clone Hero song there. It needs a notes.chart and the song's audio.";
+
 export default function Start({ onSong, onOpenChart, onOpenSettings, confirmCloseSong = () => true }) {
   const [hot, setHot] = useState(false);
   const [hotFolder, setHotFolder] = useState(false);
@@ -460,7 +467,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
 
   const openSongFolders = (folders, fallback) => {
     if (folders.length > 1) {
-      setOpenError("That's a folder of songs. Drop one song folder here; the desktop app can import a whole songs folder.");
+      setOpenError("That's more than one song. Open one at a time here; the desktop app can import a whole songs folder.");
       return;
     }
     if (!folders.length) {
@@ -474,21 +481,24 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     event.preventDefault();
     setHot(false);
     if (opening) return;
-    readDrop(event.dataTransfer).then(({ folders, directories, file }) => {
-      if (folders.length || directories) {
-        openSongFolders(folders, "No Clone Hero song in that folder. It needs a notes.chart and the song's audio.");
+    readDrop(event.dataTransfer).then(({ folders, directories, archives, file }) => {
+      if (folders.length || directories || archives) {
+        openSongFolders(folders, NO_SONG);
       } else if (file && confirmCloseSong()) {
         setOpenError("");
         onSong(file);
       }
-    }).catch(() => setOpenError("That drop couldn't be read. Try Open a Clone Hero song instead."));
+    }).catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : "That drop couldn't be read. Try Open a Clone Hero song instead."));
   };
 
-  const handleFolder = (event) => {
+  const handleSongPick = (event) => {
     const input = event.target;
-    const folders = songFoldersFromFileList(input.files);
+    const picked = Array.from(input.files || []);
     input.value = "";
-    if (folders.length) openSongFolders(folders, "");
+    if (!picked.length) return;
+    songFoldersFromPickedFiles(picked)
+      .then((folders) => openSongFolders(folders, NO_SONG))
+      .catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : "Those files couldn't be read."));
   };
 
   const actions = (
@@ -516,7 +526,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
             if (file && confirmCloseSong()) onSong(file);
           }}
         />
-        <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple hidden onChange={handleFolder} />
+        <input ref={folderRef} type="file" accept={SONG_ACCEPT} multiple hidden onChange={handleSongPick} />
       </div>
       <p className={"start-hint" + (openError ? " is-error" : "")}>
         {openError || <><I.shield /> Or drop a song or song folder anywhere. It never leaves this device.</>}

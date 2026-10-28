@@ -95,6 +95,10 @@ function performanceSummary(hardware, unsupported) {
   return `Using ${hardware.selectedModeLabel}${device ? ` · ${device}` : ""}`;
 }
 
+const EXPORT_FORMATS = [
+  { value: "sng", label: "One file (.sng)", help: "Goes straight into your Clone Hero or YARG songs folder." },
+  { value: "zip", label: "Folder (.zip)", help: "Unzips into a song folder you can edit by hand." },
+];
 const UPDATE_CHECK_HELP =
   "Once a day, Autochart checks GitHub for a newer version. Nothing about you or your songs is sent.";
 
@@ -820,6 +824,38 @@ export default function Settings() {
               ? <DeviceReadout device={hardware ? deviceFromProbe(hardware) : UNCHECKED_DEVICE} />
               : hardware?.fallbackReason && <p className="settings-card-sub warn">{hardware.fallbackReason}</p>}
           </section>
+
+          {/* The browser version downloads songs, so it says in what form. */}
+          {isWebApp() && (
+            <section className="settings-card settings-export" aria-labelledby="settings-export-title">
+              <div className="settings-card-head">
+                <h2 className="settings-card-title" id="settings-export-title">Export</h2>
+                <span className="settings-card-hint">What Export downloads</span>
+              </div>
+              <div
+                className="perf-modes"
+                role="radiogroup"
+                aria-labelledby="settings-export-title"
+                style={{ gridTemplateColumns: `repeat(${EXPORT_FORMATS.length}, minmax(0, 1fr))` }}
+              >
+                {EXPORT_FORMATS.map((format) => {
+                  const selected = (settings.exportFormat === "zip" ? "zip" : "sng") === format.value;
+                  return (
+                    <button
+                      key={format.value}
+                      role="radio"
+                      aria-checked={selected}
+                      className={selected ? "active" : ""}
+                      onClick={() => void updateModelPreference({ exportFormat: format.value })}
+                      title={format.help}
+                    >
+                      {format.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {!isWebApp() && (
           <section className="settings-card settings-about" aria-labelledby="settings-about-title">

@@ -240,7 +240,7 @@ async function invokeLibraryExport(action, payload) {
  */
 export async function exportChart(songId, versionId = null) {
   if (!songId) throw new Error("No project selected to export.");
-  if (webExport()) return webExport().downloadZip(songId, versionId);
+  if (webExport()) return webExport().download(songId, versionId);
 
   if (hasElectronLibrary()) {
     const rec = await getSongRecord(songId);

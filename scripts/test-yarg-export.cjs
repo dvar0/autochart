@@ -28,7 +28,7 @@ async function main() {
     execFileSync(executable, ["-hide_banner", "-loglevel", "error", "-i", path.join(__dirname, "..", "fixtures", "demo", "autochart-demo-30s.wav"), "-c:a", "libvorbis", source]);
     const expected = [];
     const difficulties = ["easy", "medium", "hard", "expert"];
-    for (const id of [...difficulties, "final", "offset", "padded"]) {
+    for (const id of [...difficulties, "final", "offset", "padded", "sng"]) {
       const resolution = id === "offset" ? 480 : 192;
       const offset = id === "offset" ? -0.25 : 0;
       const versions = difficulties.map(difficulty => ({
@@ -69,6 +69,19 @@ async function main() {
       await fs.writeFile(path.join(dest, "notes.midi"), "another stale MIDI");
       await fs.writeFile(path.join(dest, "song.ini"), "[song]\nautochart_export = 1\n");
       await library.exportSongToFolder(context, id, dest);
+      if (id === "sng") {
+        // The browser's one-file export: the same folder as a .sng, with an
+        // extra file the games don't know.
+        const { buildSng, iniToSngMetadata } = await import("../shared/sng.js");
+        await fs.writeFile(path.join(dest, "autochart-extra.bin"), Buffer.from([0, 1, 2, 3]));
+        const files = [];
+        for (const name of await fs.readdir(dest)) {
+          if (name !== "song.ini") files.push({ name, bytes: new Uint8Array(await fs.readFile(path.join(dest, name))) });
+        }
+        const metadata = iniToSngMetadata(await fs.readFile(path.join(dest, "song.ini"), "utf8"));
+        await fs.writeFile(path.join(root, "Songs", "sng.sng"), buildSng(metadata, files));
+        await fs.rm(dest, { recursive: true });
+      }
       expected.push({ id, title, resolution, offsetMs: offset * 1000,
         durationMs: id === "padded" ? 32000 : 30000, videoStartMs: id === "padded" ? -2000 : 0,
         difficulties: id === "final" ? difficulties : [difficulties.includes(id) ? id : "expert"] });

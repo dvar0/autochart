@@ -1,6 +1,7 @@
 // Clone Hero / YARG export for the browser version: the same song folder the
-// desktop app writes (notes.chart, song.ini, audio, art), downloaded as a .zip
-// or, where the browser can write to folders, saved straight into one.
+// desktop app writes (notes.chart, song.ini, audio, art), downloaded as one
+// .sng (or a .zip, per Settings) or, where the browser can write to folders,
+// saved straight into one.
 // There is no FFmpeg here, so audio the games can't read is written as WAV and
 // media is copied as-is instead of converted.
 
@@ -10,7 +11,9 @@ import { loadMelTables } from "../../engine/web/stemStore.mjs";
 import {
   audioLeadInMs, buildProjectFile, delayChart, exportableTables, PROJECT_FILE, tablesFileName, versionLeadInMs,
 } from "../../shared/projectFile.js";
+import { buildSng, iniToSngMetadata } from "../../shared/sng.js";
 import { exportCover } from "../lib/coverArt/exportCover.js";
+import { getAppSettings } from "../services/appSettings.js";
 import { getSongRecord } from "../services/songLibrary.js";
 
 const GAME_AUDIO = new Set(["ogg", "mp3", "opus", "wav"]);
@@ -252,16 +255,32 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export async function downloadCloneHeroZip(songId, versionId = null) {
+// The folder as one .sng: song.ini becomes its metadata, the rest its files.
+async function sngBlob(files) {
+  const ini = files.find((file) => file.name === "song.ini");
+  const packed = [];
+  for (const file of files) {
+    if (file !== ini) packed.push({ name: file.name, bytes: new Uint8Array(await file.data.arrayBuffer()) });
+  }
+  return new Blob(buildSng(iniToSngMetadata(ini ? await ini.data.text() : ""), packed), { type: "application/octet-stream" });
+}
+
+// Export: one .sng to drop into the songs folder, or a .zip of the folder
+// (Settings > Export as).
+export async function downloadCloneHeroSong(songId, versionId = null) {
   const { record, versionId: exportedId, files } = await cloneHeroFiles(songId, versionId);
   const folder = cloneHeroFolderName(record.meta);
-  download(await zipBlob(folder, files), `${folder}.zip`);
+  const zip = (await getAppSettings().catch(() => ({}))).exportFormat === "zip";
+  const name = `${folder}.${zip ? "zip" : "sng"}`;
+  download(zip ? await zipBlob(folder, files) : await sngBlob(files), name);
   return {
-    path: `${folder}.zip`,
+    path: name,
     format: "clone-hero",
     songId,
     versionId: exportedId,
-    message: `Downloaded ${folder}.zip. Unzip it into your Clone Hero or YARG songs folder.`,
+    message: zip
+      ? `Downloaded ${name}. Unzip it into your Clone Hero or YARG songs folder.`
+      : `Downloaded ${name}. Put it in your Clone Hero or YARG songs folder.`,
   };
 }
 
@@ -319,7 +338,7 @@ export async function chooseSongsFolder() {
 }
 
 export async function saveToSongsFolder(songId, versionId = null) {
-  if (!canSaveToFolder()) throw new Error("This browser can't save into folders. Use Export to download a .zip instead.");
+  if (!canSaveToFolder()) throw new Error("This browser can't save into folders. Use Export to download the song instead.");
   const { record, versionId: exportedId, files } = await cloneHeroFiles(songId, versionId);
   let root;
   try {
