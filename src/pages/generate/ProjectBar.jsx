@@ -2,6 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
 import { I } from "../../icons.jsx";
 import RichText from "../../components/RichText.jsx";
+import useCoverArt from "../../hooks/useCoverArt.js";
+import { coverArtSeed } from "../../lib/coverArt/render.js";
+
+// The generated cover a song without album art gets in the Library and its
+// exports, for the title and artist as typed. A song opening shows its cover
+// at once (the Library has usually drawn it already); while the title or
+// artist is being typed it follows once typing pauses, so each keystroke
+// doesn't draw (and keep) a cover.
+function useGeneratedCover(details, enabled, typing) {
+  const seed = enabled && (details.title || details.artist) ? coverArtSeed(details.title, details.artist) : null;
+  const [settled, setSettled] = useState(seed);
+  useEffect(() => {
+    if (seed === settled) return undefined;
+    if (!typing) {
+      setSettled(seed);
+      return undefined;
+    }
+    const timer = setTimeout(() => setSettled(seed), 400);
+    return () => clearTimeout(timer);
+  }, [seed, settled, typing]);
+  return useCoverArt(typing ? settled : seed);
+}
 
 // Anchored popover with outside-click + Escape dismissal. True overlay, so it
 // carries --shadow-pop per the design system.
@@ -58,14 +80,17 @@ export default function ProjectBar({ project }) {
     busy,
     busyAction,
   } = project;
+  const [typing, setTyping] = useState(false);
+  const generatedCover = useGeneratedCover(details, !albumUrl && Boolean(songId || sourceAudioFile), typing);
+  const artUrl = albumUrl || generatedCover?.url;
 
   return (
     <header className="project-bar">
       <div className="project-bar-art" aria-hidden="true">
-        {albumUrl ? <img src={albumUrl} alt="" /> : <I.music />}
+        {artUrl ? <img src={artUrl} alt="" /> : <I.music />}
       </div>
 
-      <div className="project-id">
+      <div className="project-id" onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}>
         {/* Transparent inputs are a noted exception to the input-border rule:
             the global focus ring + focus border compensate. */}
         <input
