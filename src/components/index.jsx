@@ -165,7 +165,7 @@ export function Rail({
 
       <div className="rail-spacer" />
       <label className="rail-item quiet rail-theme" title={`Color theme: ${themeLabel}`}>
-        {theme === "system" ? <I.monitor aria-hidden="true" /> : theme === "light" ? <I.sun aria-hidden="true" /> : <I.moon aria-hidden="true" />}
+        {theme === "system" ? <I.sunMoon aria-hidden="true" /> : theme === "light" ? <I.sun aria-hidden="true" /> : <I.moon aria-hidden="true" />}
         <span className="rail-item-label" aria-hidden="true">{themeLabel}</span>
         <span className="rail-item-label rail-theme-chevron" aria-hidden="true"><I.chev /></span>
         <select
