@@ -63,6 +63,20 @@ function autochartWeb() {
     configurePreviewServer(server) {
       server.middlewares.use(serveFolder("/models/", MODELS_DIR));
     },
+    // For the static host (Cloudflare Pages): the same isolation headers, and
+    // the page at / as well as /web.html.
+    generateBundle() {
+      const headers = Object.entries(ISOLATION_HEADERS).map(([name, value]) => `  ${name}: ${value}`).join("\n");
+      this.emitFile({
+        type: "asset",
+        fileName: "_headers",
+        source: `/*\n${headers}\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n`,
+      });
+    },
+    writeBundle(options) {
+      const dir = options.dir || "dist-web";
+      fs.copyFileSync(path.join(dir, "web.html"), path.join(dir, "index.html"));
+    },
     transformIndexHtml(html, ctx) {
       if (!ctx.server) return html;
       return html.replace("connect-src 'self'", "connect-src 'self' ws://127.0.0.1:* ws://localhost:*");
