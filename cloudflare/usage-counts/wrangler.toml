@@ -1,0 +1,19 @@
+# The usage-counts Worker. See README.md for setting it up.
+name = "autochart-usage"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# The browser version posts to its own origin, and the hub reads totals from its own.
+routes = [
+  { pattern = "app.autochart.org/api/*", zone_name = "autochart.org" },
+  { pattern = "autochart.org/api/*", zone_name = "autochart.org" },
+]
+
+# No request logs: the Worker keeps only the per-day totals.
+[observability]
+enabled = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "autochart-usage"
+database_id = "REPLACE_WITH_DATABASE_ID"

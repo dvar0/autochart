@@ -1351,6 +1351,7 @@ input:focus-visible, select:focus-visible { outline: none; }
   font-weight: 600;
 }
 .settings-about-foot .settings-secondary:hover { background: none; color: var(--text); text-decoration: underline; }
+.settings-about-foot .folder-option { padding: 0; color: var(--text-dim); }
 .settings-card {
   display: flex;
   flex-direction: column;

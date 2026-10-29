@@ -19,6 +19,9 @@ import { tablesFileHeader } from "../../shared/projectFile.js";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
 import { LITE_FAMILY, browserNeedsLite } from "../pages/generate/liteOffer.js";
 import { deviceFromProbe } from "../components/DeviceFacts.jsx";
+import {
+  count, failureReason, minutesRange, modelName, runEnded, runStage, runStarted, songLengthRange, stageName,
+} from "./usageCounts.js";
 
 const DEFAULT_DEMUCS_ID = "demucs_default";
 
@@ -41,6 +44,14 @@ const WASM_BASE = import.meta.env.DEV ? new URL("/ort/", document.baseURI).href 
 
 const listeners = new Set();
 const installListeners = new Set();
+
+// After a model downloads: our usage count, and one request for the model
+// repository's download count file, the same one the desktop installer asks
+// for, so Hugging Face counts it (scripts/prepare-huggingface.py).
+function modelDownloaded(generatorId) {
+  count("model_downloaded", { model: modelName(generatorId) });
+  fetch(new URL("meta.yaml", MODELS_BASE), { method: "HEAD", cache: "no-store" }).catch(() => {});
+}
 
 function emit(jobId, event) {
   const payload = { jobId, ...event, updatedAt: Date.now() };
@@ -124,6 +135,8 @@ function browserName(ua = "") {
 let worker = null;
 let active = null; // { id, resolve, reject, stage }
 const queue = [];
+// "webgpu" or "cpu" for each running job, for its usage count.
+const jobEngines = new Map();
 
 function startWorker() {
   worker = new Worker(new URL("../../engine/web/engine.worker.mjs", import.meta.url), { type: "module" });
@@ -135,9 +148,13 @@ function startWorker() {
         const gpu = event.webgpu ? `WebGPU on (readback ${Math.round(event.readbackMs ?? 0)} ms)` : "WebGPU off";
         const threads = event.crossOriginIsolated ? "multithreaded CPU" : "single-threaded CPU";
         emit(active.id, { type: "log", stage: "queued", stream: "stdout", message: `Browser engine: ${gpu}, ${threads} (${browserName(event.userAgent)})` });
+        jobEngines.set(active.id, event.webgpu ? "webgpu" : "cpu");
         return;
       }
-      if (event.type === "stage" && event.status === "running") active.stage = event.stage;
+      if (event.type === "stage" && event.status === "running") {
+        active.stage = event.stage;
+        runStage(event.stage);
+      }
       emit(active.id, event);
     } else if (data.type === "result") {
       finish(null, data.result);
@@ -348,10 +365,29 @@ function failedMessage(error, verb) {
 
 // ----- the engine bridge -----
 
+// The fields every count about a run carries.
+function runFields(jobId, payload) {
+  return {
+    model: modelName(generatorById(payload.generatorId).id),
+    difficulty: payload.difficulty || "expert",
+    engine: jobEngines.get(jobId) || "",
+  };
+}
+
+function countFailure(event, jobId, payload, err) {
+  if (err?.code === "CANCELED") return;
+  count(event, { ...runFields(jobId, payload), stage: stageName(err?.stage || "prepare"), reason: failureReason(err) });
+}
+
 async function generateChart(payload = {}) {
   const jobId = payload.jobId || crypto.randomUUID();
+  const startedAt = Date.now();
+  const { model, difficulty } = runFields(jobId, payload);
+  count("generate_started", { model, difficulty });
+  runStarted({ kind: "generate", model });
   try {
     const { job, generator, transfer } = await baseJob(jobId, payload);
+    const songSeconds = job.audio.left.length / job.audio.sampleRate;
     const sourceChartText = String(payload.sourceChart?.text || "");
     if (sourceChartText.trim()) {
       job.sourceChartText = sourceChartText;
@@ -362,8 +398,9 @@ async function generateChart(payload = {}) {
       };
     }
     const analysisAudioPath = await storeAnalysisAudio(jobId, payload.audio.blob, job.audio, job.audioSha256, job.sourceTransform);
-    void keepModelsIfDownloading(generator);
+    const firstDownload = keepModelsIfDownloading(generator);
     const result = await runJob("generate", jobId, job, transfer);
+    if (await firstDownload) modelDownloaded(generator.id);
     const stems = await separationStemSets(job.audioSha256, job.sourceTransform, job.separationId);
     const base = result.sourceSeparation || job.demucsSeparation || null;
     const sourceSeparation = base
@@ -377,6 +414,11 @@ async function generateChart(payload = {}) {
         }
       : null;
     emit(jobId, { type: "stage", stage: "saved", status: "completed" });
+    count("generate_finished", {
+      ...runFields(jobId, payload),
+      minutes: minutesRange((Date.now() - startedAt) / 1000),
+      length: songLengthRange(songSeconds),
+    });
     return {
       ...result,
       jobId,
@@ -392,10 +434,13 @@ async function generateChart(payload = {}) {
     };
   } catch (err) {
     if (err?.code === "CANCELED") return { jobId, status: "canceled" };
+    countFailure("generate_failed", jobId, payload, err);
     emit(jobId, { type: "error", message: err?.message || String(err) });
     throw failedMessage(err, "Generation");
   } finally {
     songsInUse.delete(jobId);
+    jobEngines.delete(jobId);
+    runEnded();
   }
 }
 
@@ -439,18 +484,27 @@ async function prepareDemucs(payload = {}) {
 async function inpaintChart(payload = {}) {
   const jobId = payload.jobId || crypto.randomUUID();
   if (!payload.inpaint) throw new Error("Inpaint needs bars to rewrite.");
+  const startedAt = Date.now();
+  const { model } = runFields(jobId, payload);
+  runStarted({ kind: "inpaint", model });
   try {
     const { job, generator, transfer } = await baseJob(jobId, payload);
     if (!generator.capabilities?.inpaint) throw new Error(`${generator.label} can't regenerate part of a chart.`);
     job.inpaint = payload.inpaint;
-    void keepModelsIfDownloading(generator);
+    const firstDownload = keepModelsIfDownloading(generator);
     const result = await runJob("inpaint", jobId, job, transfer);
+    if (await firstDownload) modelDownloaded(generator.id);
+    const { engine } = runFields(jobId, payload);
+    count("inpaint_finished", { model, engine, minutes: minutesRange((Date.now() - startedAt) / 1000) });
     return { jobId, status: result.status, chartText: result.chartText, inpaint: result.inpaint };
   } catch (err) {
     if (err?.code === "CANCELED") return { jobId, status: "canceled" };
+    countFailure("inpaint_failed", jobId, payload, err);
     throw failedMessage(err, "Inpaint");
   } finally {
     songsInUse.delete(jobId);
+    jobEngines.delete(jobId);
+    runEnded();
   }
 }
 
@@ -642,6 +696,7 @@ async function installModels(request = {}) {
     });
   }
   emitInstall({ phase: "complete", percent: 100, message: "Downloaded." });
+  for (const id of ids) modelDownloaded(id);
   return { setup: await scanModels({ fresh: true }) };
 }
 
@@ -719,9 +774,12 @@ function keepModelsStored() {
     .catch(() => {});
 }
 
+// Also says whether the run downloads its model first.
 async function keepModelsIfDownloading(generator) {
   const status = (await generatorStatuses().catch(() => ({})))[generator.id];
-  if (status && !status.downloaded) keepModelsStored();
+  if (!status || status.downloaded) return false;
+  keepModelsStored();
+  return true;
 }
 
 export function createWebBridge() {
@@ -758,5 +816,6 @@ export function createWebBridge() {
       isAvailable: () => true,
       probe: probeHardware,
     },
+    usage: { count },
   };
 }

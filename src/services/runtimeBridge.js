@@ -59,6 +59,11 @@ export function hasElectronHardware() {
   return Boolean(electronHardware()?.isAvailable?.());
 }
 
+// Usage counts: only the browser version's bridge has them (src/web/usageCounts.js).
+export function countUsage(event, fields) {
+  getAutochartBridge()?.usage?.count?.(event, fields);
+}
+
 export function electronUpdates() {
   return getAutochartBridge()?.updates || null;
 }

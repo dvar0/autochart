@@ -13,6 +13,7 @@ import {
 } from "../../shared/projectFile.js";
 import { buildSng, iniToSngMetadata } from "../../shared/sng.js";
 import { exportCover } from "../lib/coverArt/exportCover.js";
+import { count } from "./usageCounts.js";
 import { getAppSettings } from "../services/appSettings.js";
 import { getSongRecord } from "../services/songLibrary.js";
 
@@ -273,6 +274,7 @@ export async function downloadCloneHeroSong(songId, versionId = null) {
   const zip = (await getAppSettings().catch(() => ({}))).exportFormat === "zip";
   const name = `${folder}.${zip ? "zip" : "sng"}`;
   download(zip ? await zipBlob(folder, files) : await sngBlob(files), name);
+  count("exported", { format: zip ? "zip" : "sng" });
   return {
     path: name,
     format: "clone-hero",
@@ -355,6 +357,7 @@ export async function saveToSongsFolder(songId, versionId = null) {
     await writable.write(file.data);
     await writable.close();
   }
+  count("exported", { format: "folder" });
   return {
     path: `${root.name}/${folder}`,
     format: "clone-hero",

@@ -31,6 +31,7 @@ import {
   installAssets, probeHardware, removeModelDownloads, scanModelSetup, subscribeModelInstallEvents,
 } from "../services/modelSetup.js";
 import { NOTICE_LINKS, openNotice } from "../services/notices.js";
+import { SITE_LINKS } from "../data/siteLinks.js";
 import { electronPlatform, isWebApp } from "../services/runtimeBridge.js";
 
 const EMPTY_SETTINGS = {
@@ -99,6 +100,9 @@ const EXPORT_FORMATS = [
   { value: "sng", label: "One file (.sng)", help: "Goes straight into your Clone Hero or YARG songs folder." },
   { value: "zip", label: "Folder (.zip)", help: "Unzips into a song folder you can edit by hand." },
 ];
+const USAGE_COUNTS_HELP =
+  "Counts like charts made, which model, and what failed, so we can see what works. Never your songs, files or anything that identifies you. Do Not Track turns it off too.";
+
 const UPDATE_CHECK_HELP =
   "Once a day, Autochart checks GitHub for a newer version. Nothing about you or your songs is sent.";
 
@@ -889,7 +893,26 @@ export default function Settings() {
         {isWebApp() && (
           <footer className="settings-about-foot" aria-label="About">
             <span>Your songs and charts stay in this browser.</span>
-            <div className="about-links">{aboutLinks}</div>
+            <div className="folder-option">
+              <span id="settings-usage-counts">Share usage counts</span>
+              <i className="ms-info" role="img" aria-label={USAGE_COUNTS_HELP} title={USAGE_COUNTS_HELP}>
+                <I.info />
+              </i>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.shareUsageCounts !== false}
+                aria-labelledby="settings-usage-counts"
+                className={"model-switch" + (settings.shareUsageCounts !== false ? " on" : "")}
+                onClick={() => void updateModelPreference({ shareUsageCounts: settings.shareUsageCounts === false })}
+              >
+                <span className="model-switch-knob" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="about-links">
+              <a className="settings-secondary" href={SITE_LINKS.repo} target="_blank" rel="noreferrer">GitHub</a>
+              {aboutLinks}
+            </div>
           </footer>
         )}
 

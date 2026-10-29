@@ -27,6 +27,7 @@ import {
   LITE_FAMILY, LITE_GENERATOR_ID, nextSeparationClock, separationIsSlow, separationSecondsLeft,
 } from "./liteOffer.js";
 import { updateAppSettings } from "../../services/appSettings.js";
+import { countUsage } from "../../services/runtimeBridge.js";
 import { installAssets, subscribeModelInstallEvents } from "../../services/modelSetup.js";
 import {
   DEFAULT_GENERATION_CONTROLS,
@@ -2014,7 +2015,13 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     ? { secondsLeft: separationSecondsLeft(genRun.separationClock), needsDownload: !liteGenerator.setup?.ready }
     : null;
 
+  const liteOfferedFor = liteOffer ? genRun.jobId : "";
+  useEffect(() => {
+    if (liteOfferedFor) countUsage("lite_offered");
+  }, [liteOfferedFor]);
+
   const keepSeparating = () => {
+    countUsage("lite_declined");
     setGenRun((run) => (run ? { ...run, liteOfferDismissed: true } : run));
     setGeneratorPreferences((current) => ({ ...current, liteOfferDeclined: true }));
     updateAppSettings({ liteOfferDeclined: true }).catch(() => {});
@@ -2033,6 +2040,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // when it isn't yet, then runs again with the same settings on Lite.
   const switchToLite = async () => {
     if (liteSwitch && liteSwitch.phase !== "failed") return;
+    countUsage("lite_switched");
     const jobId = genRun && !genRun.finishedAt ? genRun.jobId : "";
     setLiteSwitch({ phase: "stopping" });
     try {

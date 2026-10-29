@@ -123,7 +123,7 @@ Leave room for the model (about 700 MB) plus your songs.
 <br>
 
 No. Everything runs on your computer. The only download is the model on first
-launch, from Hugging Face. There's no telemetry. See [privacy](docs/privacy.md).
+launch, from Hugging Face. The app has no telemetry. See [privacy](docs/privacy.md).
 </details>
 
 <details>

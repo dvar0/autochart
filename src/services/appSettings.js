@@ -21,6 +21,8 @@ const DEFAULT_SETTINGS = {
   checkForUpdates: true,
   // Browser version: what Export downloads, "sng" or "zip".
   exportFormat: "sng",
+  // Browser version: send usage counts (src/web/usageCounts.js).
+  shareUsageCounts: true,
   defaults: {},
 };
 
