@@ -805,6 +805,11 @@ async function listSongSummaries(context) {
 }
 
 function versionSummary({ chart, provenance, ...version }) {
+  // An imported chart keeps its text: the Library reads which difficulties it
+  // ships to fill the final chart (shared/finalSlots.js importedFinalSlotSeed).
+  if (version.source === "imported-chart") {
+    return { ...version, chart, ...(provenance?.sourceTransform ? { provenance: { sourceTransform: provenance.sourceTransform } } : {}) };
+  }
   const { text, ...chartRest } = chart || {};
   return {
     ...version,
