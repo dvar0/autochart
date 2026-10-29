@@ -120,10 +120,11 @@ class PrivacyTests(unittest.TestCase):
                   "size": original.stat().st_size, "sha256": pack.digest(original.read_bytes())}]
         output = self.root / "upload"
         with patch.object(pack, "ROOT", self.root):
-            pack.prepare(output, files, self.terms)
+            pack.prepare(output, files, self.terms, source.parents[1])
             self.assertFalse((output / files[0]["path"]).is_symlink())
+            self.assertEqual((output / pack.COUNT_FILE).read_text(), pack.COUNT_TEXT)
             with self.assertRaisesRegex(ValueError, "Output exists"):
-                pack.prepare(output, files, self.terms)
+                pack.prepare(output, files, self.terms, source.parents[1])
             extra = output / ".git"
             extra.mkdir()
             with self.assertRaisesRegex(ValueError, "unexpected directory"):
@@ -146,7 +147,7 @@ class PrivacyTests(unittest.TestCase):
             card.write_text("private-handle")
             failed = self.root / "failed-upload"
             with self.assertRaisesRegex(ValueError, "identity"):
-                pack.prepare(failed, files, self.terms)
+                pack.prepare(failed, files, self.terms, source.parents[1])
             self.assertFalse(failed.exists())
             self.assertEqual(list(self.root.glob(".model-pack-*")), [])
 

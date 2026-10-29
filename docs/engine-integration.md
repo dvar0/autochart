@@ -298,7 +298,7 @@ Setup downloads the catalog's default pack (`fretformer-2`) from the
 configured asset source; Settings can also install `standard-onnx`. It trusts
 only the `engine/catalog.json` shipped with that application release. The
 default source is the public `Dvaro/autochart-models` Hugging Face repository,
-pinned to commit `b38e69ca0dc919cef0218ef7f9c0014a1593b3c2`. Downloads require no
+pinned to commit `8a88855d745f0b508f68ac606d7cbdac2878c87d`. Downloads require no
 authentication. Override it through setup, Settings, or
 `AUTOCHART_ASSETS_BASE_URL` when using a mirror. The source must serve every file at its pinned
 path marked `source: "remote"`, with the pinned size and SHA-256; a remote

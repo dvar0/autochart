@@ -961,7 +961,8 @@ async function testSharedFileCopies(root) {
       onProgress: (event) => events.push(event),
     });
     await install();
-    assert.deepEqual(requests.sort(), ["/model-a/shared.bin", "/model-b/own.bin"]);
+    // The download count file is asked for once, after the files.
+    assert.deepEqual(requests, ["/model-a/shared.bin", "/model-b/own.bin", "/meta.yaml"]);
     assert.equal(await fs.readFile(path.join(modelsRoot, "model-b", "shared.bin"), "utf8"), sharedBody.toString());
     assert.equal(events.find((event) => event.type === "file-complete" && event.filePath === "model-b/shared.bin")?.copied, true);
     pass();
@@ -971,7 +972,7 @@ async function testSharedFileCopies(root) {
     await fs.writeFile(path.join(modelsRoot, "model-a", "shared.bin"), Buffer.alloc(sharedBody.length, 0x41));
     requests.length = 0;
     await install("second-pack");
-    assert.deepEqual(requests, ["/model-b/shared.bin"]);
+    assert.deepEqual(requests, ["/model-b/shared.bin", "/meta.yaml"]);
     assert.equal(await fs.readFile(path.join(modelsRoot, "model-b", "shared.bin"), "utf8"), sharedBody.toString());
     pass();
   } finally {

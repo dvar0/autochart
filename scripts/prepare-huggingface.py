@@ -27,6 +27,13 @@ DEFAULT_OUTPUT = ROOT / "release-onboarding/huggingface/autochart-models"
 # Where the model folders are read from: the app's models folder on Linux, or
 # AUTOCHART_MODELS_DIR / --source.
 DEFAULT_SOURCE = Path(os.environ.get("AUTOCHART_MODELS_DIR") or Path.home() / ".local/share/autochart/models")
+# Hugging Face counts a download when one of a few top-level files (config.json,
+# meta.yaml, ...) is requested; the model folders have none. The app asks for
+# this one once after each model download (electron/assetInstaller.cjs).
+COUNT_FILE = "meta.yaml"
+COUNT_TEXT = ("# Autochart asks for this file once after each model download, so Hugging Face\n"
+              "# counts it. The app doesn't use its contents.\n"
+              "name: autochart-models\n")
 ATTRIBUTES = "*.onnx filter=lfs diff=lfs merge=lfs -text\n*.npz filter=lfs diff=lfs merge=lfs -text\n"
 ALLOWED_URLS = (
     "https://github.com/facebookresearch/demucs",
@@ -175,7 +182,7 @@ def checksum_text(records):
 
 def audit_folder(folder, files, terms):
     require(folder.is_dir() and not folder.is_symlink(), "Payload must be a real directory")
-    expected = {f["path"] for f in files} | {"README.md", ".gitattributes", "SHA256SUMS.txt"}
+    expected = {f["path"] for f in files} | {"README.md", ".gitattributes", "SHA256SUMS.txt", COUNT_FILE}
     directories = {str(parent) for name in expected for parent in PurePosixPath(name).parents
                    if str(parent) != "."}
     actual = set()
@@ -198,6 +205,8 @@ def audit_folder(folder, files, terms):
         record = {"size": len(data), "sha256": digest(data)}
         if name in pins:
             require(record == {k: pins[name][k] for k in ("size", "sha256")}, f"{name}: catalog mismatch")
+        if name == COUNT_FILE:
+            require(data.decode("utf-8") == COUNT_TEXT, f"{name}: unexpected contents")
         if file.suffix == ".onnx":
             record.update(audit_onnx(file, terms))
         elif file.suffix == ".npz":
@@ -229,6 +238,7 @@ def prepare(output, files, terms, source_root):
             destination.write_bytes(data)
         (staging / "README.md").write_bytes((ROOT / "docs/huggingface-model-card.md").read_bytes())
         (staging / ".gitattributes").write_text(ATTRIBUTES)
+        (staging / COUNT_FILE).write_text(COUNT_TEXT)
         records = {p.relative_to(staging).as_posix(): {"sha256": digest(p.read_bytes())}
                    for p in staging.rglob("*") if p.is_file()}
         (staging / "SHA256SUMS.txt").write_text(checksum_text(records))

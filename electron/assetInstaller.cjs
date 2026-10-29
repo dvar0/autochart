@@ -26,8 +26,13 @@ const {
 } = require("./fileSafety.cjs");
 
 // Pin the public model pack to the revision matching the shipped catalog.
-const DEFAULT_ASSET_BASE_URL = "https://huggingface.co/Dvaro/autochart-models/resolve/b38e69ca0dc919cef0218ef7f9c0014a1593b3c2";
+const DEFAULT_ASSET_BASE_URL = "https://huggingface.co/Dvaro/autochart-models/resolve/8a88855d745f0b508f68ac606d7cbdac2878c87d";
 const HTTP_REDIRECTS = new Set([301, 302, 303, 307, 308]);
+// Hugging Face counts a model download when one of a few top-level files is
+// requested. After a download that fetched files, the installer requests this
+// one once (scripts/prepare-huggingface.py puts it in the model repository).
+const DOWNLOAD_COUNT_FILE = "meta.yaml";
+const DOWNLOAD_COUNT_TIMEOUT_MS = 5_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 const DEFAULT_OVERALL_TIMEOUT_MS = 30 * 60_000;
@@ -144,6 +149,20 @@ function requestStream(url, options = {}, redirects = 0) {
     });
     req.on("error", fail);
   });
+}
+
+// Asks for the download count file and drops the answer. Never fails an install.
+async function countDownload(baseUrl, requestOptions = {}) {
+  try {
+    const response = await requestStream(assetUrl(baseUrl, DOWNLOAD_COUNT_FILE), {
+      ...requestOptions,
+      connectTimeoutMs: DOWNLOAD_COUNT_TIMEOUT_MS,
+      overallTimeoutMs: DOWNLOAD_COUNT_TIMEOUT_MS,
+    });
+    response.destroy();
+  } catch {
+    // Not counted; the models are installed all the same.
+  }
 }
 
 function responseContentLength(stream) {
@@ -894,6 +913,7 @@ async function installFromHttpWithOptions(settings, baseUrl, options = {}) {
     percent: totalBytes > 0 ? 0 : null,
   });
   let extracted = 0;
+  let fetchedFromNetwork = false;
   for (const [index, file] of files.entries()) {
     const fileTotalBytes = positiveNumber(file.size);
     const fileIndex = index + 1;
@@ -965,7 +985,10 @@ async function installFromHttpWithOptions(settings, baseUrl, options = {}) {
             // That copy doesn't match its pin; try the next one, then the network.
           }
         }
-        downloaded ??= await downloadFile(request);
+        if (!downloaded) {
+          downloaded = await downloadFile(request);
+          if (!downloaded.skipped) fetchedFromNetwork = true;
+        }
       }
     } catch (err) {
       if (fileSource === FILE_SOURCE_BUNDLED_LICENSE) {
@@ -1032,6 +1055,7 @@ async function installFromHttpWithOptions(settings, baseUrl, options = {}) {
     beforeOpen: options.beforeCatalogOpen,
     beforePromote: options.beforeCatalogPromote,
   });
+  if (fetchedFromNetwork) await countDownload(baseUrl, options.requestOptions);
   emit({
     type: "complete",
     phase: "complete",

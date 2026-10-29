@@ -88,7 +88,7 @@ this workflow is about keeping personal details out of the public payload.
 The current published pack and app default use:
 
 ```text
-https://huggingface.co/Dvaro/autochart-models/resolve/b38e69ca0dc919cef0218ef7f9c0014a1593b3c2
+https://huggingface.co/Dvaro/autochart-models/resolve/8a88855d745f0b508f68ac606d7cbdac2878c87d
 ```
 
 Run the clean-install generation smoke using the app's default:
