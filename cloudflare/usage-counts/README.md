@@ -2,7 +2,7 @@
 
 The server side of the browser version's usage counts
 (`src/web/usageCounts.js`): a Cloudflare Worker that adds each count to a
-per-day total in a D1 database, and serves the totals the hub site shows. What
+per-day total in a D1 database, and serves the chart total the hub site can show. What
 is counted, and what never is, is in [docs/privacy.md](../../docs/privacy.md).
 The events and fields it accepts are in `shared/usageEvents.js`.
 
@@ -13,18 +13,21 @@ never waits on a count, so nothing in the app changes.
 
 ## Setting it up
 
+Always pass `--config`: without it, wrangler goes looking for a project to
+set up on its own.
+
 ```sh
-cd cloudflare/usage-counts
 npx wrangler login
 npx wrangler d1 create autochart-usage      # put the database_id it prints in wrangler.toml
-npx wrangler d1 execute autochart-usage --remote --file schema.sql
-npx wrangler deploy
+npx wrangler d1 execute autochart-usage --remote --config cloudflare/usage-counts/wrangler.toml --file cloudflare/usage-counts/schema.sql
+npx wrangler deploy --config cloudflare/usage-counts/wrangler.toml
 ```
 
-The routes in `wrangler.toml` need the `autochart.org` zone on the same
-Cloudflare account. Then build the browser version with
-`VITE_AUTOCHART_COUNTS_URL=/api/count` (set it in the Pages project's build
-settings). Without it the page sends nothing.
+It has no address of its own. The browser version (`cloudflare/web-app/`,
+deployed with `npm run web:deploy`, which builds with
+`VITE_AUTOCHART_COUNTS_URL=/api/count`) and the hub hand it their `/api/*`
+requests through a service binding. A build without that variable sends
+nothing.
 
 Spam can only add to the totals. To limit it, add a rate-limiting rule for
 `/api/count` in the Cloudflare dashboard (Security → WAF → Rate limiting rules).

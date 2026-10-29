@@ -20,3 +20,6 @@ engine/models-onnx/**/transcriber_manifest.json
 
 # Local launch-video production notes, recordings, and edits
 /production/launch-video/
+
+# Cloudflare deploy state
+.wrangler/

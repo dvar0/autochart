@@ -20,6 +20,8 @@
     "cloudflare/usage-counts/test.mjs",
     "cloudflare/usage-counts/worker.js",
     "cloudflare/usage-counts/wrangler.toml",
+    "cloudflare/web-app/worker.js",
+    "cloudflare/web-app/wrangler.toml",
     "config/human-labels.cjs",
     "config/human-labels.json",
     "config/public-source-files.json",

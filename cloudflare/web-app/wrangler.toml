@@ -1,0 +1,22 @@
+# The browser version at app.autochart.org: the built dist-web/ served as
+# static files, with /api/* handed to the usage-counts Worker.
+# Deploy with `npm run web:deploy` from the repo root.
+name = "autochart-app"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [{ pattern = "app.autochart.org", custom_domain = true }]
+preview_urls = false
+
+[assets]
+directory = "../../dist-web"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[[services]]
+binding = "COUNTS"
+service = "autochart-usage"
+
+# No request logs.
+[observability]
+enabled = false

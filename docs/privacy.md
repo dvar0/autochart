@@ -79,7 +79,7 @@ crashed tab cut short, a run keeps a small note in this browser's local
 storage (the run kind, model and step) and deletes it when it ends. A note
 still there on the next visit is counted once and deleted.
 
-The totals for charts made, exports and models are shown on autochart.org.
+The number of charts made in the browser may be shown on autochart.org.
 
 Turn the counts off with **Share usage counts** in Settings. They're also off
 when your browser sends Do Not Track or Global Privacy Control. The page

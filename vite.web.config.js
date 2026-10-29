@@ -63,7 +63,7 @@ function autochartWeb() {
     configurePreviewServer(server) {
       server.middlewares.use(serveFolder("/models/", MODELS_DIR));
     },
-    // For the static host (Cloudflare Pages): the same isolation headers, and
+    // For the static host (cloudflare/web-app/): the same isolation headers, and
     // the page at / as well as /web.html.
     generateBundle() {
       const headers = Object.entries(ISOLATION_HEADERS).map(([name, value]) => `  ${name}: ${value}`).join("\n");

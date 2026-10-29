@@ -3,11 +3,10 @@ name = "autochart-usage"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 
-# The browser version posts to its own origin, and the hub reads totals from its own.
-routes = [
-  { pattern = "app.autochart.org/api/*", zone_name = "autochart.org" },
-  { pattern = "autochart.org/api/*", zone_name = "autochart.org" },
-]
+# No address of its own: the browser version's and the hub's Workers hand it
+# their /api/* requests (cloudflare/web-app/, and the hub's worker).
+workers_dev = false
+preview_urls = false
 
 # No request logs: the Worker keeps only the per-day totals.
 [observability]
@@ -16,4 +15,4 @@ enabled = false
 [[d1_databases]]
 binding = "DB"
 database_name = "autochart-usage"
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "1af447c4-62cf-4dd2-a15a-12f88e71a632"

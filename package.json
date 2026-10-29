@@ -16,6 +16,7 @@
     "web:dev": "vite --config vite.web.config.js",
     "web:build": "vite build --config vite.web.config.js",
     "web:preview": "vite preview --config vite.web.config.js",
+    "web:deploy": "VITE_AUTOCHART_COUNTS_URL=/api/count vite build --config vite.web.config.js && npx -y wrangler@4.155.0 deploy --config cloudflare/web-app/wrangler.toml",
     "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
     "electron:build": "vite build && electron .",
     "pack": "npm run build && electron-builder --dir",

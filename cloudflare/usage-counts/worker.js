@@ -2,7 +2,7 @@
 // serves the totals the hub site shows.
 //
 //   POST /api/count   one count: { event, browser, device, version, ...fields }
-//   GET  /api/totals  charts made, exports and model share, cached for an hour
+//   GET  /api/totals  how many charts the browser version has made, cached for an hour
 //
 // Each count only adds 1 to a per-day total for its exact fields; single
 // events, times of day, IP addresses and request headers are never stored.
@@ -64,21 +64,11 @@ async function totals(request, env, ctx) {
   const cached = await cache.match(key);
   if (cached) return cached;
 
-  const events = await env.DB.prepare(
-    `SELECT event, SUM(n) AS n FROM counts WHERE event IN ('generate_finished', 'exported') GROUP BY event`,
-  ).all();
-  const models = await env.DB.prepare(
-    `SELECT json_extract(fields, '$.model') AS model, SUM(n) AS n FROM counts
-     WHERE event = 'generate_finished' GROUP BY model ORDER BY n DESC`,
-  ).all();
-  const byEvent = Object.fromEntries(events.results.map((row) => [row.event, row.n]));
+  const row = await env.DB.prepare(
+    `SELECT SUM(n) AS n FROM counts WHERE event = 'generate_finished'`,
+  ).first();
   const response = Response.json(
-    {
-      charts: byEvent.generate_finished || 0,
-      exports: byEvent.exported || 0,
-      models: Object.fromEntries(models.results.map((row) => [row.model || "unknown", row.n])),
-      updatedAt: new Date().toISOString(),
-    },
+    { charts: row?.n || 0, updatedAt: new Date().toISOString() },
     { headers: { "Cache-Control": `public, max-age=${TOTALS_SECONDS}` } },
   );
   ctx.waitUntil(cache.put(key, response.clone()));
