@@ -80,6 +80,9 @@ async function main() {
               genRun: { live: {}, leadInSeconds: lead, startedAt: Date.now() },
               liveAnalysisAudioBuffer: makeAudio(8 + lead),
               audioBuffer: null, audioLeadInSeconds: 0,
+              // The Inpaint/Edit workspace, closed: the Generate tab is open.
+              workTab: 'generate', editor: { doc: null, regions: [], selectedNoteIds: [], previewTrack: null,
+                playhead: { time: 0, duration: 0 }, seekRequest: null, playRequest: null },
             }));
             window.patchGeneration = (patch) => setProject((current) => ({ ...current, ...patch }));
             return <PreviewStage project={project} />;
