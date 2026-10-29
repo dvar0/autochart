@@ -1,5 +1,6 @@
 import { I } from "../icons.jsx";
 import { isWebApp } from "../services/runtimeBridge.js";
+import { SITE_LINKS } from "../data/siteLinks.js";
 import { useState } from "react";
 import useCoverArt from "../hooks/useCoverArt.js";
 import { peekCoverArt } from "../lib/coverArt/index.js";
@@ -76,18 +77,28 @@ export function Rail({
   return (
     <aside className={"rail" + (collapsed ? " collapsed" : "")} aria-label="Primary navigation">
       <div className="brand">
-        <button
-          type="button"
-          className="brand-row"
-          onClick={() => onNav(home.id)}
-          title={`Autochart — ${home.name}`}
-          aria-label={`Autochart — ${home.name}`}
-        >
-          <span className="logo-star">
-            <I.star />
-          </span>
-          <span className="wordmark">AUTOCHART</span>
-        </button>
+        {/* On the web the logo goes back to the hub site; Start is right below it. */}
+        {web ? (
+          <a className="brand-row" href={SITE_LINKS.hub} title="autochart.org" aria-label="Autochart — autochart.org">
+            <span className="logo-star">
+              <I.star />
+            </span>
+            <span className="wordmark">AUTOCHART</span>
+          </a>
+        ) : (
+          <button
+            type="button"
+            className="brand-row"
+            onClick={() => onNav(home.id)}
+            title={`Autochart — ${home.name}`}
+            aria-label={`Autochart — ${home.name}`}
+          >
+            <span className="logo-star">
+              <I.star />
+            </span>
+            <span className="wordmark">AUTOCHART</span>
+          </button>
+        )}
         {/* the signature fret strip doubles as the collapse handle */}
         <button
           type="button"
@@ -168,6 +179,16 @@ export function Rail({
           <option value="dark">Dark mode</option>
         </select>
       </label>
+      {web && (
+        <div className="rail-links">
+          <a className="rail-item quiet" href={SITE_LINKS.repo} target="_blank" rel="noreferrer" title="Code on GitHub" aria-label="Code on GitHub">
+            <I.github />
+          </a>
+          <a className="rail-item quiet" href={SITE_LINKS.privacy} target="_blank" rel="noreferrer" title="Privacy" aria-label="Privacy">
+            <I.shield />
+          </a>
+        </div>
+      )}
       {/* Always the version; it turns into the update notice when one is out. */}
       {update && (
         <button

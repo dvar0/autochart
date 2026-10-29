@@ -409,6 +409,11 @@ input:focus-visible, select:focus-visible { outline: none; }
 }
 .rail-spacer { flex: 1; }
 .rail-item-label { min-width: 0; }
+a.brand-row, a.rail-item { text-decoration: none; }
+/* GitHub and Privacy under the theme picker (browser version): small icons in
+   a row, stacked when the rail is collapsed, and only in Settings on phones. */
+.rail-links { display: flex; gap: 2px; flex-shrink: 0; }
+.rail-links .rail-item { width: auto; }
 
 /* ---- collapsed rail (desktop only; narrows to an icon strip) ---- */
 /* Left padding is unchanged from the expanded rail, so the brand star, the
@@ -435,6 +440,7 @@ input:focus-visible, select:focus-visible { outline: none; }
   .rail.collapsed .rail-item-label,
   .rail.collapsed .rail-count,
   .rail.collapsed .rail-section { display: none; }
+  .rail.collapsed .rail-links { flex-direction: column; }
 }
 
 /* ============== BODY LAYOUT ============== */
@@ -5653,6 +5659,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   }
   .rail-item.quiet svg { margin: 0; }
   .rail-theme .rail-item-label { display: none; }
+  .rail-links { display: none; }
   .browser-bar {
     padding: 10px 12px;
     gap: 8px;
