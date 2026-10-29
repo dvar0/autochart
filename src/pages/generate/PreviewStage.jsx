@@ -954,6 +954,8 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
           )}
         </div>
         <div className="preview-head-actions">
+          {/* Before the take chip, so the chip sits in the same place on every tab. */}
+          {editing && <EditStageActions project={project} />}
           {showingDemucsStage && (
             <div className="single-version-head demucs-stage-head-pill">
               <span className="compare-badge">A</span>
@@ -970,7 +972,6 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
               </span>
             </div>
           )}
-          {editing && <EditStageActions project={project} />}
           {!showingDemucsStage && track && inCompare && (
             <>
               <div className="compare-layout-tabs" aria-label="Compare layout">
