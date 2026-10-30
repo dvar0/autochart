@@ -1,6 +1,20 @@
 // Owns the audio clock and visual highway animation. This transport is not a
 // playable instrument: it has no keyboard, guitar, HID, gamepad, score,
 // hit-window, or gameplay input support.
+
+// The scroll may lean this far off real speed to follow the audio clock, which
+// is too little to see. Bigger gaps are a real stall and snap instead.
+const CLOCK_MAX_LEAN = 0.02;
+const CLOCK_SMOOTHING_SECONDS = 0.25;
+const CLOCK_SNAP_SECONDS = 0.08;
+// Reported output latency swings by 200ms for several seconds while a suspended
+// sink wakes, with the audio itself perfectly steady. Only a reading that holds
+// still counts: small changes then ease in, big ones are a real device change.
+const LATENCY_STEADY_SECONDS = 1;
+const LATENCY_STEADY_RANGE = 0.005;
+const LATENCY_EASE_PER_SECOND = 0.01;
+const LATENCY_JUMP_SECONDS = 0.1;
+
 export class GameEngine {
   constructor(renderer) {
     this.renderer = renderer;
@@ -21,6 +35,10 @@ export class GameEngine {
     this.playOffset = 0;
     this.pausedSongTime = 0;
     this._clockOffset = null;
+    this._clockUpdatedAt = 0;
+    this._latency = 0;
+    this._latencyReading = 0;
+    this._latencyReadingSince = 0;
     this.onProgress = null;
     this.onEnded = null;
     this._lastProgressEmit = -1;
@@ -74,11 +92,10 @@ export class GameEngine {
   }
 
   get duration() { return this.buffer ? this.buffer.duration : this.visualDuration; }
-  get _sync() {
-    const baseLatency = Number(this.audioCtx?.baseLatency) || 0;
-    const outputLatency = Number(this.audioCtx?.outputLatency) || 0;
-    return -(baseLatency + outputLatency) - this.chartOffset;
+  get _reportedLatency() {
+    return (Number(this.audioCtx?.baseLatency) || 0) + (Number(this.audioCtx?.outputLatency) || 0);
   }
+  get _sync() { return -this._latency - this.chartOffset; }
   get songTime() {
     if (!this.running || !this.audioCtx) return this.pausedSongTime;
     if (this._clockOffset !== null) return performance.now() / 1000 + this._clockOffset;
@@ -95,13 +112,36 @@ export class GameEngine {
       this._clockOffset = null;
       return;
     }
-    const offset = this._rawSongTime() - performance.now() / 1000;
-    if (this._clockOffset === null || Math.abs(offset - this._clockOffset) > 0.08) {
+    const now = performance.now() / 1000;
+    const elapsed = Math.max(0, now - this._clockUpdatedAt);
+    this._clockUpdatedAt = now;
+    this._followLatency(now, elapsed);
+    const offset = this._rawSongTime() - now;
+    if (this._clockOffset === null || Math.abs(offset - this._clockOffset) > CLOCK_SNAP_SECONDS) {
       this._clockOffset = offset;
       return;
     }
     const error = offset - this._clockOffset;
-    this._clockOffset += Math.max(-0.002, Math.min(0.002, error * 0.1));
+    const lean = CLOCK_MAX_LEAN * elapsed;
+    this._clockOffset += Math.max(-lean, Math.min(lean, error * (1 - Math.exp(-elapsed / CLOCK_SMOOTHING_SECONDS))));
+  }
+  _holdLatency() {
+    this._latency = this._latencyReading = this._reportedLatency;
+    this._latencyReadingSince = performance.now() / 1000;
+  }
+  _followLatency(now, elapsed) {
+    const reading = this._reportedLatency;
+    if (Math.abs(reading - this._latencyReading) > LATENCY_STEADY_RANGE) {
+      this._latencyReading = reading;
+      this._latencyReadingSince = now;
+      return;
+    }
+    if (now - this._latencyReadingSince < LATENCY_STEADY_SECONDS) return;
+    const change = this._latencyReading - this._latency;
+    const ease = LATENCY_EASE_PER_SECOND * elapsed;
+    this._latency = Math.abs(change) > LATENCY_JUMP_SECONDS
+      ? this._latencyReading
+      : this._latency + Math.max(-ease, Math.min(ease, change));
   }
   setChartTimeOffset(seconds) {
     const n = Number(seconds);
@@ -130,6 +170,7 @@ export class GameEngine {
     if (!this.buffer || this.running) return;
     if (this.audioCtx.state === "suspended") await this.audioCtx.resume();
     if (this.pausedSongTime >= this.duration) this.seek(0);
+    this._holdLatency();
     this._startSource(Math.min(Math.max(0, this.pausedSongTime - this._sync), this.duration));
     this.paused = false;
     this.running = true;

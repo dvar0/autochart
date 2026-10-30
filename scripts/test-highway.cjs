@@ -232,6 +232,72 @@ function recordingCanvas(width = 900, height = 600) {
     assert.ok(Math.abs(engine.songTime) < 1e-8, 'Play at the end must replay from the beginning');
     engine.stop();
     assert.equal(ended, 1, 'manual stop must not report completion');
+
+    // A suspended sink waking reports a latency that swings by 200ms for several
+    // seconds while the audio stays steady (shape recorded from a real sink). The
+    // highway must keep its speed at any refresh rate, then still follow a real
+    // output change.
+    const wakingLatency = (t) => t < 4 ? 0.011 + t * 0.052 : t < 5.5 ? 0.22 - (t - 4) * 0.09 : 0.085 - Math.min(1, (t - 5.5) / 4) * 0.058;
+    const realNow = performance.now;
+    try {
+      for (const hz of [60, 240]) {
+        let now = 1000;
+        performance.now = () => now;
+        const clock = new GameEngine(transportRenderer);
+        clock.audioCtx = {
+          currentTime: 50, state: 'running', baseLatency: 0.01, outputLatency: wakingLatency(0),
+          createBufferSource: () => ({ connect() {}, start() {}, stop() {}, disconnect() {} }),
+        };
+        clock.buffer = { duration: 200 };
+        clock.setTrack({ song: {}, duration: 200, notes: [] });
+        await clock.play();
+        const frame = 1000 / hz;
+        const startedAt = clock.startCtxTime;
+        const advance = () => {
+          now += frame;
+          // currentTime moves in audio-callback chunks, not smoothly.
+          clock.audioCtx.currentTime = Math.floor((50 + (now - 1000) / 1000) * 100) / 100;
+        };
+        while (clock.audioCtx.currentTime < startedAt + 0.05) { advance(); clock._updateClock(); }
+        const wakeStart = now;
+        let previous = clock.songTime;
+        let worstStep = 0;
+        let windowStart = previous;
+        let windowAt = now;
+        let worstLean = 0;
+        while (now - wakeStart < 12000) {
+          advance();
+          clock.audioCtx.outputLatency = wakingLatency((now - wakeStart) / 1000);
+          clock._updateClock();
+          const current = clock.songTime;
+          worstStep = Math.max(worstStep, Math.abs((current - previous) * 1000 - frame));
+          previous = current;
+          if (now - windowAt >= 250) {
+            worstLean = Math.max(worstLean, Math.abs((current - windowStart) / ((now - windowAt) / 1000) - 1));
+            windowStart = current;
+            windowAt = now;
+          }
+        }
+        assert.ok(worstStep < 2, `${hz}Hz: waking sink jumped the highway by ${worstStep.toFixed(1)}ms in one frame`);
+        assert.ok(worstLean <= 0.025, `${hz}Hz: waking sink changed highway speed by ${(worstLean * 100).toFixed(1)}%`);
+
+        // Settled: it ends up on the steady latency, not on the swing.
+        while (now - wakeStart < 20000) { advance(); clock._updateClock(); }
+        assert.ok(Math.abs(clock._latency - (0.01 + wakingLatency(20))) < 0.002, `${hz}Hz: settles on the steady latency`);
+        assert.ok(Math.abs(clock.songTime - clock._rawSongTime()) < 0.015, `${hz}Hz: stays with the audio clock`);
+
+        // A real device change holds still, so it is taken as soon as it is steady.
+        clock.audioCtx.outputLatency = 0.2;
+        const switchedAt = now;
+        while (now - switchedAt < 1200) { advance(); clock._updateClock(); }
+        assert.ok(Math.abs(clock._latency - 0.21) < 1e-9, `${hz}Hz: follows a real output change`);
+        assert.ok(Math.abs(clock.songTime - clock._rawSongTime()) < 0.015, `${hz}Hz: highway moves with the output change`);
+        clock.stop();
+      }
+    } finally {
+      delete performance.now;
+      if (performance.now !== realNow) performance.now = realNow;
+    }
     console.log('Highway geometry, streaming, cache, and playback regressions passed');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
