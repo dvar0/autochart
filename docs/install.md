@@ -60,15 +60,15 @@ and [Apple's supported override instructions](https://support.apple.com/102445).
 
 ## First run
 
-1. Choose folders for projects, models, and cache in setup. Use writable local
-   folders with room for your songs and generated audio.
-2. Download the chart generation package. Fretformer 2 (with its Fill-in
-   model) totals **952,319,821 bytes (about 952 MB / 908 MiB)**, excluding the
-   app download. Fretformer v1 (693,298,686 bytes) and the experimental
-   Fretformer 2 Lite (555,226,055 bytes; it skips stem separation, for slower
-   computers) are optional extra downloads in Settings.
-   Installation also needs temporary staging space. Projects and separation
-   caches require additional disk space that grows with song length and use.
+1. Setup downloads Fretformer 2 (with its Fill-in model):
+   **952,319,821 bytes (about 952 MB / 908 MiB)**, excluding the app download.
+   It takes about 1.17 GB on disk. **Change location** picks another folder for
+   it; the other folders are in **Settings**.
+2. New projects use Fretformer 2. Fretformer v1 (693,298,686 bytes) and the
+   experimental Fretformer 2 Lite (555,226,055 bytes; it skips stem separation,
+   for slower computers) are optional extra downloads in Settings. Projects and
+   separation caches require additional disk space that grows with song length
+   and use.
 3. Hardware mode defaults to **Automatic**; there is no hardware-selection
    step during setup. Advanced users can change it in **Settings**. CPU
    generation is supported; acceleration depends on your computer and drivers.
@@ -85,10 +85,8 @@ access is needed for the initial model download. See [privacy.md](privacy.md).
 
 Setup uses the public [Autochart model repository](https://huggingface.co/Dvaro/autochart-models)
 on Hugging Face automatically, at a fixed revision verified by the app's
-catalog. No account or token is required. For a custom mirror, use
-**Advanced: change download source** in setup and click **Save Source**, or
-use **Settings > Download source**. When launching from a terminal,
-`AUTOCHART_ASSETS_BASE_URL` can override the source.
+catalog. No account or token is required. For a custom mirror, when launching
+from a terminal, `AUTOCHART_ASSETS_BASE_URL` can override the source.
 
 Minimum RAM and typical full-song generation times have not yet been established
 across machines. CPU generation can take time; use a short song for your first

@@ -229,7 +229,8 @@ function feedNotes(from, to) {
   return notes;
 }
 
-function SongFeed({ hot, startAt }) {
+// Also on the first-run screen (pages/Setup.jsx).
+export function SongFeed({ hot, startAt }) {
   const barRefs = useRef([]);
   const sectionRefs = useRef([]);
   const noteRefs = useRef([]);

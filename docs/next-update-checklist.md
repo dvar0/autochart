@@ -31,6 +31,21 @@ yet, so setup can't download them until this is done:
   going never offers it again. Lite stays out of the Generate picker until
   it's downloaded.
 
+## First-run setup
+
+Setup is now one screen (`src/pages/Setup.jsx`): it names Fretformer 2, shows its
+size and the free space, downloads it, and opens Generate. Fretformer v1 and Lite
+aren't listed on Generate until they're downloaded.
+
+- [ ] On each platform, on a clean install: **Download Fretformer 2** finishes and
+  opens Generate on Fretformer 2, and the model picker offers nothing else.
+- [ ] **Change location** opens the folder picker, and the free space updates for
+  the new drive (Windows, macOS and Linux report it differently).
+- [ ] Quit during the download and reopen: it offers **Finish download** and only
+  fetches what's missing.
+- [ ] Unplug the network during the download: the error shows, and **Try again**
+  keeps the finished files.
+
 ## App updates and What's new
 
 This is the first release that checks for updates (`electron/appUpdates.cjs`).

@@ -632,7 +632,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("modelSetup:scan", async (_event, options = {}) => {
-    // "Scan Again" re-verifies every file instead of trusting cached digests.
+    // "Check files" re-verifies every file instead of trusting cached digests.
     if (options?.fresh) modelManager.clearDigestCache();
     return scanModelSetup();
   });

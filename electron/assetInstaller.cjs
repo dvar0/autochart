@@ -62,7 +62,7 @@ function assetUrl(baseUrl, filePath) {
 }
 
 function downloadSourceHelp() {
-  return "Check Settings > Download source or set AUTOCHART_ASSETS_BASE_URL, then try again.";
+  return "Check your connection, then try again. AUTOCHART_ASSETS_BASE_URL sets a different download source.";
 }
 
 function packPlatformList(pack) {

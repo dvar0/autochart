@@ -17,7 +17,7 @@ npm run ffmpeg:prepare
 npm run electron:dev
 ```
 
-The setup wizard downloads the pinned public model package. No model checkout,
+First-run setup downloads the pinned public model package. No model checkout,
 Python runtime, account, or private download server is required. Model files
 are excluded from the source repository. The app locates installed models in
 the storage folder selected during setup.

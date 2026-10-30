@@ -10,7 +10,7 @@ import { importSongFolder, saveImportedSong } from "./services/songImport.js";
 import Generate from "./pages/generate/GeneratePage.jsx";
 import Library from "./pages/Library.jsx";
 import Start from "./pages/Start.jsx";
-import SetupWizard from "./pages/SetupWizard.jsx";
+import Setup from "./pages/Setup.jsx";
 import Settings from "./pages/Settings.jsx";
 import useResolvedTheme from "./hooks/useResolvedTheme.js";
 import { isWebApp } from "./services/runtimeBridge.js";
@@ -329,7 +329,7 @@ export default function App() {
             />
           ))}
           {page === "settings" && <Settings setPage={setPage} />}
-          {page === "setup" && <SetupWizard onDone={handleSetupDone} />}
+          {page === "setup" && <Setup onDone={handleSetupDone} />}
         </div>
         {sheet?.kind === "update" && (
           <UpdateSheet

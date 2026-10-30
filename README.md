@@ -39,7 +39,7 @@ and generate the difficulties it's missing.
 | macOS (Apple Silicon) | `.dmg` |
 | Linux (x64) | `.AppImage` |
 
-On first launch, Autochart downloads its model (about 700 MB). No Python or
+On first launch, Autochart downloads its model (about 952 MB). No Python or
 accounts needed. Intel Macs and ARM versions of Windows and Linux aren't
 supported.
 
@@ -115,7 +115,7 @@ uses WebGPU or NVIDIA CUDA on Windows and Linux, and WebGPU on Mac. Hardware
 mode is automatic, and if the GPU doesn't work
 out, it falls back to the CPU. You can change it in **Settings**.
 
-Leave room for the model (about 700 MB) plus your songs.
+Leave room for the model (about 1.2 GB on disk) plus your songs.
 </details>
 
 <details>

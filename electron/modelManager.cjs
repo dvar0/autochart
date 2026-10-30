@@ -278,6 +278,33 @@ function selectStandardPack(packs, catalog, settings = {}) {
   return runtimeSelection.selectPack(packs, catalog, settings, { platform: CURRENT_PLATFORM });
 }
 
+// Free bytes where a folder is, or will be once it's created. Null if unknown.
+async function freeBytesAt(folder) {
+  if (!folder) return null;
+  let current = path.resolve(String(folder));
+  for (;;) {
+    try {
+      const { bavail, bsize } = await fs.statfs(current);
+      return Number(bavail) * Number(bsize);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return null;
+      current = parent;
+    }
+  }
+}
+
+// Bytes a pack takes on disk: models sharing a file each keep their own copy,
+// so this can be more than its download.
+function packInstallBytes(pack, catalog) {
+  const files = new Map();
+  for (const id of Array.isArray(pack?.components) ? pack.components : []) {
+    const component = (catalog?.components || []).find((item) => item.id === id);
+    for (const file of component?.files || []) files.set(file.path, Number(file.size) || 0);
+  }
+  return [...files.values()].reduce((sum, size) => sum + size, 0);
+}
+
 function worstStatus(statuses) {
   if (statuses.includes("corrupt")) return "corrupt";
   if (statuses.includes("unsupported")) return "unsupported";
@@ -821,6 +848,7 @@ async function scanModelSetup({
     const status = packComponents.length ? worstStatus(packComponents.map((component) => component.status)) : "missing";
     return {
       ...pack,
+      installBytes: packInstallBytes(pack, loadedCatalog),
       status,
       ready: status === "ready",
       components: packComponents.map((component) => ({
@@ -870,6 +898,7 @@ async function scanModelSetup({
     generatorReadiness,
     readyGeneratorIds,
     generationReady,
+    modelsFolderFreeBytes: await freeBytesAt(settings.modelsFolder),
   };
 }
 

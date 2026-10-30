@@ -75,10 +75,10 @@ function assert(condition, message) {
     assert(typeof runtimeBridge.electronWindow()?.setFullscreen === "function", "Electron-shaped window bridge missing");
     if (browserWindow === undefined) delete global.window;
     else global.window = browserWindow;
-    const generationPipeline = await bundle("src/components/GenerationPipeline.jsx", temp);
+    const generationCatalog = await bundle("src/data/generationCatalog.js", temp);
     const shippedCatalog = require("../engine/catalog.json");
     const standardPack = shippedCatalog.packs.find((pack) => pack.id === shippedCatalog.defaults.packId);
-    assert(generationPipeline.generationDownloadSize() === generationPipeline.generationDownloadSize(standardPack), "download size fallback drifted from catalog");
+    assert(generationCatalog.generationDownloadSize() === generationCatalog.generationDownloadSize(standardPack), "download size fallback drifted from catalog");
     const modelFamilies = await bundle("src/data/modelFamilies.js", temp);
     const shippedManifest = require("../engine/manifest.json");
     const installed = (...names) => shippedManifest.generators.map((generator) => ({
@@ -189,7 +189,7 @@ function assert(condition, message) {
       librarySource,
       hookSource,
     ] = await Promise.all([
-      fs.readFile(path.join(ROOT, "src/pages/SetupWizard.jsx"), "utf8"),
+      fs.readFile(path.join(ROOT, "src/pages/Setup.jsx"), "utf8"),
       fs.readFile(path.join(ROOT, "src/pages/Settings.jsx"), "utf8"),
       fs.readFile(path.join(ROOT, "src/pages/generate/ProjectBar.jsx"), "utf8"),
       fs.readFile(path.join(ROOT, "src/styles.css"), "utf8"),
@@ -204,10 +204,11 @@ function assert(condition, message) {
       fs.readFile(path.join(ROOT, "src/pages/Library.jsx"), "utf8"),
       fs.readFile(path.join(ROOT, "src/pages/generate/useGenerateProject.js"), "utf8"),
     ]);
-    assert(/role=\{message\.tone === "ok" \? "status" : "alert"\}/.test(setupSource), "setup messages lack semantic status roles");
-    assert(/aria-live=\{message\.tone === "ok" \? "polite" : "assertive"\}/.test(setupSource), "setup messages are not announced");
-    assert(setupSource.includes("Scan Again") && settingsSource.includes("Check files"), "model file scan actions are missing");
-    assert(setupSource.includes("Save Source") && !settingsSource.includes("Save Source"), "download-source field belongs to setup only");
+    assert(/role=\{warned \? "alert" : "status"\}/.test(setupSource), "setup messages lack semantic status roles");
+    assert(/aria-live=\{warned \? "assertive" : "polite"\}/.test(setupSource), "setup messages are not announced");
+    assert(settingsSource.includes("Check files"), "model file scan action is missing");
+    assert(!/\.(filePath|fileIndex|totalFiles)\b/.test(setupSource), "setup shows individual model files");
+    assert(!setupSource.includes("Save Source") && !settingsSource.includes("Save Source"), "the download source is set through AUTOCHART_ASSETS_BASE_URL, not a field");
     assert(projectBarSource.includes("Start new project with this media"), "source replacement does not explain that it creates a project");
     assert(!projectBarSource.includes('"Replace media"'), "misleading source-replacement label remains");
     assert(/\.setup-status\.checking\s*\{[^}]*var\(--text-dim\)[^}]*var\(--surface-2\)/.test(styles), "checking status is not neutral");
@@ -220,7 +221,7 @@ function assert(condition, message) {
     assert(railSource.includes('aria-current={page === it.id ? "page" : undefined}'), "navigation lacks current-page semantics");
     assert(progressSource.includes('aria-label="Chart generation completion"') && progressSource.includes("aria-valuetext"), "progress bar lacks accessible value text");
     assert(progressSource.includes('aria-controls="generation-pipeline-details"'), "pipeline toggle does not expose its controlled region");
-    assert(settingsSource.includes("settings-install-reason") && setupSource.includes("setup-finish-reason"), "disabled setup controls lack reasons");
+    assert(settingsSource.includes("settings-install-reason") && setupSource.includes("setup-action-reason"), "disabled setup controls lack reasons");
     assert(consoleSource.includes("generate-cta-reason"), "Generate CTA lacks a disabled reason");
     assert(labelsSource.includes('"Fretformer"') && labelsSource.includes('"FFmpeg media support"'), "shared human label catalog is incomplete");
     assert(!generationSource.includes("Mock chart generated") && !generationSource.includes("Mock export"), "stale browser mock wording remains");

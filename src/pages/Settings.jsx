@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { I } from "../icons.jsx";
-import { generationDownloadSize } from "../components/GenerationPipeline.jsx";
+import { generationDownloadSize } from "../data/generationCatalog.js";
 import { DeviceReadout, UNCHECKED_DEVICE, browserLabel, deviceFromProbe, memoryText } from "../components/DeviceFacts.jsx";
 import InstallProgress from "../components/InstallProgress.jsx";
 import {

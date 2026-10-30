@@ -1,21 +1,8 @@
+import { formatSize as formatBytes } from "../data/generationCatalog.js";
 function clampPercent(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return null;
   return Math.max(0, Math.min(100, Math.round(number)));
-}
-
-function formatBytes(value) {
-  const bytes = Number(value);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let amount = bytes;
-  let unit = 0;
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024;
-    unit += 1;
-  }
-  const digits = amount >= 10 || unit === 0 ? 0 : 1;
-  return `${amount.toFixed(digits)} ${units[unit]}`;
 }
 
 function fileName(filePath) {

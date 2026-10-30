@@ -60,18 +60,18 @@ export default function GeneratePage({ importedSong, initialFile = null, onOpenS
       <div className="ac-body setup-cta-page">
         <main className="settings-main">
           <header className="page-head">
-            <h1 className="page-title">Chart generation needs setup</h1>
+            <h1 className="page-title">Autochart needs its model</h1>
             <p className="page-sub">
-              Download or locate the chart generation package before making charts.
+              It writes your charts, so download it before making one.
             </p>
           </header>
           <section className="setup-cta-panel">
             <div>
-              <h2>Chart generation package is missing</h2>
-              <p>{project.setupMessage || "Open setup to scan the chart generation files and choose runtime settings."}</p>
+              <h2>The model isn't installed</h2>
+              <p>{project.setupMessage || "Open setup to download it."}</p>
             </div>
             <button className="btn-primary" onClick={onSetup}>
-              Set Up Autochart
+              Open setup
             </button>
           </section>
         </main>
