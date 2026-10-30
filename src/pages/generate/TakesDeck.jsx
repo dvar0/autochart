@@ -350,10 +350,12 @@ function DemucsPanel({ project }) {
           const active = compatible && artifact.id === activeDemucsId;
           const usedByPreview = selectedDemucsId && selectedDemucsId === artifact.id;
           const ready = artifactReady(artifact);
-          // v1's set is always listed (it separates on first play, as before);
-          // another model's set is listed once it exists or while that model is selected.
+          // v1's set is listed while v1 is installed (it separates on first play, as
+          // before); any set is listed once it exists or while its model is selected.
           const stemSets = STEM_SETS.filter((stemSet) =>
-            stemSet.id === "htdemucs" || stemSet.id === selectedStemSetId || hasSeparation(artifact, stemSet.id)
+            (stemSet.id === "htdemucs" && generatorForStemSet?.("htdemucs"))
+            || stemSet.id === selectedStemSetId
+            || hasSeparation(artifact, stemSet.id)
           );
           const labelStemSets = stemSets.length > 1;
           const badgeIndex = demucsArtifacts.length - 1 - index;

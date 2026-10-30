@@ -63,8 +63,8 @@ export function isBetaGenerator(generatorId) {
   return BETA_GENERATOR_IDS.has(generatorId);
 }
 
-// Generators marked availability "installed" (test models) are offered only
-// once their model folder is present; every other generator is always listed.
+// Generators marked availability "installed" (Lite, Fretformer v1) are offered
+// only once their model folder is present; every other generator is always listed.
 // Beta drafting models are offered only while the "fillInDrafts" setting is on.
 export function selectableGeneratorsFrom(generators = [], preferences = {}) {
   return generators.filter((generator) =>

@@ -79,6 +79,23 @@ function assert(condition, message) {
     const shippedCatalog = require("../engine/catalog.json");
     const standardPack = shippedCatalog.packs.find((pack) => pack.id === shippedCatalog.defaults.packId);
     assert(generationPipeline.generationDownloadSize() === generationPipeline.generationDownloadSize(standardPack), "download size fallback drifted from catalog");
+    const modelFamilies = await bundle("src/data/modelFamilies.js", temp);
+    const shippedManifest = require("../engine/manifest.json");
+    const installed = (...names) => shippedManifest.generators.map((generator) => ({
+      ...generator,
+      setup: { ready: names.includes(generator.id) },
+    }));
+    const V1_ID = "autochart.fretformer.v1-onnx";
+    const V2_ID = "autochart.fretformer.v2-onnx";
+    const freshInstall = installed(V2_ID, "autochart.fretformer.v2-inpaint-onnx");
+    assert(
+      modelFamilies.selectableGeneratorsFrom(freshInstall).map((generator) => generator.id).join() === V2_ID,
+      "a fresh install offers models it hasn't downloaded"
+    );
+    assert(modelFamilies.defaultGeneratorIdFrom(freshInstall) === V2_ID, "a fresh install doesn't start on Fretformer 2");
+    const upgraded = installed(V1_ID);
+    assert(modelFamilies.defaultGeneratorIdFrom(upgraded) === V1_ID, "an update with only Fretformer v1 left its model");
+    assert(modelFamilies.selectableGeneratorsFrom(upgraded).some((generator) => generator.id === V2_ID), "an update with only Fretformer v1 can't reach Fretformer 2");
     const generationGate = await bundle("src/pages/generate/generationGate.js", temp);
     const unsupportedState = await bundle("src/pages/generate/UnsupportedGenerationState.jsx", temp);
     const unsupportedPairs = [

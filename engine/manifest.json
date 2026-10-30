@@ -13,6 +13,7 @@
       "id": "autochart.fretformer.v1-onnx",
       "label": "Fretformer",
       "titleTag": "Fretformer",
+      "availability": "installed",
       "description": "Fully-local ONNX chart engine (Demucs separation -> Beat This detection -> transcriber) running entirely on onnxruntime-node. GPU-accelerated via WebGPU with automatic CPU fallback; no Python at runtime.",
       "status": "stable",
       "platforms": [

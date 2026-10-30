@@ -206,9 +206,9 @@ separation as usual. Lite's generator lists the `htdemucs_6s` stem set
 (`capabilities.usesStemCache: false`), so the separation cards and Separate now
 use Fretformer 2's separation while Lite is selected.
 
-Lite is `"availability": "installed"`, so the Generate picker lists it only
-once it's downloaded (or picked in Settings). The app offers it when a device
-needs it, not before:
+Lite and Fretformer v1 are `"availability": "installed"`, so the Generate picker
+lists them only once they're downloaded (or picked in Settings). The app offers
+Lite when a device needs it, not before:
 
 - **Slow separation.** The engine's `demucs` progress events carry
   `audioSeconds`. `src/pages/generate/liteOffer.js` times the segments after
