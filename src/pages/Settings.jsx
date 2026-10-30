@@ -861,38 +861,11 @@ export default function Settings() {
             </section>
           )}
 
-          {!isWebApp() && (
-          <section className="settings-card settings-about" aria-labelledby="settings-about-title">
-            <div className="settings-card-head">
-              <h2 className="settings-card-title" id="settings-about-title">About</h2>
-              <span className="settings-card-hint">Everything stays on this computer. No telemetry.</span>
-            </div>
-            <div className="folder-option">
-              <span id="settings-check-updates">Check for updates</span>
-              <i className="ms-info" role="img" aria-label={UPDATE_CHECK_HELP} title={UPDATE_CHECK_HELP}>
-                <I.info />
-              </i>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.checkForUpdates !== false}
-                aria-labelledby="settings-check-updates"
-                className={"model-switch" + (settings.checkForUpdates !== false ? " on" : "")}
-                onClick={() => void updateModelPreference({ checkForUpdates: settings.checkForUpdates === false })}
-              >
-                <span className="model-switch-knob" aria-hidden="true" />
-              </button>
-            </div>
-            <div className="about-links">{aboutLinks}</div>
-          </section>
-          )}
-        </div>
-
-        {/* The browser version has nothing to set here, so About is a footer,
-            not a card that looks like a setting. */}
-        {isWebApp() && (
-          <footer className="settings-about-foot" aria-label="About">
-            <span>Your songs and charts stay in this browser.</span>
+        {/* About is quiet text, not a card that looks like a setting. */}
+        <footer className="settings-about-foot" aria-label="About">
+          <div className="about-line">
+          <span>{web ? "Your songs and charts stay in this browser." : "Everything stays on this computer. No telemetry."}</span>
+          {web ? (
             <div className="folder-option">
               <span id="settings-usage-counts">Share usage counts</span>
               <i className="ms-info" role="img" aria-label={USAGE_COUNTS_HELP} title={USAGE_COUNTS_HELP}>
@@ -909,12 +882,31 @@ export default function Settings() {
                 <span className="model-switch-knob" aria-hidden="true" />
               </button>
             </div>
-            <div className="about-links">
-              <a className="settings-secondary" href={SITE_LINKS.repo} target="_blank" rel="noreferrer">GitHub</a>
-              {aboutLinks}
+          ) : (
+            <div className="folder-option">
+              <span id="settings-check-updates">Check for updates</span>
+              <i className="ms-info" role="img" aria-label={UPDATE_CHECK_HELP} title={UPDATE_CHECK_HELP}>
+                <I.info />
+              </i>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.checkForUpdates !== false}
+                aria-labelledby="settings-check-updates"
+                className={"model-switch" + (settings.checkForUpdates !== false ? " on" : "")}
+                onClick={() => void updateModelPreference({ checkForUpdates: settings.checkForUpdates === false })}
+              >
+                <span className="model-switch-knob" aria-hidden="true" />
+              </button>
             </div>
-          </footer>
-        )}
+          )}
+          </div>
+          <div className="about-links">
+            <a className="settings-secondary" href={SITE_LINKS.repo} target="_blank" rel="noreferrer">GitHub</a>
+            {aboutLinks}
+          </div>
+        </footer>
+        </div>
 
         {diagnosticsOpen && (
           <DiagnosticsSheet

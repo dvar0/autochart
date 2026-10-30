@@ -1307,8 +1307,8 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .settings-head { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
 .settings-head .settings-secondary { min-height: 34px; padding: 0 14px; gap: 7px; background: var(--surface); }
 .settings-head .settings-secondary svg { width: 14px; height: 14px; }
-/* Two rows of paired cards (Models | Folders, Performance | About); cards in a
-   row stretch to the same height. */
+/* Models | Folders, then Performance | About; cards in a row stretch to the same
+   height. About is quiet text beside Performance, not a card. */
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1318,8 +1318,7 @@ a.brand-row, a.rail-item { text-decoration: none; }
 @media (max-width: 1180px) {
   .settings-grid { grid-template-columns: minmax(0, 1fr); }
 }
-/* Browser version: Models beside Performance over Export, then About as a
-   quiet footer. */
+/* Browser version: Models beside Performance over Export, About along the foot. */
 @media (min-width: 1181px) {
   .settings-grid.is-web .settings-models { grid-row: span 2; }
 }
@@ -1338,16 +1337,23 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .settings-grid.is-web .device-readout { margin-top: 16px; }
 .settings-about-foot {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 20px;
-  margin-top: 24px;
-  padding: 0 4px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 20px;
   color: var(--text-faint);
   font-size: var(--fs-sm);
 }
-.settings-about-foot .about-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.settings-grid.is-web .settings-about-foot { grid-column: 1 / -1; }
+.about-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+}
+.about-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .settings-about-foot .settings-secondary {
   min-height: 0;
   padding: 0;
@@ -1593,10 +1599,6 @@ a.brand-row, a.rail-item { text-decoration: none; }
   font-weight: 600;
 }
 .folder-option .model-switch { margin-left: auto; }
-.settings-about .folder-option { padding: 0 12px 14px 2px; }
-
-/* about */
-.about-links { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* diagnostics sheet */
 .settings-sheet-scrim {
