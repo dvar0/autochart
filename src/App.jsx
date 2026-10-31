@@ -248,7 +248,8 @@ export default function App() {
 
   const handleGeneratedSong = (key, data) => {
     setWorkspace((current) => ({ ...current, projects: current.projects.map((project) =>
-      project.key === key ? { ...project, songId: data.id, importedSong: data } : project
+      // Saved now: its starting file is done with.
+      project.key === key ? { ...project, songId: data.id, importedSong: data, pendingFile: null } : project
     ) }));
   };
 

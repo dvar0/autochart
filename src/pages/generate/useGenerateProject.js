@@ -1016,21 +1016,28 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     handleMediaFile(f);
   };
 
+  // On desktop a song brought in is saved as a project right away (a new
+  // one, if a song is already open), so it's in the Library even before
+  // anything is generated. The web keeps a new song unsaved until its first
+  // run: its projects live in the tab, and a save counts as unexported work.
   const handleMediaFile = async (f) => {
     if (!f) return;
+    const saveNow = Boolean(songId) || !isWebApp();
+    // A new project's read can be superseded (StrictMode mounts it twice);
+    // only the latest request saves.
     const transaction = songId ? beginExclusiveMediaTransaction(mediaTransactionRef) : null;
     if (songId && !transaction) return;
     const request = beginMediaRequest(mediaRequestRef);
     setStatusMsg("Reading media metadata…");
-    if (songId) setBusyAction("replacing-source");
+    if (saveNow) setBusyAction("replacing-source");
     try {
       const [info, previewBuffer] = await Promise.all([
         readMediaFileMetadata(f, { skipVideoThumbnail: true }),
-        songId ? f.arrayBuffer() : Promise.resolve(null),
+        saveNow ? f.arrayBuffer() : Promise.resolve(null),
       ]);
       if (!request.isCurrent()) return;
 
-      if (songId) {
+      if (saveNow) {
         const replacementRecord = buildSourceReplacementRecord({
           file: f,
           mediaInfo: info,
@@ -1039,7 +1046,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         const saved = await saveSongRecord(replacementRecord);
         if (!request.isCurrent()) return;
         const persisted = await getSongRecord(saved.id);
-        if (!persisted) throw new Error("The replacement project could not be reloaded.");
+        if (!persisted) throw new Error("The new project could not be reloaded.");
         const payload = await recordToImported(persisted, { audioBuffer: previewBuffer });
         if (!request.isCurrent()) return;
         pendingSeedSongIdRef.current = null;
@@ -1106,7 +1113,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setStatusMsg(err.message || "Could not read or save source media.");
     } finally {
       transaction?.release();
-      if (request.isCurrent() && songId) setBusyAction("");
+      if (request.isCurrent() && saveNow) setBusyAction("");
     }
   };
 
