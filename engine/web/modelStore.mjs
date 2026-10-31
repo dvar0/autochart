@@ -137,38 +137,80 @@ async function verifiedSha256(key, bytes) {
   return expected;
 }
 
+// A dropped connection is retried this many times, after these pauses (ms).
+const RETRY_PAUSES = [1000, 2500, 5000];
+
+class DownloadError extends Error {
+  constructor(key, status) {
+    super(`Couldn't download ${fileName(key)} (${status})`);
+    this.status = status;
+  }
+}
+
+// Worth another try: a dropped connection (fetch throws a TypeError) or a
+// busy host. A missing or forbidden file stays missing.
+function isRetryable(err) {
+  if (err instanceof DownloadError) return err.status >= 500 || err.status === 429 || err.status === 408;
+  return err?.name === "TypeError";
+}
+
+// The file's bytes from the network. When the connection drops, it tries
+// again from the bytes it already has (or from the start, if the host won't
+// resume); the hash check afterwards covers the joined copy.
+async function download(key, onProgress, { pauses = RETRY_PAUSES } = {}) {
+  let chunks = [];
+  let loaded = 0;
+  let total = 0;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await fetch(key, loaded ? { headers: { Range: `bytes=${loaded}-` } } : undefined);
+      // Dropped after the last byte: nothing is left to fetch.
+      if (loaded && response.status === 416 && total && loaded >= total) break;
+      if (!response.ok) throw new DownloadError(key, response.status);
+      if (loaded && response.status !== 206) {
+        chunks = [];
+        loaded = 0;
+      }
+      const whole = /\/(\d+)\s*$/.exec(response.headers.get("Content-Range") || "");
+      total = whole ? Number(whole[1]) : loaded + (Number(response.headers.get("Content-Length")) || 0);
+      if (!response.body) {
+        const rest = new Uint8Array(await response.arrayBuffer());
+        chunks.push(rest);
+        loaded += rest.length;
+      } else {
+        const reader = response.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          loaded += value.length;
+          onProgress?.({ loaded, total });
+        }
+      }
+      break;
+    } catch (err) {
+      if (attempt >= pauses.length || !isRetryable(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, pauses[attempt]));
+    }
+  }
+  const bytes = new Uint8Array(loaded);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return bytes;
+}
+
 // The file's bytes, from the cache or the network. onProgress gets
 // { loaded, total } while the file downloads.
-export async function fetchModelFile(url, { onProgress = null } = {}) {
+export async function fetchModelFile(url, { onProgress = null, retryPauses } = {}) {
   const key = cacheKey(url);
   const cache = await openCache();
   const hit = await cachedCopy(cache, key);
   if (hit) return new Uint8Array(await hit.arrayBuffer());
 
-  const response = await fetch(key);
-  if (!response.ok) throw new Error(`Couldn't download ${fileName(key)} (${response.status})`);
-  const total = Number(response.headers.get("Content-Length")) || 0;
-  let bytes;
-  if (onProgress && response.body) {
-    const reader = response.body.getReader();
-    const chunks = [];
-    let loaded = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      loaded += value.length;
-      onProgress({ loaded, total });
-    }
-    bytes = new Uint8Array(loaded);
-    let at = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, at);
-      at += chunk.length;
-    }
-  } else {
-    bytes = new Uint8Array(await response.arrayBuffer());
-  }
+  const bytes = await download(key, onProgress, { pauses: retryPauses });
   const sha256 = await verifiedSha256(key, bytes);
   if (cache) {
     try {
