@@ -1,7 +1,7 @@
 {
   "name": "autochart",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI-assisted Clone Hero and YARG chart generation.",
   "license": "AGPL-3.0-or-later",
   "author": "Autochart",

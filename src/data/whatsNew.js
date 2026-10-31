@@ -18,11 +18,13 @@ export const WHATS_NEW = Object.freeze([
     features: [
       { icon: "spark", title: "Inpaint", text: "Pick some bars and generate just those again." },
       { icon: "pencil", title: "Edit by hand", text: "Move, add and delete notes on the Edit tab." },
+      { icon: "queue", title: "Chart a whole list", text: "Pick songs in the Library and they chart one after another." },
       { icon: "music", title: "Tighter timing", text: "Beats land on the drums far more often. Old takes keep theirs." },
       { icon: "folder", title: "Projects come back", text: "Exports carry the project, so a song opens again with all its takes." },
       { icon: "image", title: "Covers for every song", text: "Songs without album art get one of their own." },
     ],
     fixes: [
+      "Watch the stems and beats come in while a song gets ready.",
       "Style faders and more settings on Generate.",
       "Drop song folders on the Library to bring them in.",
       "Space plays and pauses on the Generate page.",
