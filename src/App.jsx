@@ -15,6 +15,7 @@ import Setup from "./pages/Setup.jsx";
 import Settings from "./pages/Settings.jsx";
 import useResolvedTheme from "./hooks/useResolvedTheme.js";
 import { isWebApp } from "./services/runtimeBridge.js";
+import { ConfirmHost, askConfirm } from "./components/ConfirmDialog.jsx";
 import UpdateSheet from "./components/UpdateSheet.jsx";
 import WhatsNewSheet from "./components/WhatsNewSheet.jsx";
 import {
@@ -125,8 +126,13 @@ export default function App() {
   }, []);
 
   // The web works on one song at a time, so opening another closes this one.
-  const confirmCloseSong = () => !hasWorkToLose()
-    || window.confirm("Close this song? Anything you haven't exported will be lost.");
+  const confirmCloseSong = async () => !hasWorkToLose()
+    || askConfirm({
+      title: "Close this song?",
+      body: "Anything you haven't exported will be lost.",
+      confirmLabel: "Close song",
+      danger: true,
+    });
 
   // Web: the projects a new song replaces (running ones keep going), and the
   // memory they held.
@@ -320,6 +326,7 @@ export default function App() {
             <Generate
               key={project.key}
               workspaceKey={project.key}
+              theme={theme}
               onBusyChange={handleProjectBusyChange}
               active={page === "generate" && activeProject === project.key}
               importedSong={project.importedSong}
@@ -336,6 +343,7 @@ export default function App() {
           {page === "settings" && <Settings setPage={setPage} />}
           {page === "setup" && <Setup onDone={handleSetupDone} />}
         </div>
+        <ConfirmHost />
         {sheet?.kind === "update" && (
           <UpdateSheet
             state={updateState}
