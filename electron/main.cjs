@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, protocol, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog, powerSaveBlocker, protocol, screen, shell } = require("electron");
 const { installWindowFit } = require("./windowFit.cjs");
 const fs = require("fs/promises");
 const fsSync = require("fs");
@@ -806,6 +806,32 @@ function registerIpcHandlers() {
     };
   });
 
+  // Export all picks once. The renderer holds a grant, never a path.
+  let exportGrant = null;
+  ipcMain.handle("library:chooseExportFolder", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(win ?? undefined, {
+      title: "Choose folder for Clone Hero export",
+      buttonLabel: "Export here",
+      properties: ["openDirectory", "createDirectory"],
+      defaultPath: app.getPath("documents"),
+    });
+    if (result.canceled || !result.filePaths[0]) return { canceled: true };
+    const folder = await fs.realpath(path.resolve(result.filePaths[0]));
+    exportGrant = { id: require("crypto").randomUUID(), sender: event.sender, folder, taken: new Set() };
+    return { canceled: false, grant: exportGrant.id, path: folder };
+  });
+
+  ipcMain.handle("library:exportSongToChosenFolder", async (event, payload = {}) => {
+    const { songId, versionId, albumArt, grant } = normalizeExportPayload(payload);
+    if (!songId) throw new Error("No project selected to export.");
+    if (!exportGrant || exportGrant.id !== grant || exportGrant.sender !== event.sender) {
+      throw new Error("Choose the export folder again.");
+    }
+    const out = await libraryStore.exportSongIntoFolder(await libraryContext(), songId, exportGrant.folder, exportGrant.taken, { versionId, albumArt });
+    return { path: out.path, format: out.format };
+  });
+
   ipcMain.handle("library:saveSongToCloneHeroLibrary", async (_event, payload = {}) => {
     const { songId, versionId, albumArt } = normalizeExportPayload(payload);
     if (!songId) throw new Error("No project selected to save.");
@@ -907,6 +933,15 @@ function registerIpcHandlers() {
       return { jobId: result.jobId, status: result.status, chartText: result.chartText, inpaint: result.inpaint };
     } catch (err) {
       throw new Error(err.message || "Inpaint failed.");
+    }
+  });
+
+  let queueSleepBlock = null;
+  ipcMain.handle("engine:keepAwake", (_event, on) => {
+    if (on && queueSleepBlock == null) queueSleepBlock = powerSaveBlocker.start("prevent-app-suspension");
+    if (!on && queueSleepBlock != null) {
+      powerSaveBlocker.stop(queueSleepBlock);
+      queueSleepBlock = null;
     }
   });
 

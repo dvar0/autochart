@@ -45,7 +45,9 @@ async function persistGeneratedTake(context, projectId, result, input = {}) {
     for (const [slot, versionId] of Object.entries(final.slots || {})) {
       if (versionId) slots[slot] = versionId;
     }
-    slots[difficulty] = final.slots?.[difficulty] || savedVersion.id;
+    // A take from the queue was asked for to be played, so it becomes the final
+    // chart's; the take it replaces stays in the project.
+    slots[difficulty] = (input.replaceFinal ? "" : final.slots?.[difficulty]) || savedVersion.id;
     const nextFinal = { ...final, slots, status: "ready", updatedAt: now, difficulties: Object.keys(slots).filter(key => slots[key]) };
     if (finalIndex < 0) arrangements.push(nextFinal);
     else arrangements[finalIndex] = nextFinal;

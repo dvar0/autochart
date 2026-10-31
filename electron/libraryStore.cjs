@@ -1548,6 +1548,17 @@ async function saveSongToCloneHeroLibrary(userDataPath, songId, cloneHeroLibrary
   return exportSongToFolder(userDataPath, songId, destDir, options);
 }
 
+// Export all: a song folder inside the picked folder. `taken` holds the names
+// already used, so two projects with the same name both come out.
+async function exportSongIntoFolder(userDataPath, songId, folder, taken, options = {}) {
+  const song = await getSong(userDataPath, songId);
+  const base = cloneHeroSongFolderName(song);
+  let name = base;
+  for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${base} (${n})`;
+  taken.add(name.toLowerCase());
+  return exportSongToFolder(userDataPath, songId, path.join(folder, name), options);
+}
+
 module.exports = {
   updateSong,
   patchSong,
@@ -1564,5 +1575,6 @@ module.exports = {
   getMediaAssetSource,
   exportSongToFolder,
   saveSongToCloneHeroLibrary,
+  exportSongIntoFolder,
   __test: { atomicCopySelected, assertSelectedSource },
 };

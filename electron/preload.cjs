@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld("autochart", {
     getAssetSource: (songId, fileName) =>
       ipcRenderer.invoke("library:getAssetSource", { songId, fileName }),
     exportSong: (payload) => ipcRenderer.invoke("library:exportSong", payload),
+    chooseExportFolder: () => ipcRenderer.invoke("library:chooseExportFolder"),
+    exportSongToChosenFolder: (payload) => ipcRenderer.invoke("library:exportSongToChosenFolder", payload),
     saveSongToCloneHeroLibrary: (payload) =>
       ipcRenderer.invoke("library:saveSongToCloneHeroLibrary", payload),
   },
@@ -124,6 +126,7 @@ contextBridge.exposeInMainWorld("autochart", {
     generateChart: (payload) => ipcRenderer.invoke("engine:generateChart", payload),
     inpaintChart: (payload) => ipcRenderer.invoke("engine:inpaintChart", payload),
     cancelJob: (payload) => ipcRenderer.invoke("engine:cancelJob", payload),
+    keepAwake: (on) => ipcRenderer.invoke("engine:keepAwake", Boolean(on)),
     prepareDemucs: (payload) => ipcRenderer.invoke("engine:prepareDemucs", payload),
     readDemucsStem: (payload) => ipcRenderer.invoke("engine:readDemucsStem", payload),
     seedSeparation: (payload) => ipcRenderer.invoke("engine:seedSeparation", payload),

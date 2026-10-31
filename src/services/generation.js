@@ -78,6 +78,48 @@ export async function listGenerators() {
   return electronEngine().getManifest();
 }
 
+// The queue and a project never run models at the same time. A project's run
+// goes first: it waits for the queue's current song at most, and the queue
+// doesn't start another song until project runs are over. Runs from projects
+// can still overlap each other.
+let queueSong = null;
+let projectRuns = 0;
+let projectsIdle = [];
+const waitingJobs = new Map();
+
+export function queueSongRunning() {
+  return Boolean(queueSong);
+}
+
+export function projectRunsActive() {
+  return projectRuns > 0;
+}
+
+export function whenProjectsIdle() {
+  return projectRuns ? new Promise((resolve) => projectsIdle.push(resolve)) : Promise.resolve();
+}
+
+async function projectTurn(jobId, run) {
+  projectRuns += 1;
+  try {
+    if (queueSong) {
+      const canceled = await new Promise((resolve) => {
+        if (jobId) waitingJobs.set(jobId, () => resolve(true));
+        queueSong.then(() => resolve(false));
+      });
+      waitingJobs.delete(jobId);
+      if (canceled) return { jobId, status: "canceled" };
+    }
+    return await run();
+  } finally {
+    projectRuns -= 1;
+    if (!projectRuns) {
+      projectsIdle.forEach((resolve) => resolve());
+      projectsIdle = [];
+    }
+  }
+}
+
 export function subscribeGenerationEvents(callback) {
   if (!hasElectronEngine() || !electronEngine()?.onJobEvent) return () => {};
   return electronEngine().onJobEvent(callback);
@@ -92,6 +134,10 @@ export async function cancelGeneration(jobId) {
   if (!hasElectronEngine() || !electronEngine()?.cancelJob) {
     return { ok: true, status: "idle" };
   }
+  if (waitingJobs.has(jobId)) {
+    waitingJobs.get(jobId)();
+    return { ok: true, jobId, status: "canceling" };
+  }
   return electronEngine().cancelJob({ jobId });
 }
 
@@ -100,27 +146,40 @@ export async function cancelGeneration(jobId) {
  * @returns {Promise<{ jobId: string, status: string }>}
  */
 export async function generateChart(input) {
-  if (hasElectronEngine()) {
-    const audio = await audioPayloadFromInput(input);
-    return electronEngine().generateChart({
-      jobId: input.jobId,
-      hardwareMode: input.hardwareMode === "cpu" ? "cpu" : undefined,
-      generatorId: input.generatorId,
-      audio,
-      difficulty: input.difficulty,
-      generation: input.generation,
-      stripSustains: input.stripSustains,
-      metadata: input.metadata,
-      versionName: input.versionName,
-      parentVersionId: input.parentVersionId,
-      demucsSeparation: input.demucsSeparation,
-      sourceTransform: input.sourceTransform,
-      sourceChart: input.sourceChart,
-      title: input.metadata?.title,
-    });
-  }
+  if (hasElectronEngine()) return projectTurn(input.jobId, () => startChart(input));
 
   throw new Error("Chart generation requires the Electron app; browser mode is import and preview only.");
+}
+
+/** The queue's run. Call it only while projectRunsActive() is false. */
+export function generateQueueChart(input) {
+  const run = startChart(input);
+  const held = run.catch(() => {}).then(() => {
+    queueSong = null;
+  });
+  queueSong = held;
+  return run;
+}
+
+async function startChart(input) {
+  const audio = await audioPayloadFromInput(input);
+  return electronEngine().generateChart({
+    jobId: input.jobId,
+    hardwareMode: input.hardwareMode === "cpu" ? "cpu" : undefined,
+    generatorId: input.generatorId,
+    audio,
+    difficulty: input.difficulty,
+    generation: input.generation,
+    stripSustains: input.stripSustains,
+    metadata: input.metadata,
+    versionName: input.versionName,
+    parentVersionId: input.parentVersionId,
+    replaceFinal: Boolean(input.replaceFinal),
+    demucsSeparation: input.demucsSeparation,
+    sourceTransform: input.sourceTransform,
+    sourceChart: input.sourceChart,
+    title: input.metadata?.title,
+  });
 }
 
 export function canInpaint() {
@@ -134,19 +193,21 @@ export function canInpaint() {
  */
 export async function inpaintChart(input) {
   if (!canInpaint()) throw new Error("Inpaint requires the Electron app.");
-  const audio = await audioPayloadFromInput(input);
-  return electronEngine().inpaintChart({
-    jobId: input.jobId,
-    hardwareMode: input.hardwareMode === "cpu" ? "cpu" : undefined,
-    generatorId: input.generatorId,
-    audio,
-    difficulty: input.inpaint.difficulty,
-    generation: input.generation,
-    demucsSeparation: input.demucsSeparation,
-    sourceTransform: input.sourceTransform,
-    metadata: input.metadata,
-    title: input.metadata?.title,
-    inpaint: input.inpaint,
+  return projectTurn(input.jobId, async () => {
+    const audio = await audioPayloadFromInput(input);
+    return electronEngine().inpaintChart({
+      jobId: input.jobId,
+      hardwareMode: input.hardwareMode === "cpu" ? "cpu" : undefined,
+      generatorId: input.generatorId,
+      audio,
+      difficulty: input.inpaint.difficulty,
+      generation: input.generation,
+      demucsSeparation: input.demucsSeparation,
+      sourceTransform: input.sourceTransform,
+      metadata: input.metadata,
+      title: input.metadata?.title,
+      inpaint: input.inpaint,
+    });
   });
 }
 
@@ -154,17 +215,19 @@ export async function prepareDemucs(input) {
   if (!hasElectronEngine() || !electronEngine()?.prepareDemucs) {
     throw new Error("Demucs separation requires the Electron app.");
   }
-  const audio = await audioPayloadFromInput(input);
-  return electronEngine().prepareDemucs({
-    generatorId: input.generatorId,
-    audio,
-    audioName: input.audioName,
-    separationId: input.separationId,
-    name: input.name,
-    metadata: input.metadata,
-    sourceTransform: input.sourceTransform,
-    title: input.metadata?.title,
-    needStems: Boolean(input.needStems),
+  return projectTurn(null, async () => {
+    const audio = await audioPayloadFromInput(input);
+    return electronEngine().prepareDemucs({
+      generatorId: input.generatorId,
+      audio,
+      audioName: input.audioName,
+      separationId: input.separationId,
+      name: input.name,
+      metadata: input.metadata,
+      sourceTransform: input.sourceTransform,
+      title: input.metadata?.title,
+      needStems: Boolean(input.needStems),
+    });
   });
 }
 
@@ -224,7 +287,7 @@ async function invokeLibraryExport(action, payload) {
     // Electron prefixes IPC exceptions with internal method names. Show the
     // actionable main-process message for both folder export and library save.
     const message = String(error?.message || error).replace(
-      /^Error invoking remote method 'library:(?:exportSong|saveSongToCloneHeroLibrary)': (?:Error: )?/,
+      /^Error invoking remote method 'library:(?:exportSong|exportSongToChosenFolder|saveSongToCloneHeroLibrary)': (?:Error: )?/,
       ""
     );
     throw new Error(message, { cause: error });
@@ -280,4 +343,18 @@ export async function saveChartToCloneHeroLibrary(songId, versionId = null) {
     throw new Error(`Saving to a ${GAME_LIBRARY_NAME} library folder requires the Electron app.`);
   }
   return invokeLibraryExport("saveSongToCloneHeroLibrary", { songId, versionId });
+}
+
+// Export all: one folder picked once, then each song into it.
+export function chooseExportFolder() {
+  return electronLibrary().chooseExportFolder();
+}
+
+export function exportChartToChosenFolder(songId, versionId, grant) {
+  return invokeLibraryExport("exportSongToChosenFolder", { songId, versionId, grant });
+}
+
+// Holds off system sleep while the queue runs.
+export function keepAwake(on) {
+  electronEngine()?.keepAwake?.(on)?.catch?.(() => {});
 }

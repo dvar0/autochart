@@ -275,6 +275,30 @@ async function getElectronAssetUrl(id, fileName) {
   return electronLibrary().getAssetUrl(id, fileName);
 }
 
+// The audio's own length in seconds, or 0 when it can't be read. Most projects
+// have no length saved.
+export async function readSongAudioSeconds(record) {
+  if (!hasElectronLibrary()) return 0;
+  const url = await getElectronAssetUrl(record?.id, record?.assets?.audio);
+  if (!url) return 0;
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    const finish = (seconds) => {
+      clearTimeout(timer);
+      audio.onloadedmetadata = null;
+      audio.onerror = null;
+      audio.removeAttribute("src");
+      audio.load();
+      resolve(seconds);
+    };
+    const timer = setTimeout(() => finish(0), 5000);
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => finish(Number.isFinite(audio.duration) ? audio.duration : 0);
+    audio.onerror = () => finish(0);
+    audio.src = url;
+  });
+}
+
 export async function getProjectDeletionDetails(id) {
   if (hasElectronLibrary()) {
     return electronLibrary().getProjectDeletionDetails(id);

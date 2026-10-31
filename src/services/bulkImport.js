@@ -75,7 +75,7 @@ export function bulkImportBusy() {
   return state?.phase === "running" || state?.phase === "undoing";
 }
 
-export async function startBulkImport(folders) {
+export async function startBulkImport(folders, { onSaved } = {}) {
   if (bulkImportBusy()) throw new Error("Songs are still importing. Try again once they're in.");
   stopRequested = false;
   const imported = [];
@@ -86,6 +86,7 @@ export async function startBulkImport(folders) {
     onImported: (project, song, saved) => {
       imported.push(project);
       set({ ...state, imported: [...imported] });
+      onSaved?.(saved);
       if (song.file && isVideoMedia(song.file) && !saved.assets?.albumArt) {
         coverQueue.push({ id: project.id, file: song.file });
         makeVideoCovers();
