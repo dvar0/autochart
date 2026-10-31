@@ -951,7 +951,7 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .snapshot-final-top span:first-child {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1031,7 +1031,7 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .snapshot-diff.filled .snapshot-diff-value { color: var(--text); }
 .snapshot-diff-check {
   color: var(--text-faint);
-  font-weight: 800;
+  font-weight: 700;
 }
 .snapshot-diff-check.warn { color: var(--amber-fg); }
 
@@ -1769,7 +1769,7 @@ a.brand-row, a.rail-item { text-decoration: none; }
   border-radius: var(--r-box);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--amber-fg);
   background: var(--amber-bg);
@@ -1910,7 +1910,7 @@ a.brand-row, a.rail-item { text-decoration: none; }
   justify-content: space-between;
   gap: 12px;
 }
-.setup-model-head b { color: var(--text); font-size: var(--fs-lg); font-weight: 800; }
+.setup-model-head b { color: var(--text); font-size: var(--fs-lg); font-weight: 700; }
 .setup-model-facts { color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; }
 .setup-model-ready {
   display: inline-flex;
@@ -1918,7 +1918,7 @@ a.brand-row, a.rail-item { text-decoration: none; }
   gap: 5px;
   color: var(--green-fg);
   font-size: var(--fs-sm);
-  font-weight: 800;
+  font-weight: 700;
 }
 .setup-model-ready svg { width: 14px; height: 14px; }
 .setup-model p { margin: 4px 0 0; color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.45; }
@@ -1952,7 +1952,7 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .setup-progress { display: flex; align-items: center; gap: 12px; text-align: left; }
 .setup-progress .progress-ring { flex: none; width: 42px; height: 42px; }
 .setup-progress div { display: flex; flex-direction: column; gap: 1px; min-width: 220px; }
-.setup-progress b { color: var(--text); font-size: var(--fs-base); font-weight: 800; }
+.setup-progress b { color: var(--text); font-size: var(--fs-base); font-weight: 700; }
 .setup-progress span { color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-xs); }
 .setup-page .start-hint { margin-top: 10px; }
 .setup-failure-slot { min-height: 20px; margin-top: 4px; }
@@ -2501,7 +2501,7 @@ video.bg-layer {
   gap: 7px;
   padding: 0 14px;
   font-size: var(--fs-sm);
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
 }
 .preview .transport-btn:first-child,
@@ -2542,7 +2542,7 @@ video.bg-layer {
   background: var(--surface-2);
   color: var(--text-dim);
   font-size: var(--fs-sm);
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   transition: .12s;
   white-space: nowrap;
@@ -3130,7 +3130,7 @@ video.bg-layer {
 }
 .demucs-wave-status {
   background: color-mix(in srgb, var(--surface) 78%, transparent);
-  font-weight: 800;
+  font-weight: 700;
 }
 .demucs-stage-transport {
   flex: none;
@@ -3202,7 +3202,7 @@ video.bg-layer {
   color: var(--text-faint);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: .05em;
   text-transform: uppercase;
 }
@@ -3225,7 +3225,7 @@ video.bg-layer {
   background: var(--surface-2);
   color: var(--text-dim);
   font-size: var(--fs-xs);
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 .demucs-mix-btn.active {
@@ -3257,7 +3257,7 @@ video.bg-layer {
   place-items: center;
   color: var(--text-dim);
   font-size: var(--fs-sm);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .ac-app[data-theme="dark"] .demucs-wave-panel {
@@ -3617,7 +3617,7 @@ video.bg-layer {
   color: var(--purple);
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
-  font-weight: 800;
+  font-weight: 700;
 }
 .console-step b {
   display: block;
@@ -3878,7 +3878,7 @@ video.bg-layer {
 .lead-in-row span {
   color: var(--text-dim);
   font-size: var(--fs-xs);
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -4877,7 +4877,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   background: var(--surface-2);
   color: var(--text-dim);
   font-size: var(--fs-xs);
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   transition: .12s;
 }
@@ -5216,7 +5216,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .strip-section b {
   position: absolute; left: 7px; right: 4px; top: 0;
   line-height: var(--map-sec);
-  font-size: var(--fs-xs); font-weight: 800; color: var(--text);
+  font-size: var(--fs-xs); font-weight: 700; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .strip-section:hover { background: color-mix(in srgb, var(--sec) 34%, var(--surface-2)); }
@@ -5777,7 +5777,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   flex: 1;
   margin: 0;
   font-size: var(--fs-lg);
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text);
 }
 .ms-reset {
@@ -6391,7 +6391,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   color: var(--purple);
   background: var(--purple-bg);
   font-size: var(--fs-xs);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
 }
@@ -6434,7 +6434,7 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   gap: 6px;
   padding-top: 14px;
 }
-.release-fixes b { color: var(--text-faint); font-size: var(--fs-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.release-fixes b { color: var(--text-faint); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .release-fixes ul {
   margin: 0;
   padding-left: 16px;
