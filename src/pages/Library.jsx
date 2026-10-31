@@ -356,7 +356,7 @@ function DetailPanel({
           </button>
         </div>
         <button
-          className="act quiet-danger"
+          className="act slim quiet-danger"
           onClick={() => onDeleteProject(song.id)}
           title="Delete this project and move its directory to the operating system Trash"
         >

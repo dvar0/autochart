@@ -1042,7 +1042,6 @@ a.brand-row, a.rail-item { text-decoration: none; }
   padding: 16px 22px 18px;
   display: flex; flex-direction: column; gap: 8px;
   position: relative;
-  background: color-mix(in srgb, var(--detail-plane) 65%, var(--surface));
 }
 .detail-action-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .act {
@@ -6641,7 +6640,8 @@ a.release-link svg { width: 12px; height: 12px; }
 .release-link:hover:not(:disabled) { background: none; color: var(--purple); text-decoration: underline; }
 
 /* A quiet action that deletes: red only when it's about to happen. */
-.act.quiet-danger { background: none; color: var(--text-dim); }
+.act.quiet-danger { background: var(--detail-tonal-2); color: var(--red-fg); }
+.ac-app[data-theme="dark"] .act.quiet-danger { color: color-mix(in srgb, var(--red-fg) 80%, #fff); }
 .act.quiet-danger:hover:not(:disabled) { background: var(--red-bg); color: var(--red-fg); }
 .btn-danger,
 .btn-quiet.btn-danger { background: var(--red-bg); color: var(--red-fg); }
