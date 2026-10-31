@@ -1073,4 +1073,8 @@ export default {
   "{model} needs repair.": "{model} necesita reparación.",
   "{model} is not supported on this platform.": "{model} no es compatible con esta plataforma.",
   "{model} is partly installed.": "{model} está instalado en parte.",
+
+  // Rail, dialogs, updates and what's new
+  "Now in Spanish and Portuguese": "Ahora en español y portugués",
+  "Pick a language in Settings, or let it follow your computer.": "Elige el idioma en Configuración o deja que siga el de tu computadora.",
 };

@@ -21,6 +21,7 @@ export const WHATS_NEW = Object.freeze([
     features: [
       { icon: "spark", title: msg("Inpaint"), text: msg("Pick some bars and generate just those again.") },
       { icon: "pencil", title: msg("Edit by hand"), text: msg("Move, add and delete notes on the Edit tab.") },
+      { icon: "globe", title: msg("Now in Spanish and Portuguese"), text: msg("Pick a language in Settings, or let it follow your computer.") },
       { icon: "queue", title: msg("Chart a whole list"), text: msg("Pick songs in the Library and they chart one after another.") },
       { icon: "music", title: msg("Tighter timing"), text: msg("Beats land on the drums far more often. Old takes keep theirs.") },
       { icon: "folder", title: msg("Projects come back"), text: msg("Exports carry the project, so a song opens again with all its takes.") },
