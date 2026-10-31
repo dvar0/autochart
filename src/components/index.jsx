@@ -1,7 +1,9 @@
 import { I } from "../icons.jsx";
 import { isWebApp } from "../services/runtimeBridge.js";
 import { SITE_LINKS } from "../data/siteLinks.js";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import ProgressRing from "./ProgressRing.jsx";
+import { getQueue, queueSummary, subscribeQueue } from "../services/generationQueue.js";
 import useCoverArt from "../hooks/useCoverArt.js";
 import { peekCoverArt } from "../lib/coverArt/index.js";
 
@@ -65,6 +67,9 @@ export function Rail({
   // The browser version has no library and works on one song at a time:
   // Start takes the library's place, and the open song gets its own slot.
   const web = isWebApp();
+  const queue = useSyncExternalStore(subscribeQueue, getQueue);
+  const queueRunning = queue.running;
+  const queuePercent = queueRunning ? queueSummary(queue).percent : 0;
   const home = web
     ? { id: "start", name: "Start", icon: <I.home /> }
     : { id: "library", name: "Library", icon: <I.music /> };
@@ -121,8 +126,9 @@ export function Rail({
             title={it.name}
             aria-current={page === it.id ? "page" : undefined}
           >
-            {it.icon}
+            {it.id === "library" && queueRunning ? <ProgressRing value={queuePercent} /> : it.icon}
             <span className="rail-item-label">{it.name}</span>
+            {it.id === "library" && queueRunning && <span className="rail-count">{queuePercent}%</span>}
           </button>
         ))}
       </nav>

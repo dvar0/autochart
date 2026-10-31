@@ -117,7 +117,7 @@ export function describeRunStage(run) {
     const next = GENERATION_STAGES[i + 1];
     return `${(next || stage).label}…`;
   }
-  return "Starting engine…";
+  return run.waitingForQueue ? "Waiting for the queue…" : "Starting engine…";
 }
 
 // A run is "streaming" once the model has emitted any partial chart. Demucs

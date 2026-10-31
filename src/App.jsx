@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Rail } from "./components/index.jsx";
 import { getAppSettings, updateAppSettings } from "./services/appSettings.js";
 import {
   browserHasLocalSongRecords, forgetProject, getSongRecord, hasUnexportedWork, recordToImported,
 } from "./services/songLibrary.js";
-import { subscribeGenerationEvents } from "./services/generation.js";
+import { queueSongRunning, subscribeGenerationEvents } from "./services/generation.js";
 import { startBulkImport } from "./services/bulkImport.js";
+import { getQueue, subscribeQueue } from "./services/generationQueue.js";
 import { importSongFolder, saveImportedSong } from "./services/songImport.js";
 import Generate from "./pages/generate/GeneratePage.jsx";
 import Library from "./pages/Library.jsx";
@@ -45,6 +46,7 @@ export default function App() {
   // Desktop only: the update notice in the rail, and the sheets it opens.
   const [updateState, setUpdateState] = useState(null);
   const [sheet, setSheet] = useState(null);
+  const queueRunning = useSyncExternalStore(subscribeQueue, getQueue).running;
   const autoOpened = useRef(false);
 
   useEffect(() => {
@@ -139,8 +141,9 @@ export default function App() {
     setLibraryRefresh((n) => n + 1);
     const project = workspaceRef.current.projects.find(item => item.songId === event.projectId);
     // A mounted run consumes its own result. After a renderer reload, recover
-    // the saved take into an idle workspace that has no completion promise.
-    if (!project || project.busy) return;
+    // the saved take into an idle workspace that has no completion promise. A
+    // take from the queue joins the open project on its own (useGenerateProject).
+    if (!project || project.busy || queueSongRunning()) return;
     try {
       const record = await getSongRecord(event.projectId);
       if (!record) return;
@@ -336,7 +339,7 @@ export default function App() {
         {sheet?.kind === "update" && (
           <UpdateSheet
             state={updateState}
-            busy={projects.some((project) => project.busy)}
+            busy={queueRunning || projects.some((project) => project.busy)}
             onClose={closeSheet}
             onWhatsNew={() => {
               if (updateState?.update && !updateState.dismissed) dismissUpdate().catch(() => {});

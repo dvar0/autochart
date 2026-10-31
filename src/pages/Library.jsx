@@ -1,7 +1,8 @@
-import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { AlbumArt } from "../components/index.jsx";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import LibraryFolderPrompt from "../components/LibraryFolderPrompt.jsx";
+import ProgressRing from "../components/ProgressRing.jsx";
 import RichText from "../components/RichText.jsx";
+import SongCover from "../components/SongCover.jsx";
 import { DIFF } from "../data/difficultyMetadata.js";
 import {
   GAME_LIBRARY_NAME,
@@ -20,21 +21,23 @@ import { plainText } from "../lib/richText.js";
 import useCoverArt from "../hooks/useCoverArt.js";
 import useLibraryFolderGate, { isMissingLibraryFolderError } from "../hooks/useLibraryFolderGate.js";
 import {
-  FINAL_ARRANGEMENT_ID,
   FINAL_SLOT_DISPLAY_ORDER,
   FINAL_VERSION_ID,
-  buildFinalArrangementList,
-  buildFinalChartVersion,
   buildFinalSlotVersions,
   finalSlotsFromRecord,
   finalValidationMessage,
 } from "../services/finalChart.js";
+import { ensureFinalVersionSaved } from "../services/finalChartSave.js";
 import { exportChart, saveChartToCloneHeroLibrary } from "../services/generation.js";
 import {
   bulkImportBusy, dismissBulkImport, getBulkImport, getImportCoversMade, startBulkImport, stopBulkImport, subscribeBulkImport, undoBulkImport,
 } from "../services/bulkImport.js";
 import { dragHasFiles, dragLooksLikeSongs, readDrop } from "../services/droppedItems.js";
+import {
+  addToQueue, getQueue, queueMarks, queueSummary, removeFromQueue, setQueueOpen, subscribeQueue, toggleInQueue,
+} from "../services/generationQueue.js";
 import { SongArchiveError } from "../services/songArchives.js";
+import QueuePanel from "./QueuePanel.jsx";
 import {
   deleteProjectRecord,
   getAllSongRecords,
@@ -44,7 +47,6 @@ import {
   recordToImported,
   revokeCoverUrl,
   setSongFavorite,
-  updateSongRecord,
 } from "../services/songLibrary.js";
 import { DEFAULT_DEMUCS_ID } from "../services/songSchema.js";
 
@@ -90,28 +92,6 @@ function useAccent(song, theme = "light") {
   // using the tamer `accent`.
   const tint = accentForTint(raw, theme);
   return { accent, dark, tint };
-}
-
-function Cover({ song, showLabel }) {
-  if (song.cover) {
-    return (
-      <div className="art" style={{ overflow: "hidden" }}>
-        <img
-          src={song.cover}
-          alt=""
-          draggable={false}
-          onDragStart={(e) => e.preventDefault()}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
-        {showLabel && (
-          <div className="art-tag" style={{ fontSize: showLabel === "big" ? 19 : 11 }}>
-            {song.artist}
-          </div>
-        )}
-      </div>
-    );
-  }
-  return <AlbumArt seed={song.artSeed} label={song.artist} showLabel={showLabel} />;
 }
 
 function fmtProjectDate(value) {
@@ -230,30 +210,6 @@ function buildProjectSummary(record) {
   };
 }
 
-async function ensureFinalVersionSaved(record) {
-  const versions = Array.isArray(record?.versions) ? record.versions : [];
-  const previousFinalVersion = versions.find((version) => version.id === FINAL_VERSION_ID) || null;
-  const { slots, finalVersion, versionsWithFinal } = buildFinalChartVersion({
-    versions,
-    slots: finalSlotsFromRecord(record, versions.filter((version) => version.id !== FINAL_VERSION_ID && version.chart?.text)),
-    previousVersion: previousFinalVersion,
-  });
-  await updateSongRecord(record.id, {
-    versions: versionsWithFinal,
-    arrangements: buildFinalArrangementList(record, slots, versionsWithFinal),
-    settings: {
-      ...(record.settings || {}),
-      activeVersionId: finalVersion.id,
-      activeArrangementId: FINAL_ARRANGEMENT_ID,
-    },
-    meta: {
-      availableDifficulties: finalVersion.meta.availableDifficulties || [],
-      noteCount: finalVersion.meta.noteCount || record.meta?.noteCount || 0,
-      durationSec: finalVersion.meta.durationSec || record.meta?.durationSec || 0,
-    },
-  });
-  return finalVersion;
-}
 function FavoriteButton({ song, onToggleFavorite, className = "" }) {
   const label = song.fav ? `Remove ${song.title} from favorites` : `Add ${song.title} to favorites`;
   return (
@@ -273,18 +229,42 @@ function FavoriteButton({ song, onToggleFavorite, className = "" }) {
   );
 }
 
-const GridTile = memo(function GridTile({ song, selected, onSelect, onToggleFavorite }) {
+function queueClass(mark) {
+  return mark ? ` q-${mark.split(":")[0]}` : "";
+}
+
+// The ring around a song being charted fills with its percent.
+function queueProgress(mark) {
+  return mark?.startsWith("running:") ? { "--queue-progress": `${mark.split(":")[1]}%` } : undefined;
+}
+
+const NO_SONG = { artSeed: null };
+
+// A song's place in the queue, on its cover: "waiting:3", "running:42", "done" or
+// "failed". With the queue open, the other songs show an empty circle ("add").
+function QueueBadge({ mark }) {
+  if (!mark) return null;
+  const [kind, value] = mark.split(":");
   return (
-    <div className={"tile" + (selected ? " sel" : "")}>
+    <span key={kind} className={`queue-badge is-${kind}`} aria-hidden="true">
+      {kind === "add" ? null : kind === "running" ? `${value}%` : kind === "done" ? <I.tick /> : kind === "failed" ? "!" : value}
+    </span>
+  );
+}
+
+const GridTile = memo(function GridTile({ song, selected, queueMark, onSelect, onToggleFavorite }) {
+  return (
+    <div className={"tile" + (selected ? " sel" : "") + queueClass(queueMark)} style={queueProgress(queueMark)} data-song-id={song.id}>
       <button
         type="button"
         className="tile-select"
-        onClick={() => onSelect(song.id)}
+        onClick={(event) => onSelect(song.id, event)}
         aria-label={`${song.title} by ${song.artist}`}
         aria-pressed={Boolean(selected)}
       >
         <div className="tile-art">
-          <Cover song={song} />
+          <SongCover song={song} />
+          <QueueBadge mark={queueMark} />
         </div>
         <div className="tile-title">{song.title}</div>
         <div className="tile-sub">
@@ -297,19 +277,20 @@ const GridTile = memo(function GridTile({ song, selected, onSelect, onToggleFavo
   );
 });
 
-const ListRow = memo(function ListRow({ song, selected, onSelect, onToggleFavorite, theme }) {
+const ListRow = memo(function ListRow({ song, selected, queueMark, onSelect, onToggleFavorite, theme }) {
   const { accent } = useAccent(song, theme);
   return (
-    <div className={"row" + (selected ? " sel" : "")} style={{ "--art-accent": accent }}>
+    <div className={"row" + (selected ? " sel" : "") + queueClass(queueMark)} style={{ "--art-accent": accent, ...queueProgress(queueMark) }} data-song-id={song.id}>
       <button
         type="button"
         className="row-select"
-        onClick={() => onSelect(song.id)}
+        onClick={(event) => onSelect(song.id, event)}
         aria-label={`${song.title} by ${song.artist}`}
         aria-pressed={Boolean(selected)}
       >
         <div className="row-thumb">
-          <Cover song={song} />
+          <SongCover song={song} />
+          <QueueBadge mark={queueMark} />
         </div>
         <div className="row-grid">
           <div>
@@ -364,7 +345,7 @@ function DetailPanel({
     >
       <div className="detail-project-head">
         <div className="detail-thumb">
-          <Cover song={song} />
+          <SongCover song={song} />
         </div>
         <div className="detail-head-copy">
           <div className="detail-kicker">Project</div>
@@ -562,6 +543,8 @@ export default function Library({
   const libraryFolderGate = useLibraryFolderGate();
   const bulk = useSyncExternalStore(subscribeBulkImport, getBulkImport);
   const importCoversMade = useSyncExternalStore(subscribeBulkImport, getImportCoversMade);
+  const queue = useSyncExternalStore(subscribeQueue, getQueue);
+  const queueOpen = queue.open;
   const [dropHot, setDropHot] = useState("");
   const [importError, setImportError] = useState(null);
   const [statusMsg, setStatusMsg] = useState("");
@@ -571,6 +554,11 @@ export default function Library({
     const sorted = [...recs].sort(
       (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
     );
+    // Tiles hold still while songs are being picked and finishing.
+    if ((getQueue().open || getQueue().running) && libraryCache) {
+      const place = new Map(libraryCache.records.map((record, index) => [record.id, index]));
+      sorted.sort((a, b) => (place.get(a.id) ?? -1) - (place.get(b.id) ?? -1));
+    }
     const projects = reuseUnchangedCards(await Promise.all(sorted.map(recordToCard)), libraryCache?.songs);
     libraryCache = { records: sorted, songs: projects };
     if (!shouldCommit()) {
@@ -598,9 +586,74 @@ export default function Library({
     };
   }, [loadLibrary, refreshToken]);
 
+  // When tiles change places they slide there from where they were.
+  const listRegion = useRef(null);
+  const slideFrom = useRef(null);
+  const noteTilePlaces = () => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    slideFrom.current = new Map(
+      [...(listRegion.current?.querySelectorAll("[data-song-id]") || [])].map((el) => [el.dataset.songId, el.getBoundingClientRect()])
+    );
+  };
+  useLayoutEffect(() => {
+    const from = slideFrom.current;
+    if (!from) return;
+    slideFrom.current = null;
+    listRegion.current?.querySelectorAll("[data-song-id]").forEach((el) => {
+      const was = from.get(el.dataset.songId);
+      if (!was) return;
+      const now = el.getBoundingClientRect();
+      const x = was.left - now.left;
+      const y = was.top - now.top;
+      if (x || y) {
+        el.animate(
+          [{ transform: `translate(${x}px, ${y}px)` }, { transform: "none" }],
+          { duration: 360, easing: "cubic-bezier(.2, .8, .2, 1)" }
+        );
+      }
+    });
+  }, [songs]);
+
+  // Finished takes change their projects; closing the queue or the run ending
+  // sorts the library again.
+  const queueDone = useMemo(() => queueSummary(queue).done, [queue]);
+  const seenQueue = useRef({ done: queueDone, open: queueOpen, running: queue.running });
+  useEffect(() => {
+    const seen = seenQueue.current;
+    seenQueue.current = { done: queueDone, open: queueOpen, running: queue.running };
+    const settled = seen.open !== queueOpen || seen.running !== queue.running;
+    if (settled) noteTilePlaces();
+    if (settled || queueDone > seen.done) loadLibrary().catch(() => {});
+  }, [queueDone, queueOpen, queue.running, loadLibrary]);
+
+  // Generate moves the queue's songs to where finishing will leave them (the
+  // last to finish comes first), so nothing jumps when the queue closes.
+  const runOrder = queue.running ? queue.items.map((item) => item.songId).join("/") : "";
+  useEffect(() => {
+    if (!runOrder || !libraryCache) return;
+    const ids = getQueue().items
+      .filter((item) => item.runs.some((run) => run.status !== "failed"))
+      .map((item) => item.songId)
+      .reverse();
+    const rank = new Map(ids.map((id, index) => [id, index]));
+    const ordered = [...libraryCache.records].sort((a, b) => {
+      if (rank.has(a.id) || rank.has(b.id)) return (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity);
+      return (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt);
+    });
+    if (ordered.every((record, index) => record.id === libraryCache.records[index].id)) return;
+    const place = new Map(ordered.map((record, index) => [record.id, index]));
+    const cards = [...libraryCache.songs].sort((a, b) => place.get(a.id) - place.get(b.id));
+    libraryCache = { records: ordered, songs: cards };
+    noteTilePlaces();
+    setRecords(ordered);
+    setSongs(cards);
+    listRegion.current?.scrollTo({ top: 0, behavior: slideFrom.current ? "smooth" : "auto" });
+  }, [runOrder]);
+
   // Song folders dropped anywhere on the Library import into it; one song file
   // starts a new project with it, and several become projects to generate
-  // later. A folder of song folders imports them all.
+  // later. A folder of song folders imports them all. With the queue open, every
+  // song dropped also joins the queue.
   const handleDragOver = (event) => {
     if (!dragHasFiles(event)) return;
     event.preventDefault();
@@ -620,9 +673,12 @@ export default function Library({
     setImportError(null);
     setStatusMsg("");
     readDrop(event.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
-      if (folders.length || songs.length > 1) {
+      if (folders.length || songs.length > 1 || (queueOpen && songs.length)) {
         if (bulkImportBusy()) setImportError("Songs are still importing. Drop more once they're in.");
-        else startBulkImport(songs).catch((err) => setImportError(err.message || String(err)));
+        else {
+          startBulkImport(songs, { onSaved: queueOpen ? (saved) => addToQueue([saved]) : undefined })
+            .catch((err) => setImportError(err.message || String(err)));
+        }
       } else if (directories || archives) {
         setImportError("No Clone Hero songs in there. Each song needs a notes.chart and its audio.");
       } else if (file) {
@@ -653,7 +709,13 @@ export default function Library({
   }, [importCoversMade, loadLibrary]);
 
   const handleUndoImport = useCallback(() => {
-    undoBulkImport({ keepIds: openProjectIds }).catch((err) => setImportError(err.message || String(err)));
+    // A song being charted stays, like one open in the app.
+    const charting = getQueue().items
+      .filter((item) => item.runs.some((run) => run.status === "running"))
+      .map((item) => item.songId);
+    const keepIds = [...openProjectIds, ...charting];
+    removeFromQueue((getBulkImport()?.imported || []).map((project) => project.id).filter((id) => !keepIds.includes(id)));
+    undoBulkImport({ keepIds }).catch((err) => setImportError(err.message || String(err)));
   }, [openProjectIds]);
 
   // Ctrl+Z (Cmd+Z) undoes a finished import while its notice is up, unless
@@ -716,6 +778,43 @@ export default function Library({
 
   const selected = filtered.find((s) => s.id === selId) || filtered[0] || null;
   const selectedId = selected?.id || "";
+  // With the queue closed, only the song being charted stays marked.
+  const marks = useMemo(() => {
+    const all = queueMarks(queue);
+    return queue.open ? all : new Map([...all].filter(([, mark]) => mark.startsWith("running")));
+  }, [queue]);
+  const songsById = useMemo(() => new Map(songs.map((song) => [song.id, song])), [songs]);
+  // The queue takes its color from the song it's on, like a project's panel does.
+  const queueFocus = useMemo(() => {
+    const has = (status) => (item) => item.runs.some((run) => run.status === status);
+    const item = queue.items.find(has("running")) || queue.items.find(has("waiting")) || queue.items.at(-1);
+    return item ? songsById.get(item.songId) : null;
+  }, [queue.items, songsById]);
+  const queueColor = useAccent(queueFocus || NO_SONG, theme);
+
+  // With the queue open a click adds or removes a song, and shift-click adds
+  // every song shown between it and the last one clicked. Stable across renders
+  // so unchanged tiles can skip rendering.
+  const pickRef = useRef({});
+  pickRef.current = { records, filtered, queueOpen };
+  const pickAnchor = useRef("");
+  const handlePick = useCallback((songId, event) => {
+    const { records: allRecords, filtered: shown, queueOpen: picking } = pickRef.current;
+    if (!picking) {
+      setSelId(songId);
+      return;
+    }
+    const recordFor = (id) => allRecords.find((record) => record.id === id);
+    const from = shown.findIndex((song) => song.id === pickAnchor.current);
+    const to = shown.findIndex((song) => song.id === songId);
+    if (event?.shiftKey && from >= 0 && to >= 0) {
+      addToQueue(shown.slice(Math.min(from, to), Math.max(from, to) + 1).map((song) => recordFor(song.id)));
+    } else {
+      toggleInQueue(recordFor(songId));
+    }
+    pickAnchor.current = songId;
+  }, []);
+  const addAllShown = () => addToQueue(filtered.map((song) => records.find((record) => record.id === song.id)));
   const selectedRecord = records.find((r) => r.id === selected?.id) || null;
 
   const openImportedSong = async (songId) => {
@@ -738,6 +837,10 @@ export default function Library({
     if (!song) return;
     setImportError(null);
     setStatusMsg("");
+    if (getQueue().items.some((item) => item.songId === songId && item.runs.some((run) => run.status === "running"))) {
+      setImportError("This song is being charted. Stop the queue before deleting it.");
+      return;
+    }
     try {
       const details = await getProjectDeletionDetails(songId);
       const projectTitle = details.title || song.title || songId;
@@ -751,6 +854,7 @@ export default function Library({
 
       const result = await deleteProjectRecord(songId, details.path, details.title);
       revokeCoverUrl(songId);
+      removeFromQueue([songId]);
       await loadLibrary();
       setStatusMsg(
         result.disposition === "trash"
@@ -814,6 +918,7 @@ export default function Library({
   return (
     <div
       className={"ac-body library-body" + (dropHot ? " is-drop-hot" : "")}
+      style={queueFocus ? { "--queue-tint": queueColor.tint, "--queue-accent": queueColor.accent } : undefined}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -853,7 +958,18 @@ export default function Library({
           </div>
           <button
             type="button"
-            className="btn-primary"
+            className={"btn-quiet queue-toggle-btn" + (queueOpen ? " is-open" : "")}
+            onClick={() => setQueueOpen(!queueOpen)}
+            aria-pressed={queueOpen}
+            title={queueOpen ? "Back to the library. The queue keeps its songs and keeps running." : "Chart several songs, one after another"}
+          >
+            {queueOpen ? <I.close /> : queue.running ? <ProgressRing value={queueSummary(queue).percent} /> : <I.queue />}
+            <span>{queueOpen ? "Close queue" : "Queue"}</span>
+            {!queueOpen && queue.items.length > 0 && <b className="queue-toggle-count">{queue.items.length}</b>}
+          </button>
+          <button
+            type="button"
+            className={queueOpen ? "btn-quiet library-new-quiet" : "btn-primary"}
             onClick={() => (onCreate ? onCreate() : setPage("generate"))}
             title="Start from a song, or open a Clone Hero song folder. You can also drop either onto the Library."
           >
@@ -861,7 +977,7 @@ export default function Library({
           </button>
         </div>
 
-        <div className="listregion">
+        <div className="listregion" ref={listRegion}>
           {!loaded ? null : filtered.length === 0 ? (
             <div className="empty-state">
               <span className="empty-ico">
@@ -884,8 +1000,9 @@ export default function Library({
                     <GridTile
                       key={s.id}
                       song={s}
-                      selected={s.id === selectedId}
-                      onSelect={setSelId}
+                      selected={queueOpen ? marks.has(s.id) : s.id === selectedId}
+                      queueMark={marks.get(s.id) || (queueOpen ? "add" : undefined)}
+                      onSelect={handlePick}
                       onToggleFavorite={handleToggleFavorite}
                     />
                   ))}
@@ -903,8 +1020,9 @@ export default function Library({
                     <ListRow
                       key={s.id}
                       song={s}
-                      selected={s.id === selectedId}
-                      onSelect={setSelId}
+                      selected={queueOpen ? marks.has(s.id) : s.id === selectedId}
+                      queueMark={marks.get(s.id) || (queueOpen ? "add" : undefined)}
+                      onSelect={handlePick}
                       onToggleFavorite={handleToggleFavorite}
                       theme={theme}
                     />
@@ -932,7 +1050,15 @@ export default function Library({
           )}
         </div>
       </div>
-      {selected && (
+      {queueOpen ? (
+        <QueuePanel
+          songs={songsById}
+          folderGate={libraryFolderGate}
+          onOpen={handleOpen}
+          onAddAll={addAllShown}
+          canAddAll={filtered.some((song) => !marks.has(song.id))}
+        />
+      ) : selected && (
         <DetailPanel
           song={selected}
           record={selectedRecord}
@@ -949,7 +1075,11 @@ export default function Library({
       <LibraryFolderPrompt gate={libraryFolderGate} onOpenSettings={() => setPage?.("settings")} />
       {bulk && <ImportNotice bulk={bulk} onStop={stopBulkImport} onUndo={handleUndoImport} onDismiss={dismissBulkImport} />}
       <div className="library-drop-veil" aria-hidden="true">
-        <span>{dropHot === "songs" ? "Drop to import these songs" : "Drop to start a project with this song"}</span>
+        <span>
+          {queueOpen
+            ? "Drop to add these to the queue"
+            : dropHot === "songs" ? "Drop to import these songs" : "Drop to start a project with this song"}
+        </span>
       </div>
     </div>
   );

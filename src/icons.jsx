@@ -78,6 +78,44 @@ export const I = {
       <path d="M21 21l-4.3-4.3" />
     </svg>
   ),
+  close: (p) => (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      {...p}
+    >
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  ),
+  tick: (p) => (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...p}
+    >
+      <path d="M5 12.8l4.6 4.6L19 7.4" />
+    </svg>
+  ),
+  queue: (p) => (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...p}
+    >
+      <path d="M4 6h16M4 12h10M4 18h7M17 14.5v6l4.5-3z" />
+    </svg>
+  ),
   plus: (p) => (
     <svg
       viewBox="0 0 24 24"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import * as chartWriter from "@autochart/chart-writer";
 import { DIFF } from "../../data/difficultyMetadata.js";
 import { GAME_LIBRARY_NAME } from "../../data/gameLibrary.js";
@@ -67,6 +67,7 @@ import {
   inpaintChart,
   listGenerators,
   prepareDemucs,
+  queueSongRunning,
   requiresPathBackedAudio,
   readEngineCacheFile,
   readDemucsStem,
@@ -86,6 +87,17 @@ import {
   updateSongRecord,
 } from "../../services/songLibrary.js";
 import { DEFAULT_DEMUCS_ID, newSongId } from "../../services/songSchema.js";
+import { queueJobFor, queueJobIdFor, queueRunByJob, stopQueue, subscribeQueue } from "../../services/generationQueue.js";
+import {
+  generatorDifficultyIds,
+  generatorStemSetId,
+  hasSeparation,
+  readsStems,
+  separationStemSet,
+  sourceChartPayloadFromVersions,
+} from "../../services/projectRun.js";
+
+export { generatorStemSetId, hasSeparation, separationStemSet };
 
 // Inpaint's model: Fretformer 2 stays the Generate model; its Inpaint
 // sibling rewrites picked bars.
@@ -258,32 +270,6 @@ function effectiveGenerator(generators = [], generatorId = "", preferences = {})
   return selectable.find((generator) => generator.id === generatorId) || selectable[0] || generators[0] || null;
 }
 
-// The stem set a generator separates with: v1's htdemucs stems unless the
-// generator names its own (the six-stem models: htdemucs_6s).
-export function generatorStemSetId(generator = null) {
-  const separation = generator?.separation || {};
-  return separation.cacheSubdir ? String(separation.stemSet || separation.cacheSubdir) : "htdemucs";
-}
-
-// False for a model that reads only the mix (Lite): its runs skip separation.
-function readsStems(generator) {
-  return generator?.capabilities?.usesStemCache !== false;
-}
-
-// One separation can hold a stem set per separation model; `stems` is v1's.
-export function separationStemSet(artifact, stemSetId = "htdemucs") {
-  const fromSet = artifact?.stemSets?.[stemSetId]?.stems;
-  if (fromSet && Object.keys(fromSet).length) return fromSet;
-  return stemSetId === "htdemucs" ? artifact?.stems || {} : {};
-}
-
-// Whether a separation holds this stem set: its stems, or (usually) only
-// their mel tables, which is all charts need.
-export function hasSeparation(artifact, stemSetId = "htdemucs") {
-  if (artifact?.stemSets?.[stemSetId]?.melTables) return true;
-  return Object.values(separationStemSet(artifact, stemSetId)).some((stem) => stem?.path);
-}
-
 export function demucsAuditionKey(artifactId, stemSetId, stem) {
   return `${artifactId}:${stemSetId}:${stem}`;
 }
@@ -331,16 +317,6 @@ function sourceVariantKeyFromArtifact(artifact = null) {
 
 function newDemucsId() {
   return `demucs_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function generatorDifficultyIds(generator) {
-  const raw = Array.isArray(generator?.capabilities?.difficulties)
-    ? generator.capabilities.difficulties
-    : [];
-  const supported = raw
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter((value) => FINAL_SLOT_ORDER.includes(value));
-  return supported.length ? supported : FINAL_SLOT_ORDER;
 }
 
 function preferredGeneratorDifficulty(generator) {
@@ -470,6 +446,74 @@ function chartTextFromPartial(live, difficulty = "expert", metadata = {}) {
   }).text;
 }
 
+// One engine event's effect on a run's state.
+function runAfterEvent(run, event) {
+  if (event.type === "stage") {
+    const next = {
+      ...run,
+      stages: {
+        ...run.stages,
+        [event.stage]: { status: event.status || "running", cache: event.cache === "hit", downloading: Boolean(event.downloading) },
+      },
+    };
+    // The ONNX demucs stage emits a `progress` field as an index/total
+    // fraction. Capture it as a 0..100 in-stage percent so the canonical
+    // progress function can map it into the demucs stage range only — it
+    // must never leak as the whole-run percent.
+    if (typeof event.progress === "number" && Number.isFinite(event.progress) && event.stage) {
+      const frac = Math.max(0, Math.min(1, event.progress));
+      next.stageProgress = { ...(run.stageProgress || {}), [event.stage]: frac * 100 };
+    }
+    // The browser version's first run downloads the model: bytes across
+    // the whole download, for the live board.
+    if (event.downloading && Number(event.downloadBytes) > 0) {
+      next.download = { loaded: Number(event.downloadedBytes) || 0, total: Number(event.downloadBytes) };
+    }
+    // Time the separation so a slow device can be offered Lite. Once
+    // it's slow it stays slow for the run, so the offer doesn't flicker.
+    if (event.stage === "demucs" && event.status === "running" && !event.downloading) {
+      next.separationClock = nextSeparationClock(run.separationClock, event);
+      if (!run.slowSeparation && separationIsSlow(next.separationClock)) next.slowSeparation = true;
+    }
+    return next;
+  }
+  if (event.type === "partial_chart") {
+    return { ...run, live: mergePartialChartEvent(run.live, event) };
+  }
+  if (event.type === "analysis_audio") {
+    // The engine cached the run's analysis audio (padded when the run uses
+    // lead-in silence). The live board plays this instead of the unpadded
+    // source so in-flight playback matches the final take's timeline. The
+    // event's lead-in is authoritative — the main process normalizes and
+    // clamps it, and it is what's actually baked into the audio file.
+    const ms = Number(event.leadInSilenceMs);
+    return {
+      ...run,
+      analysisAudioPath: event.path || "",
+      ...(Number.isFinite(ms) ? { leadInSilenceMs: ms, leadInSeconds: ms / 1000 } : {}),
+    };
+  }
+  if (event.type === "runtime_fallback") {
+    // The ONNX session loader latched a failed GPU EP (webgpu/cuda)
+    // to CPU for the rest of this run. Surface it once on the run so the
+    // progress panel can show a quiet inline notice.
+    return run.runtimeFallback ? run : { ...run, runtimeFallback: { from: event.from || "", reason: event.reason || "" } };
+  }
+  if (event.type === "log") {
+    const logs = [...run.logs, { stream: event.stream || "stdout", message: event.message || "" }];
+    const next = { ...run, logs: logs.length > 200 ? logs.slice(logs.length - 200) : logs };
+    // Engine log events carry the stage they belong to; any percent in
+    // the line (e.g. a tqdm bar) becomes real in-stage progress, mapped
+    // into that stage's own range only — never shown raw.
+    const percent = parseLogPercent(event.message);
+    if (percent != null && event.stage) {
+      next.stageProgress = { ...(run.stageProgress || {}), [event.stage]: percent };
+    }
+    return next;
+  }
+  return run;
+}
+
 function buildLiveGenerationPreview(live, difficulty, metadata) {
   if (!live) return null;
   const chartText = chartTextFromPartial(live, difficulty, metadata);
@@ -536,17 +580,6 @@ function versionForSave(version) {
 
 function randomSeedValue() {
   return String(Math.floor(1000 + Math.random() * 9999000));
-}
-
-function sourceChartPayloadFromVersions(versions = [], importedSong = null) {
-  const sourceVersion = versions.find((v) => v.source === "imported-chart" && v.chart?.text) || null;
-  const chartText = sourceVersion?.chart?.text || (importedSong?.source !== "generated" ? importedSong?.chart?.text : "") || "";
-  if (!chartText) return null;
-  return {
-    text: chartText,
-    versionId: sourceVersion?.id || "imported",
-    name: sourceVersion?.name || "Imported Clone Hero",
-  };
 }
 
 // A project that ships a human-charted notes.chart reuses its sync track by
@@ -755,93 +788,99 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         if (matched) setStatusMsg("Stopped.");
         return;
       }
-      if (event.type === "stage") {
-        setStatusMsg(stageStatusMessage(event));
-        setGenRun((run) => {
-          if (!forActiveRun(run)) return run;
-          const next = {
-            ...run,
-            stages: {
-              ...run.stages,
-              [event.stage]: { status: event.status || "running", cache: event.cache === "hit", downloading: Boolean(event.downloading) },
-            },
-          };
-          // The ONNX demucs stage emits a `progress` field as an index/total
-          // fraction. Capture it as a 0..100 in-stage percent so the canonical
-          // progress function can map it into the demucs stage range only — it
-          // must never leak as the whole-run percent.
-          if (typeof event.progress === "number" && Number.isFinite(event.progress) && event.stage) {
-            const frac = Math.max(0, Math.min(1, event.progress));
-            next.stageProgress = { ...(run.stageProgress || {}), [event.stage]: frac * 100 };
-          }
-          // The browser version's first run downloads the model: bytes across
-          // the whole download, for the live board.
-          if (event.downloading && Number(event.downloadBytes) > 0) {
-            next.download = { loaded: Number(event.downloadedBytes) || 0, total: Number(event.downloadBytes) };
-          }
-          // Time the separation so a slow device can be offered Lite. Once
-          // it's slow it stays slow for the run, so the offer doesn't flicker.
-          if (event.stage === "demucs" && event.status === "running" && !event.downloading) {
-            next.separationClock = nextSeparationClock(run.separationClock, event);
-            if (!run.slowSeparation && separationIsSlow(next.separationClock)) next.slowSeparation = true;
-          }
-          return next;
-        });
-      } else if (event.type === "partial_chart") {
-        setGenRun((run) =>
-          forActiveRun(run)
-            ? {
-                ...run,
-                live: mergePartialChartEvent(run.live, event),
-              }
-            : run
-        );
-      } else if (event.type === "analysis_audio") {
-        // The engine cached the run's analysis audio (padded when the run uses
-        // lead-in silence). The live board plays this instead of the unpadded
-        // source so in-flight playback matches the final take's timeline. The
-        // event's lead-in is authoritative — the main process normalizes and
-        // clamps it, and it is what's actually baked into the audio file.
-        setGenRun((run) => {
-          if (!forActiveRun(run)) return run;
-          const ms = Number(event.leadInSilenceMs);
-          return {
-            ...run,
-            analysisAudioPath: event.path || "",
-            ...(Number.isFinite(ms) ? { leadInSilenceMs: ms, leadInSeconds: ms / 1000 } : {}),
-          };
-        });
-      } else if (event.type === "runtime_fallback") {
-        // The ONNX session loader latched a failed GPU EP (webgpu/cuda)
-        // to CPU for the rest of this run. Surface it once on the run so the
-        // progress panel can show a quiet inline notice.
-        setGenRun((run) =>
-          forActiveRun(run) && !run.runtimeFallback
-            ? { ...run, runtimeFallback: { from: event.from || "", reason: event.reason || "" } }
-            : run
-        );
-      } else if (event.type === "log") {
-        setGenRun((run) => {
-          if (!forActiveRun(run)) return run;
-          const logs = [...run.logs, { stream: event.stream || "stdout", message: event.message || "" }];
-          const next = { ...run, logs: logs.length > 200 ? logs.slice(logs.length - 200) : logs };
-          // Engine log events carry the stage they belong to; any percent in
-          // the line (e.g. a tqdm bar) becomes real in-stage progress, mapped
-          // into that stage's own range only — never shown raw.
-          const percent = parseLogPercent(event.message);
-          if (percent != null && event.stage) {
-            next.stageProgress = { ...(run.stageProgress || {}), [event.stage]: percent };
-          }
-          return next;
-        });
-      } else if (event.type === "error") {
+      if (event.type === "error") {
         setStatusMsg(event.message || "Generation failed.");
         setGenRun((run) =>
           forActiveRun(run) ? { ...run, error: event.message || "Generation failed." } : run
         );
+        return;
       }
+      if (event.type === "stage") setStatusMsg(stageStatusMessage(event));
+      setGenRun((run) => (forActiveRun(run) ? runAfterEvent(run, event) : run));
     });
   }, []);
+
+  // A take the queue finishes for this open project joins its takes and final
+  // chart without touching what's on screen, unless the run was being watched.
+  useEffect(() => {
+    if (!songId) return undefined;
+    return subscribeGenerationEvents(async (event) => {
+      if (event?.type !== "project_saved" || event.projectId !== songId || !queueSongRunning()) return;
+      const watched = watchedJobRef.current === event.jobId;
+      try {
+        const record = await getSongRecord(songId);
+        if (!record) return;
+        const versions = playableVersionsFromRecord(record);
+        setLocalVersions((current) => [...current, ...versions.filter((version) => !current.some((item) => item.id === version.id))]);
+        setFinalSlots(finalSlotsFromRecord(record, versions));
+        setSourceArtifacts(normalizeSourceArtifactsState(record.sourceArtifacts));
+        const newest = versions.filter((version) => version.source === "generated").at(-1);
+        if (newest && watched) {
+          if (!previewPlayingRef.current && previewModeRef.current !== "compare") setSingleVersion(newest.id);
+          setJustGeneratedId(newest.id);
+          if (justGeneratedTimer.current) clearTimeout(justGeneratedTimer.current);
+          justGeneratedTimer.current = setTimeout(() => setJustGeneratedId(""), 1700);
+        }
+      } catch (error) {
+        console.warn("[generation] Could not add the queue's take:", error);
+      }
+    });
+  }, [songId]);
+
+  // While the queue charts this project, the page shows that run as its own:
+  // the same progress and live notes, caught up from what the queue has seen.
+  const watchedJobId = useSyncExternalStore(subscribeQueue, () => queueJobIdFor(songId));
+  const watchedJobRef = useRef("");
+  useEffect(() => {
+    if (watchedJobId) {
+      if (genRun?.jobId === watchedJobId) return;
+      if (busyAction && !watchedJobRef.current) return;
+      const job = queueJobFor(songId);
+      if (!job) return;
+      watchedJobRef.current = job.jobId;
+      setGenRun(job.events.reduce(runAfterEvent, {
+        songId,
+        jobId: job.jobId,
+        watching: true,
+        startedAt: job.startedAt,
+        finishedAt: 0,
+        ok: false,
+        canceled: false,
+        stopping: false,
+        error: "",
+        stages: {},
+        logs: [],
+        live: null,
+        runtimeFallback: null,
+        hardwareMode: job.hardwareMode === "cpu" ? "cpu" : "auto",
+        generatorId: job.generatorId,
+        difficulty: job.difficulty,
+        leadInSilenceMs: 0,
+        leadInSeconds: 0,
+        metadata: { title: job.title, artist: job.artist, charter: "Autochart", genre: "" },
+        summary: [job.generatorLabel, DIFF[job.difficulty]?.name || job.difficulty, job.presetName].filter(Boolean).join(" · "),
+      }));
+      setBusyAction("generating");
+      setLiveStageFocused(previewModeRef.current !== "compare" && !previewPlayingRef.current);
+      return;
+    }
+    const jobId = watchedJobRef.current;
+    if (!jobId) return;
+    watchedJobRef.current = "";
+    setBusyAction("");
+    setStatusMsg("");
+    const ended = queueRunByJob(jobId);
+    setGenRun((run) => (run?.jobId === jobId && !run.finishedAt
+      ? {
+          ...run,
+          finishedAt: Date.now(),
+          stopping: false,
+          ok: ended?.status === "done",
+          canceled: ended?.status === "waiting",
+          error: ended?.status === "failed" ? ended.error : "",
+        }
+      : run));
+  }, [watchedJobId, songId, genRun?.jobId, busyAction]);
 
   // Drop a stale progress report when the user moves to a different song.
   // The run's songId is updated when a fresh generation saves a new record,
@@ -1682,6 +1721,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         live: null,
         runtimeFallback: null,
         hardwareMode: hardwareMode === "cpu" ? "cpu" : "auto",
+        waitingForQueue: queueSongRunning(),
         willSeparate: readsStems(selectedGenerator) && !separationIsCached(runDemucsSeparation, selectedGenerator),
         generatorId: runSettings.generation.generatorId,
         difficulty: runSettings.difficulty,
@@ -1853,6 +1893,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     if (!genRun || genRun.finishedAt || genRun.stopping || !genRun.jobId) return;
     const jobId = genRun.jobId;
     setGenRun((run) => (run && !run.finishedAt ? { ...run, stopping: true } : run));
+    if (genRun.watching) {
+      stopQueue();
+      return;
+    }
     try {
       const result = await cancelGeneration(jobId);
       if (!result?.ok || result.status === "idle") {
@@ -2018,7 +2062,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // Offered while a run's separation is on track to take well past the
   // song's length, unless the user said to keep going once before.
   const liteGenerator = generators.find((generator) => generator.id === LITE_GENERATOR_ID) || null;
-  const liteOffer = genRun && !genRun.finishedAt && genRun.slowSeparation && !genRun.liteOfferDismissed
+  const liteOffer = genRun && !genRun.watching && !genRun.finishedAt && genRun.slowSeparation && !genRun.liteOfferDismissed
     && genRun.stages?.demucs?.status === "running" && genRun.generatorId !== LITE_GENERATOR_ID
     && liteGenerator && liteGenerator.setup?.status !== "unsupported"
     && !generatorPreferences.liteOfferDeclined && !liteSwitch

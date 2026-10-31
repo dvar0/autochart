@@ -1280,6 +1280,221 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .act.disabled { background: var(--detail-tonal-2); color: var(--text-faint); cursor: not-allowed; filter: none; }
 .act:disabled:hover { color: var(--text-faint); background: var(--detail-tonal-2); }
 
+/* ============== LIBRARY QUEUE ============== */
+.queue-toggle-btn { min-width: 132px; justify-content: center; }
+.queue-toggle-btn.is-open,
+.queue-toggle-btn.is-open:hover { color: var(--text); }
+.queue-toggle-btn svg,
+.queue-toggle-btn svg:last-child { width: 15px; height: 15px; color: inherit; }
+.queue-toggle-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.library-new-quiet svg,
+.library-new-quiet svg:last-child { width: 15px; height: 15px; color: inherit; }
+
+/* A song's state in the corner of its cover: an empty circle to pick it, then
+   its number, percent, tick or "!". */
+.queue-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  border: 2px solid #fff;
+  background: #fff;
+  color: #171b2b;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+  transition: background .12s;
+}
+.queue-badge svg { width: 13px; height: 13px; }
+.queue-badge.is-add { background: rgba(10, 12, 20, .35); }
+.tile:hover .queue-badge.is-add,
+.row:hover .queue-badge.is-add { background: rgba(255, 255, 255, .55); }
+.queue-badge.is-running { padding: 0 7px; border-color: transparent; background: rgba(15, 18, 30, .88); color: #fff; }
+.queue-badge.is-done { background: var(--fret-g); color: #06331c; }
+.queue-badge.is-failed { background: var(--fret-r); color: #fff; }
+.row-thumb { position: relative; }
+.row-thumb .queue-badge { right: 3px; bottom: 3px; min-width: 20px; height: 20px; padding: 0 2px; }
+.row-thumb .queue-badge.is-running { padding: 0 4px; font-size: 10px; }
+.row-thumb .queue-badge svg { width: 11px; height: 11px; }
+
+/* Picked covers are outlined; a finished or charting one says so in its corner. */
+.tile.sel.q-waiting .tile-art { outline-color: var(--text); }
+.tile.sel.q-done .tile-art,
+.tile.sel.q-failed .tile-art,
+.tile.sel.q-running .tile-art { outline-color: transparent; }
+.tile.sel[class*="q-"] .tile-title { color: var(--text); }
+
+/* The song being charted: a ring in its cover's color that fills with its percent. */
+@property --queue-progress {
+  syntax: "<percentage>";
+  initial-value: 0%;
+  inherits: true;
+}
+@keyframes queueBreathe {
+  from { opacity: .12; }
+  to { opacity: .34; }
+}
+.tile.q-running .tile-art { isolation: isolate; }
+.tile.q-running .tile-art::before,
+.tile.q-running .tile-art::after,
+.row.q-running .row-thumb::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: calc(var(--r-card) + 5px);
+  padding: 3px;
+  background: conic-gradient(
+    var(--queue-accent) var(--queue-progress),
+    color-mix(in srgb, var(--queue-accent) 26%, transparent) 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  transition: --queue-progress .4s ease;
+}
+.tile.q-running .tile-art::after {
+  -webkit-mask: none;
+  mask: none;
+  padding: 0;
+  z-index: -1;
+  background: var(--queue-accent);
+  filter: blur(10px);
+  animation: queueBreathe 1.6s ease-in-out infinite alternate;
+}
+.row.q-running .row-thumb { overflow: visible; }
+.row.q-running .row-thumb .art { border-radius: inherit; overflow: hidden; }
+.row.q-running .row-thumb::before { inset: -5px; border-radius: 13px; padding: 2.5px; }
+@media (prefers-reduced-motion: reduce) {
+  .tile.q-running .tile-art::after { animation: none; opacity: .2; }
+}
+
+/* Tinted by the song it's on, easing from one song to the next. */
+@property --queue-tint {
+  syntax: "<color>";
+  initial-value: #3a8ee6;
+  inherits: true;
+}
+.queue-panel {
+  --art-accent: var(--queue-tint);
+  --text-dim: color-mix(in srgb, var(--text) 90%, transparent);
+  --text-faint: color-mix(in srgb, var(--text) 66%, transparent);
+  transition: --queue-tint .6s ease;
+}
+/* Covers tint this panel brighter on dark, so its text goes brighter too. */
+.ac-app[data-theme="dark"] .queue-panel { --text: #f4f6fd; }
+.queue-head { flex: none; padding: 16px 22px 14px; display: flex; flex-direction: column; gap: 8px; }
+.queue-title-line { display: flex; align-items: center; gap: 10px; }
+.queue-title { flex: 1; margin: 0; font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; color: var(--text); }
+.queue-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 99px;
+  background: var(--detail-tonal-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: .12s;
+}
+.queue-close svg { width: 14px; height: 14px; }
+.queue-close:hover { background: var(--detail-tonal-key); }
+.queue-head-line { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.queue-count { font-size: var(--fs-md); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.queue-percent {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.gen-progressbar.queue-bar { height: 8px; background: var(--detail-tonal-2); }
+.gen-progressbar.queue-bar i {
+  background: var(--purple);
+  border-radius: 99px;
+  transition: width .3s ease;
+}
+
+.queue-list { flex: 1; min-height: 72px; margin: 0; padding: 4px 14px 10px; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.queue-list::-webkit-scrollbar { width: 8px; }
+.queue-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.queue-empty { align-items: center; justify-content: center; gap: 4px; padding: 18px 28px; text-align: center; }
+.queue-empty-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.queue-empty-sub { font-size: var(--fs-sm); color: var(--text-dim); }
+.queue-row { flex: none; border-radius: var(--r-box); }
+.queue-row.is-running { background: var(--detail-tonal-2); }
+.queue-row-main { display: flex; align-items: center; gap: 6px; padding-right: 6px; min-width: 0; }
+.queue-row-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--r-box);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.queue-row-open:hover .queue-row-title { text-decoration: underline; }
+.queue-thumb { position: relative; flex: none; width: 40px; height: 40px; }
+.queue-thumb .art { width: 100%; height: 100%; border-radius: 8px; overflow: hidden; }
+.queue-thumb .art img { width: 100%; height: 100%; object-fit: cover; }
+.queue-row-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.queue-row-title, .queue-row-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-row-title { font-size: var(--fs-md); font-weight: 700; color: var(--text); }
+.queue-row-sub { font-size: var(--fs-sm); font-weight: 500; color: var(--text-dim); }
+.queue-row-mark { flex: none; display: inline-flex; align-items: center; }
+.queue-row-percent { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+.queue-row-done { position: static; min-width: 20px; height: 20px; padding: 0; border: none; box-shadow: none; }
+.queue-row-done svg { width: 11px; height: 11px; }
+.queue-row-remove {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 99px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.queue-row-remove svg { width: 13px; height: 13px; }
+.queue-row-remove:not(:disabled):hover { color: var(--text); background: var(--detail-tonal-2); }
+.queue-row-remove:disabled { opacity: .35; cursor: not-allowed; }
+.queue-row-error { padding: 0 8px 8px 59px; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); line-height: 1.4; color: var(--red-fg); overflow-wrap: anywhere; }
+.queue-row-retry { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.queue-settings { flex: none; padding: 12px 22px 2px; display: flex; flex-direction: column; gap: 10px; }
+.queue-settings .queue-model { margin: 0; padding: 0; border: 0; }
+.queue-settings .difficulty-segments,
+.queue-settings .preset-grid { margin: 0; }
+.queue-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); font-weight: 500; color: var(--text); }
+.queue-actions { padding-top: 12px; background: none; }
+.queue-actions .gen-cta { margin-bottom: 0; }
+.queue-action-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.queue-action-row.is-single { grid-template-columns: minmax(0, 1fr); }
+.queue-head .queue-action-row { margin-top: 6px; }
+.queue-note { min-height: 16px; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ============== SETTINGS PAGE ============== */
 .settings-page { min-height: 0; overflow-y: auto; }
 .settings-main {
