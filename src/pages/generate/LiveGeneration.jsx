@@ -4,7 +4,7 @@ import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import LiveNoteStrip from "./LiveNoteStrip.jsx";
 import LiveScore from "./LiveScore.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
-import { describeRunStage, runDownload, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
+import { describeRunStage, runDownload, runHeadline, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
 import { BETA_MODELS, MODEL_FAMILIES } from "../../data/modelFamilies.js";
 import { I } from "../../icons.jsx";
 
@@ -221,7 +221,7 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
               hideControls={isLive}
               visualOnly={isLive && !livePlaying}
             />
-            {isLive && (!livePlaying ? (
+            {isLive && !livePlaying && (
               <button
                 type="button"
                 className="live-play-affordance"
@@ -230,17 +230,17 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
               >
                 <I.play /> Play
               </button>
-            ) : (
-              <button
-                type="button"
-                className="live-play-affordance live-back-affordance"
-                onClick={exitInteractive}
-                title="Back to live follow mode"
-              >
-                ● Live
-              </button>
-            ))}
-            {isLive && hasSelectedTrack && (
+            )}
+          </>
+        ) : download ? (
+          <StageSignal mode={signalMode(phase)} />
+        ) : null}
+        {scoreShown && <LiveScore map={project.genRun?.map || null} leaving={!scoreOn} />}
+        {isLive && (
+          // The step and how far the whole run is, the same words and number
+          // as the progress panel. The board lays its rows out below it.
+          <div className="live-stage-head">
+            {phase === "notes" && hasSelectedTrack && (
               <button
                 type="button"
                 className="live-play-affordance live-chart-affordance"
@@ -250,11 +250,20 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
                 <I.close /> Chart
               </button>
             )}
-          </>
-        ) : download ? (
-          <StageSignal mode={signalMode(phase)} />
-        ) : null}
-        {scoreShown && <LiveScore map={project.genRun?.map || null} leaving={!scoreOn} />}
+            <span className="live-stage-step" aria-hidden="true">{runHeadline(project.genRun) || "Starting engine…"}</span>
+            <span className="live-stage-pct" aria-hidden="true">{Math.round(pct)}%</span>
+            {phase === "notes" && livePlaying && (
+              <button
+                type="button"
+                className="live-play-affordance live-back-affordance"
+                onClick={exitInteractive}
+                title="Back to live follow mode"
+              >
+                ● Live
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

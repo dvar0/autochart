@@ -55,7 +55,8 @@ const COSTLY_DRAW_MS = 3;
 const POP_MS = 380;
 const TICK_POP_MS = 300;
 const MIX_FADE_MS = 300;
-const TOP = 18;
+// The stage's top bar (.live-stage-head, 48px) and a little air under it.
+const TOP = 54;
 const BOTTOM = 14;
 const RAIL = 9;
 const ICON_PITCH = 11;

@@ -3034,6 +3034,47 @@ video.bg-layer {
   opacity: 0.78;
 }
 .live-play-affordance.live-chart-affordance:hover { opacity: 1; }
+/* The live board's top bar: the step on the left, the run's percent on the
+   right, the same as the progress panel says. Always there while the run is
+   live, so nothing below it moves; the song map lays its rows out under it
+   (LiveScore.jsx HEAD). The Chart and Live buttons sit in it. */
+.live-stage-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 12px);
+  min-height: 48px;
+  padding: 10px 16px;
+  pointer-events: none;
+  color: #e8ecfa;
+  text-shadow: 0 1px 6px rgba(7, 9, 15, 0.8);
+}
+.live-stage-head .live-play-affordance {
+  position: static;
+  pointer-events: auto;
+  text-shadow: none;
+}
+.live-stage-step {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  opacity: 0.82;
+}
+.live-stage-pct {
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 @keyframes liveSheen {
   0% { transform: translateX(-100%); }
   60%, 100% { transform: translateX(280%); }

@@ -134,6 +134,17 @@ export function describeRunStage(run) {
   return run.waitingForQueue ? "Waiting for the queue…" : "Starting engine…";
 }
 
+// The step a run is on, in a few words: the progress panel's title and the
+// live board's top bar.
+export function runHeadline(run) {
+  if (!run) return "";
+  if (run.canceled) return "Stopped";
+  if (run.error) return "Generation failed";
+  if (run.finishedAt) return "Chart ready";
+  if (runIsSeparating(run)) return "Separating stems";
+  return describeRunStage(run) || "Starting engine…";
+}
+
 // A run is "streaming" once the model has emitted any partial chart. Demucs
 // has completed by then; the partial sequence belongs to transcription and the
 // subsequent chart stage writes the final notes.chart package.
@@ -297,17 +308,7 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
   }, [run.logs.length, expanded]);
 
   const elapsed = Math.max(0, ((run.finishedAt || now) - run.startedAt) / 1000);
-  const separating = runIsSeparating(run);
-  const stageHeadline = describeRunStage(run);
-  const headline = canceled
-    ? "Stopped"
-    : failed
-      ? "Generation failed"
-      : !running
-        ? "Chart ready"
-        : separating
-          ? "Separating stems"
-          : stageHeadline || "Starting engine…";
+  const headline = runHeadline(run);
   const progressPct = runProgressPercent(run);
   const barPct = !running && !failed && !canceled ? 100 : progressPct;
   const stateClass = failed ? " is-failed" : canceled ? " is-stopped" : running ? " is-running" : " is-done";
