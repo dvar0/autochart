@@ -32,8 +32,18 @@ async function main() {
           import React from "react";
           import { createRoot } from "react-dom/client";
           import App from "./src/App.jsx";
+          import DensityStrip from "./src/highway/DensityStrip.jsx";
           import "./src/styles.css";
           createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);
+          window.mountThemedCanvas = () => {
+            // Its resize callback redraws too, whenever a frame comes; keep that from hiding a missing redraw.
+            window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+            const host = document.createElement("div");
+            host.style.cssText = "position:fixed;left:0;top:0;width:400px;height:40px";
+            document.querySelector(".ac-app").appendChild(host);
+            const notes = Array.from({ length: 40 }, (_, i) => ({ time: i / 4, endTime: i / 4 + 0.1 }));
+            createRoot(host).render(<div style={{ width: 400, height: 40 }}><DensityStrip lanes={[{ notes }]} duration={10} /></div>);
+          };
         `,
         resolveDir: ROOT,
         loader: "jsx",
@@ -119,7 +129,25 @@ async function main() {
     await setSystemTheme("light");
     await expectTheme("light");
     assert.deepEqual(rendererErrors, []);
-    console.log("Theme: fresh setup, live OS changes, manual overrides, relaunch persistence, and collapsed selector passed.");
+    // Canvases keep their pixels until redrawn, so one drawn in theme colors has
+    // to redraw on a switch without anything else changing.
+    await chooseTheme("light");
+    await expectTheme("light");
+    await evaluate("window.mountThemedCanvas()");
+    const canvasInk = `(() => {
+      const canvas = document.querySelector("canvas.density-strip");
+      if (!canvas?.width) return "";
+      const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 3; i < data.length; i += 4) if (data[i]) return [data[i - 3], data[i - 2], data[i - 1]].join();
+      return "";
+    })()`;
+    await waitFor(`Boolean(${canvasInk})`);
+    const lightInk = await evaluate(canvasInk);
+    await chooseTheme("dark");
+    await expectTheme("dark");
+    await waitFor(`${canvasInk} !== ${JSON.stringify(lightInk)}`);
+
+    console.log("Theme: fresh setup, live OS changes, manual overrides, relaunch persistence, collapsed selector, and canvas redraw passed.");
   } finally {
     if (win) {
       win.webContents.session.flushStorageData();
