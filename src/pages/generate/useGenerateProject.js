@@ -22,13 +22,14 @@ import {
   buildSourceReplacementRecord,
 } from "./sourceReplacement.js";
 import { createEditorState, editorReducer } from "./edit/editorReducer.js";
-import { MODEL_FAMILIES, defaultGeneratorIdFrom, selectableGeneratorsFrom } from "../../data/modelFamilies.js";
+import { MODEL_FAMILIES, defaultGeneratorIdFrom, savedGeneratorChoice, selectableGeneratorsFrom } from "../../data/modelFamilies.js";
 import {
   LITE_FAMILY, LITE_GENERATOR_ID, nextSeparationClock, separationIsSlow, separationSecondsLeft,
 } from "./liteOffer.js";
 import { updateAppSettings } from "../../services/appSettings.js";
-import { countUsage } from "../../services/runtimeBridge.js";
-import { installAssets, subscribeModelInstallEvents } from "../../services/modelSetup.js";
+import { countUsage, isWebApp } from "../../services/runtimeBridge.js";
+import { activeModelInstalls, installAssets, subscribeModelInstallEvents, subscribeModelInstalls } from "../../services/modelSetup.js";
+import { generationDownloadSize } from "../../data/generationCatalog.js";
 import {
   DEFAULT_GENERATION_CONTROLS,
   DEFAULT_GENERATOR_ID,
@@ -573,12 +574,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [generatorPreferences, setGeneratorPreferences] = useState(cachedGeneratorState.preferences);
   const [generatorId, setGeneratorId] = useState(() => {
     const { generators: cached, preferences } = cachedGeneratorState;
-    const saved = importedSong?.settings?.generation?.generatorId;
+    const saved = savedGeneratorChoice(importedSong?.settings?.generation);
     return saved ? pickGeneratorId(cached, saved, preferences) : defaultGeneratorIdFrom(cached, preferences);
   });
   // True once the model comes from the project or the user. Until then the
   // workspace follows the default model from Settings as the manifest loads.
-  const generatorChosenRef = useRef(Boolean(importedSong?.settings?.generation?.generatorId));
+  const generatorChosenRef = useRef(Boolean(savedGeneratorChoice(importedSong?.settings?.generation)));
   const [setupStatus, setSetupStatus] = useState(cachedGeneratorState.setupStatus);
   const [engineError, setEngineError] = useState(cachedGeneratorState.engineError);
   const [busyAction, setBusyAction] = useState("");
@@ -911,11 +912,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setPendingBgFromAudio(false);
     const versions = importedSong.versions || [];
     // Reopen a project on the model it last generated with (when installed).
-    const savedGeneratorId = importedSong.settings?.generation?.generatorId;
-    if (savedGeneratorId) {
-      generatorChosenRef.current = true;
-      setGeneratorId(savedGeneratorId);
-    }
+    const savedGeneratorId = savedGeneratorChoice(importedSong.settings?.generation);
+    generatorChosenRef.current = Boolean(savedGeneratorId);
+    setGeneratorId(savedGeneratorId || defaultGeneratorIdFrom(generators, generatorPreferences));
     setGenerationControls(
       controlsFromSavedGeneration(
         importedSong.settings?.generation,
@@ -1133,7 +1132,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       : sourceTransformFromControls(generationControls);
     return {
       difficulty: generationSettings.difficulty,
-      generation: { ...generationSettings.generation, sourceTransform },
+      generation: {
+        ...generationSettings.generation,
+        sourceTransform,
+        ...(generatorChosenRef.current ? { modelPicked: true } : {}),
+      },
       sourceTransform,
       demucsSeparation: activeDemucsArtifact,
       ...(activeId ? { activeVersionId: activeId } : {}),
@@ -2036,6 +2039,20 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     return next.generators.find((generator) => generator.id === LITE_GENERATOR_ID) || null;
   };
 
+  const [installingPacks, setInstallingPacks] = useState(activeModelInstalls);
+  const [modelDownloadPercent, setModelDownloadPercent] = useState(null);
+  const [modelDownloadError, setModelDownloadError] = useState("");
+  useEffect(() => subscribeModelInstalls((packIds) => {
+    setInstallingPacks(packIds);
+    if (!packIds.length) {
+      setModelDownloadPercent(null);
+      refreshGenerators().catch(() => {});
+    }
+  }), []);
+  useEffect(() => subscribeModelInstallEvents((event) => {
+    if (Number.isFinite(event?.percent)) setModelDownloadPercent(Math.round(event.percent));
+  }), []);
+
   // Stops the run, makes Lite the model new projects start with, downloads it
   // when it isn't yet, then runs again with the same settings on Lite.
   const switchToLite = async () => {
@@ -2129,6 +2146,46 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const resolvedSettings = currentGeneration.resolved;
   const selectedGeneratorLabel = selectedGenerator?.label || TRANSCRIBER_MODEL.label;
   const selectedGeneratorSetup = selectedGenerator?.setup || null;
+  // The picked model isn't on this computer yet: Generate offers its download.
+  const missingFamily = !isWebApp() && selectedGeneratorSetup && !selectedGeneratorSetup.ready
+    && selectedGeneratorSetup.status !== "unsupported"
+    ? MODEL_FAMILIES.find((family) => family.generatorId === selectedGenerator.id || family.inpaintGeneratorId === selectedGenerator.id)
+    : null;
+  const modelDownload = missingFamily
+    ? {
+        label: missingFamily.label,
+        action: selectedGeneratorSetup.status === "corrupt"
+          ? `Repair ${missingFamily.label}`
+          : selectedGeneratorSetup.status === "partial"
+            ? `Finish downloading ${missingFamily.label}`
+            : `Download ${missingFamily.label}`,
+        message: installingPacks.includes(missingFamily.packId)
+          ? `${missingFamily.label} is downloading. Generate turns on when it's done.`
+          : modelDownloadError || (selectedGeneratorSetup.status === "corrupt"
+            ? `${missingFamily.label} has a damaged file.`
+            : selectedGeneratorSetup.status === "partial"
+              ? `${missingFamily.label}'s download didn't finish.`
+              : `${missingFamily.label} isn't downloaded yet.`),
+        size: selectedGeneratorSetup.status === "missing"
+          ? (() => {
+              const pack = setupStatus?.scan?.packs?.find((item) => item.id === missingFamily.packId);
+              return pack ? generationDownloadSize(pack) : "";
+            })()
+          : "",
+        installing: installingPacks.includes(missingFamily.packId),
+        waiting: installingPacks.length > 0 && !installingPacks.includes(missingFamily.packId),
+        percent: modelDownloadPercent,
+      }
+    : null;
+  const downloadSelectedModel = async () => {
+    setModelDownloadError("");
+    setModelDownloadPercent(null);
+    try {
+      await installAssets(missingFamily.packId);
+    } catch (err) {
+      setModelDownloadError(err?.message || "The download didn't finish.");
+    }
+  };
   const liveGeneration = useMemo(
     () => buildLiveGenerationPreview(
       genRun?.live,
@@ -2151,7 +2208,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   );
   const setupMessage =
     selectedGeneratorSetup?.status === "missing"
-      ? "The chart generation package is not installed. Open Setup to download it."
+      ? "Download it to start making charts."
       : setupStatus?.message ||
         selectedGeneratorSetup?.message ||
         (engineError ? engineError : "");
@@ -2640,6 +2697,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     generatorForStemSet,
     selectedGeneratorSetup,
     selectedGeneratorLabel,
+    modelDownload,
+    downloadSelectedModel,
     supportedDifficultyIds,
     selectedPreset,
     currentGeneration,

@@ -26,14 +26,45 @@ export async function scanModelSetup({ fresh = false } = {}) {
   };
 }
 
+// Downloads run one at a time, whichever screen started them: asking for a pack
+// that's already on its way joins that download, and another pack waits its turn.
+const activeInstalls = new Map();
+const installListeners = new Set();
+let installQueue = Promise.resolve();
+
+function notifyInstallListeners() {
+  const packIds = activeModelInstalls();
+  for (const listener of installListeners) listener(packIds);
+}
+
+export function activeModelInstalls() {
+  return [...activeInstalls.keys()];
+}
+
+export function subscribeModelInstalls(listener) {
+  installListeners.add(listener);
+  return () => installListeners.delete(listener);
+}
+
 // packId picks one of the catalog's packs; without it the app installs the
 // catalog's default pack.
-export async function installAssets(packId = "") {
+export function installAssets(packId = "") {
   const bridge = electronModelSetup();
-  if (hasElectronModelSetup() && bridge?.install) {
-    return bridge.install(packId);
+  if (!hasElectronModelSetup() || !bridge?.install) {
+    return Promise.reject(new Error("Downloading the chart generation package requires the Electron app."));
   }
-  throw new Error("Downloading the chart generation package requires the Electron app.");
+  if (activeInstalls.has(packId)) return activeInstalls.get(packId);
+  const install = installQueue
+    .catch(() => {})
+    .then(() => bridge.install(packId))
+    .finally(() => {
+      activeInstalls.delete(packId);
+      notifyInstallListeners();
+    });
+  installQueue = install;
+  activeInstalls.set(packId, install);
+  notifyInstallListeners();
+  return install;
 }
 
 // Frees room in the browser version: { packId } removes one family's models,

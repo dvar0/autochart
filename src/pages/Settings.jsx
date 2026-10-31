@@ -28,7 +28,7 @@ import {
 } from "../services/appSettings.js";
 import { listGenerators } from "../services/generation.js";
 import {
-  installAssets, probeHardware, removeModelDownloads, scanModelSetup, subscribeModelInstallEvents,
+  activeModelInstalls, installAssets, probeHardware, removeModelDownloads, scanModelSetup, subscribeModelInstallEvents,
 } from "../services/modelSetup.js";
 import { NOTICE_LINKS, openNotice } from "../services/notices.js";
 import { SITE_LINKS } from "../data/siteLinks.js";
@@ -424,6 +424,13 @@ export default function Settings() {
       setBusy("");
     }
   };
+
+  // A download started on another screen shows its progress here instead of
+  // offering the same download again.
+  useEffect(() => {
+    const family = MODEL_FAMILIES.find((item) => activeModelInstalls().includes(item.packId));
+    if (family) void installModels(family);
+  }, []);
 
   // Browser version: models and separations live in the browser's storage, which
   // phones run short of, so they can be removed here.

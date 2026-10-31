@@ -31,7 +31,7 @@ export const MODEL_FAMILIES = Object.freeze([
     label: "Fretformer 2 Lite",
     badge: "L",
     experimental: true,
-    about: "Faster, less accurate. Has its own Fill-in.",
+    about: "Skips stem separation, so it's faster but less accurate.",
     shortLabel: "Lite",
     generatorId: "autochart.fretformer.v2-lite-onnx",
     inpaintGeneratorId: "autochart.fretformer.v2-lite-onnx",
@@ -57,6 +57,13 @@ export const BETA_MODELS = Object.freeze([
 
 export const CATALOG_DEFAULT_GENERATOR_ID = "autochart.fretformer.v2-onnx";
 
+// Fretformer 1 was the only model before 0.2.0, so a project having it saved
+// wasn't a choice: those projects follow the default unless it was picked.
+export function savedGeneratorChoice(generation) {
+  const id = generation?.generatorId || "";
+  return id === "autochart.fretformer.v1-onnx" && !generation.modelPicked ? "" : id;
+}
+
 const BETA_GENERATOR_IDS = new Set(BETA_MODELS.map((model) => model.generatorId));
 
 export function isBetaGenerator(generatorId) {
@@ -72,17 +79,16 @@ export function selectableGeneratorsFrom(generators = [], preferences = {}) {
     && (preferences.fillInDrafts || !isBetaGenerator(generator.id)));
 }
 
-// The generator new projects start on: the user's pick while it is usable,
-// then the catalog default if it's downloaded, then any downloaded generator,
-// then the catalog default (so Generate offers its download).
+// The generator new projects start on: the user's pick while it is usable, then
+// the catalog default even before it's downloaded (Generate offers the download),
+// then any downloaded generator.
 export function defaultGeneratorIdFrom(generators = [], preferences = {}) {
   const usable = selectableGeneratorsFrom(generators, preferences);
-  const ids = new Set(usable.map((generator) => generator.id));
   const ready = usable.filter((generator) => generator.setup?.ready);
   const preferred = preferences.defaultGeneratorId;
-  if (preferred && ids.has(preferred)) return preferred;
-  if (ready.some((generator) => generator.id === CATALOG_DEFAULT_GENERATOR_ID)) return CATALOG_DEFAULT_GENERATOR_ID;
+  if (preferred && usable.some((generator) => generator.id === preferred)) return preferred;
+  const catalogDefault = usable.find((generator) => generator.id === CATALOG_DEFAULT_GENERATOR_ID);
+  if (catalogDefault && catalogDefault.setup?.status !== "unsupported") return CATALOG_DEFAULT_GENERATOR_ID;
   if (ready.length) return ready[0].id;
-  if (ids.has(CATALOG_DEFAULT_GENERATOR_ID)) return CATALOG_DEFAULT_GENERATOR_ID;
   return usable[0]?.id || CATALOG_DEFAULT_GENERATOR_ID;
 }

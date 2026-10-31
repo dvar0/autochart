@@ -1,8 +1,8 @@
 // Run with: npx electron scripts/test-generator-picker-electron.cjs [--screenshots <dir>]
 // Real React UI and preload IPC with the shipped engine/manifest.json:
-// - with only Fretformer 1 downloaded, Fretformer 2 is listed (Generate offers
-//   its download) and Fretformer 1 stays the default;
-// - once Fretformer 2 is downloaded it is the default, with no badge or note;
+// - with only Fretformer 1 downloaded, Fretformer 2 is the default and Generate
+//   downloads it right there, with Settings joining that download;
+// - once Fretformer 2 is downloaded it generates, with no badge or note;
 // - picking the six-stem model swaps the Style faders to its set and the
 //   generate payload carries its generator id and knob names;
 // - separation cards list each model's stems only where that separation has
@@ -52,6 +52,8 @@ async function main() {
   const context = { userDataPath: temp, projectsFolder: path.join(temp, "projects") };
   const payloads = [];
   let installedReady = false;
+  let installs = 0;
+  let finishInstall = () => {};
   let fillInDrafts = false;
   let win;
   try {
@@ -112,7 +114,7 @@ async function main() {
     ipcMain.handle("window:isFullscreen", () => false);
     ipcMain.handle("engine:getManifest", () => ({
       available: true,
-      setup: { ready: true },
+      setup: { ready: true, scan: { packs: [{ id: "fretformer-2", downloadBytes: 952319821 }] } },
       preferences: { defaultGeneratorId: "", fillInDrafts },
       generators: engineManifest.generators.map((generator) => ({
         ...generator,
@@ -121,6 +123,14 @@ async function main() {
           : { ready: true, status: "ready" },
       })),
     }));
+    ipcMain.handle("modelSetup:install", async () => {
+      installs += 1;
+      await new Promise((resolve) => { finishInstall = resolve; });
+      installedReady = true;
+      return { setup: { packs: [] } };
+    });
+    ipcMain.handle("modelSetup:scan", () => ({ packs: [{ id: "fretformer-2", downloadBytes: 952319821 }], generatorReadiness: {}, combinedStatus: "ready" }));
+    ipcMain.handle("hardware:probe", () => ({ supportedPlatform: true, platform: process.platform, arch: process.arch }));
     ipcMain.handle("engine:generateChart", (_event, payload) => {
       payloads.push(payload);
       return { jobId: payload.jobId, status: "canceled" };
@@ -185,8 +195,8 @@ async function main() {
       await fs.writeFile(path.join(screenshotDir, `${name}.png`), image.toPNG());
     };
 
-    // Only Fretformer 1 downloaded: it is the default, Fretformer 2 is listed,
-    // v1 faders, solos disabled.
+    // Only Fretformer 1 downloaded: Fretformer 2 is the default and Generate offers
+    // its download in plain words.
     const pickerOptions = () => evaluate('[...document.querySelectorAll(".model-plate-picker option")].map(o => [o.value, o.textContent])');
     await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");
@@ -195,8 +205,25 @@ async function main() {
       engineManifest.generators.filter((g) => g.id !== BETA_ID && g.id !== LITE_ID).map((g) => [g.id, g.label]),
       "Fretformer 2 is listed before it is downloaded; Lite is not",
     );
-    assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), V1_ID, "the downloaded model is the default");
-    await waitFor(async () => (await faderNames()).length > 0, "style faders");
+    const pickModel = (id) => evaluate(`(() => {
+      const select = document.querySelector(".model-plate-picker select");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, ${JSON.stringify(id)});
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    })()`);
+    const cta = () => evaluate('document.querySelector(".gen-cta").textContent.trim()');
+    const warning = () => evaluate('document.querySelector(".model-plate-warning")?.textContent.trim() || ""');
+    assert.equal(await evaluate('document.querySelector(".model-plate-picker select").value'), SIX_STEM.id, "new projects start on Fretformer 2");
+    await waitFor(async () => (await cta()) === "Download Fretformer 2 · 952 MB", "the download button");
+    assert.equal(await warning(), "Fretformer 2 isn't downloaded yet.");
+    assert.equal(await evaluate('document.querySelector(".gen-cta").disabled'), false, "the download button works");
+    await screenshot("0-fretformer-2-not-downloaded");
+
+    // Fretformer 1 is still one pick away: v1 faders, solos disabled, it generates.
+    await pickModel(V1_ID);
+    await waitFor(async () => (await faderNames()).join() === "Speed,Chords,Tech,Move,Repeat", "v1 style faders");
+    assert.equal(await warning(), "");
+    assert.match(await cta(), /^Generate chart/);
     assert.deepEqual(await faderNames(), ["Speed", "Chords", "Tech", "Move", "Repeat"]);
     await openMoreSettings();
     const v1Solos = settingButton("Mark solos");
@@ -205,8 +232,27 @@ async function main() {
     assert.equal(await evaluate('document.body.innerText.includes("this model doesn\'t mark solos")'), true, "v1 explains that it has no solos");
     await screenshot("1-v1-only");
 
+    // The button downloads right there. Settings shows that download instead of
+    // starting another, and Generate is ready when it finishes.
+    await pickModel(SIX_STEM.id);
+    await waitFor(async () => (await cta()) === "Download Fretformer 2 · 952 MB", "the download button again");
+    await evaluate('(() => { document.querySelector(".gen-cta").click(); return true; })()');
+    await waitFor(async () => (await cta()).startsWith("Downloading"), "the download running");
+    assert.equal(await warning(), "Fretformer 2 is downloading. Generate turns on when it's done.");
+    assert.equal(await evaluate('document.querySelector(".gen-cta").disabled'), true, "one download at a time");
+    await screenshot("0-fretformer-2-downloading");
+    await click("Settings");
+    await waitFor(() => evaluate('Boolean(document.querySelector(".settings-models"))'), "settings");
+    await waitFor(() => evaluate('document.querySelector(".settings-models").innerText.includes("Installing…")'), "settings joining the download");
+    assert.equal(installs, 1, "settings started a second download");
+    await click("Generate");
+    await waitFor(async () => (await cta()).startsWith("Downloading"), "the download still running on Generate");
+    finishInstall();
+    await waitFor(async () => /^Generate chart/.test(await cta()), "Generate ready after the download");
+    assert.equal(await warning(), "");
+    assert.equal(installs, 1, "the download ran more than once");
+
     // Installed: reload the manifest (navigate away and back).
-    installedReady = true;
     await click("Library");
     await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector(".model-plate-picker select"))'), "model picker");

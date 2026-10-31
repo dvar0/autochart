@@ -4,6 +4,7 @@ import {
   GENERATION_PRESETS,
 } from "../../data/generationSettings.js";
 import { I } from "../../icons.jsx";
+import ProgressRing from "../../components/ProgressRing.jsx";
 import GenerationProgress from "./GenerationProgress.jsx";
 import StyleFader, { KNOB_COLORS } from "./StyleFader.jsx";
 import { changedSettingsSummary } from "./MoreSettings.jsx";
@@ -24,6 +25,8 @@ export default function Console({ project }) {
     selectedGenerator,
     selectedGeneratorSetup,
     selectedGeneratorLabel,
+    modelDownload,
+    downloadSelectedModel,
     selectableGenerators,
     selectGenerator,
     supportedDifficultyIds,
@@ -77,12 +80,14 @@ export default function Console({ project }) {
       : "Stop the current generation."
     : busy
       ? "Wait for the current generation operation to finish."
+      : modelDownload
+        ? modelDownload.waiting ? "Another model is downloading." : ""
       : !sourceAudioFile
         ? "Choose a media file first."
         : !generatorId
           ? "The chart generation engine is unavailable."
           : selectedGeneratorSetup?.ready === false
-            ? selectedGeneratorSetup.message || "Open Setup to install the chart generation package."
+            ? selectedGeneratorSetup.message || "Download the model in Settings."
             : spaceShort
               ? `Not enough space on this device: the model needs ${spaceShort.neededMb} MB, about ${spaceShort.freeMb} MB is free.`
               : "";
@@ -141,7 +146,7 @@ export default function Console({ project }) {
                 )}
               </div>
               {selectedGeneratorSetup && !selectedGeneratorSetup.ready && (
-                <div className="model-plate-warning">{selectedGeneratorSetup.message}</div>
+                <div className="model-plate-warning">{modelDownload?.message || selectedGeneratorSetup.message}</div>
               )}
             </div>
 
@@ -318,20 +323,30 @@ export default function Console({ project }) {
               <button
                 className={
                   "gen-cta" +
-                  (!sourceAudioFile && !runActive ? " needs-input" : "") +
+                  (!sourceAudioFile && !runActive && !modelDownload ? " needs-input" : "") +
                   (runActive && stopping ? " is-busy" : "")
                 }
-                onClick={runActive ? handleStopGenerate : handleGenerate}
+                onClick={runActive ? handleStopGenerate : modelDownload ? downloadSelectedModel : handleGenerate}
                 disabled={
                   runActive
                     ? stopping
-                    : busy || !sourceAudioFile || !generatorId || selectedGeneratorSetup?.ready === false || Boolean(spaceShort)
+                    : modelDownload
+                      ? busy || modelDownload.installing || modelDownload.waiting
+                      : busy || !sourceAudioFile || !generatorId || selectedGeneratorSetup?.ready === false || Boolean(spaceShort)
                 }
                 aria-describedby="generate-cta-reason"
-                title={generateDisabledReason || "Generate a chart"}
+                title={generateDisabledReason || (modelDownload ? modelDownload.action : "Generate a chart")}
               >
                 {!generatorId && !runActive ? (
                   "Engine unavailable"
+                ) : modelDownload?.installing && !runActive ? (
+                  <>
+                    <ProgressRing value={modelDownload.percent} /> Downloading{modelDownload.percent != null ? ` ${modelDownload.percent}%` : "…"}
+                  </>
+                ) : modelDownload && !runActive ? (
+                  <>
+                    <I.download /> {modelDownload.action}{modelDownload.size ? ` · ${modelDownload.size}` : ""}
+                  </>
                 ) : selectedGeneratorSetup?.ready === false && !runActive ? (
                   "Setup required"
                 ) : stopping ? (

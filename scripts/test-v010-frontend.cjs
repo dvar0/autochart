@@ -94,8 +94,20 @@ function assert(condition, message) {
     );
     assert(modelFamilies.defaultGeneratorIdFrom(freshInstall) === V2_ID, "a fresh install doesn't start on Fretformer 2");
     const upgraded = installed(V1_ID);
-    assert(modelFamilies.defaultGeneratorIdFrom(upgraded) === V1_ID, "an update with only Fretformer v1 left its model");
+    assert(modelFamilies.defaultGeneratorIdFrom(upgraded) === V2_ID, "an update with only Fretformer v1 doesn't start new projects on Fretformer 2");
+    assert(
+      modelFamilies.defaultGeneratorIdFrom(upgraded, { defaultGeneratorId: V1_ID }) === V1_ID,
+      "new projects ignored the model picked in Settings"
+    );
+    assert(
+      modelFamilies.defaultGeneratorIdFrom(upgraded.map((generator) =>
+        generator.id === V2_ID ? { ...generator, setup: { ready: false, status: "unsupported" } } : generator)) === V1_ID,
+      "new projects start on a model this computer can't run"
+    );
     assert(modelFamilies.selectableGeneratorsFrom(upgraded).some((generator) => generator.id === V2_ID), "an update with only Fretformer v1 can't reach Fretformer 2");
+    assert(modelFamilies.savedGeneratorChoice({ generatorId: V1_ID }) === "", "a project from 0.1.0 stays on Fretformer 1");
+    assert(modelFamilies.savedGeneratorChoice({ generatorId: V1_ID, modelPicked: true }) === V1_ID, "a picked Fretformer 1 didn't stick");
+    assert(modelFamilies.savedGeneratorChoice({ generatorId: V2_ID }) === V2_ID, "a project on Fretformer 2 lost its model");
     const generationGate = await bundle("src/pages/generate/generationGate.js", temp);
     const unsupportedState = await bundle("src/pages/generate/UnsupportedGenerationState.jsx", temp);
     const unsupportedPairs = [
