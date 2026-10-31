@@ -100,7 +100,10 @@ async function prepareFfmpeg({ projectDir = root, platform = process.platform, a
   if (platform !== process.platform || arch !== process.arch) throw new Error("Build FFmpeg on the target OS and architecture.");
   if (!require("../config/supported-targets.cjs").supportedTarget(platform, arch)) throw new Error("Unsupported FFmpeg target.");
   const directory = buildDirectory(projectDir, platform, arch);
-  if (!rebuild && fs.existsSync(path.join(directory, "build.json"))) return readBuild({ projectDir, platform, arch });
+  const receiptPath = path.join(directory, "build.json");
+  // A build from an older recipe is rebuilt; checksum mismatches still fail.
+  const current = fs.existsSync(receiptPath) && JSON.parse(fs.readFileSync(receiptPath, "utf8")).recipeSha256 === recipeHash();
+  if (!rebuild && current) return readBuild({ projectDir, platform, arch });
   const cache = path.dirname(directory);
   const downloads = path.join(cache, "downloads");
   fs.mkdirSync(downloads, { recursive: true });
