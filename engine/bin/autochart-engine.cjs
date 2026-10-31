@@ -436,7 +436,8 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
         cacheHit: true,
         requestedDevice,
       });
-      return { ...prepareOutput, melTables, demucsModel: orch.model };
+      const songMapShown = await emitStoredSongMap(onnxLib, stemDir);
+      return { ...prepareOutput, melTables, demucsModel: orch.model, songMapShown };
     }
   }
 
@@ -464,6 +465,13 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
   }
   const length = decoded.length;
   emit({ type: "log", stage: "demucs", stream: "stdout", message: `decoded ${length} samples (${(length / orch.sampleRate).toFixed(1)}s)` });
+  const songMap = {
+    rate: onnxLib.MAP_RATE,
+    seconds: length / orch.sampleRate,
+    mix: onnxLib.mixLevels([decoded.left, decoded.right], orch.sampleRate),
+    stems: Object.fromEntries(orch.stems.map((name) => [name, []])),
+  };
+  emit({ type: "song_map", kind: "mix", rate: songMap.rate, seconds: songMap.seconds, levels: songMap.mix });
 
   const { stems, device: executionProvider } = await onnxLib.separateStems({
     manifest,
@@ -488,6 +496,10 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
       });
       emit({ type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0, audioSeconds: length / orch.sampleRate });
     },
+    onStems: ({ from, levels }) => {
+      for (const [name, values] of Object.entries(levels)) songMap.stems[name].push(...values);
+      emit({ type: "song_map", kind: "stems", from, levels });
+    },
   });
 
   let stemsMap = {};
@@ -505,6 +517,11 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
   // so later charts match earlier ones.
   const melTables = storedTables || await writeMelTables(onnxLib, manifest, job, cacheDir, tablesPath, stemsMap);
   if (!keepStems) stemsMap = await removeStems(cacheDir, stemsMap);
+  // Later runs of this song show the same map without separating again.
+  await writeVerifiedAtomic(path.join(stemDir, onnxLib.MAP_FILE), JSON.stringify(songMap), {
+    rootDirectory: cacheDir,
+    label: "Song map",
+  });
 
   const prepareOutput = {
     detail: "onnx-runtime",
@@ -535,7 +552,21 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
     device: executionProvider,
     requestedDevice,
   });
-  return { ...prepareOutput, stemArrays, melTables, demucsModel: orch.model };
+  return { ...prepareOutput, stemArrays, melTables, demucsModel: orch.model, songMapShown: true };
+}
+
+// A separation's stored map, for a run that reuses it. False when it has none
+// (separated before maps were kept).
+async function emitStoredSongMap(onnxLib, stemDir) {
+  let stored;
+  try {
+    stored = JSON.parse(await fs.readFile(path.join(stemDir, onnxLib.MAP_FILE), "utf8"));
+  } catch {
+    return false;
+  }
+  emit({ type: "song_map", kind: "mix", rate: stored.rate, seconds: stored.seconds, levels: stored.mix });
+  emit({ type: "song_map", kind: "stems", from: 0, levels: stored.stems });
+  return true;
 }
 
 async function prepareDemucsOnnx(job, jobPath, { lifecycle = createGenerationLifecycle({ emit }) } = {}) {
@@ -919,6 +950,10 @@ async function onnxDetectBeats(job, jobPath, opts = {}) {
     }),
     onSmoothingStart: () => opts.lifecycle?.enter("smoothing"),
     onSmoothingError: (error) => opts.lifecycle?.fail(error, "smoothing"),
+    onChunk: ({ index, total, beats: found, downbeats }) => {
+      emit({ type: "song_map", kind: "beats", from: index, beats: onnxLib.roundTimes(found), downbeats: onnxLib.roundTimes(downbeats) });
+      emit({ type: "stage", stage: "timing", status: "running", progress: total ? index / total : 0, audioSeconds: mono.length / orch.sampleRate });
+    },
   });
 
   const payload = {
@@ -1063,10 +1098,24 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
     demucsStage = await lifecycle.runStage("demucs", () =>
       onnxSeparate(job, jobPath, { command: "generate", generator })
     );
+    // A model that reads only the mix, or a separation from before maps were
+    // kept: the transcription needs this decode anyway, so it reuses it.
+    let decodedMix = null;
+    if (!demucsStage.songMapShown) {
+      decodedMix = await decodeFullMono(onnxLib, audioPath);
+      emit({ type: "song_map", kind: "mix", rate: onnxLib.MAP_RATE, seconds: decodedMix.length / 22050, levels: onnxLib.mixLevels([decodedMix], 22050) });
+    }
     activeGenerationStage = "timing";
     beatStage = await lifecycle.runStage("timing", () =>
       onnxDetectBeats(job, jobPath, { command: "generate", generator, settings, lifecycle })
     );
+    emit({
+      type: "song_map",
+      kind: "beats",
+      final: true,
+      beats: onnxLib.roundTimes(beatStage.beats.beatTimes),
+      downbeats: onnxLib.roundTimes(beatStage.beats.downbeatTimes || []),
+    });
     const timingOutputPath = path.join(outputDir, "timing.json");
     const timingRead = await readVerifiedFile(beatStage.beatsJsonPath, {
       label: "Demucs timing cache",
@@ -1096,7 +1145,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       requestedDevice: transcriberDevice,
     });
     emit({ type: "log", stage: "transcription", stream: "stdout", message: "transcription: decoding the mix to mono 22050 (stems come from the separation's mel tables)" });
-    const fullMono = await decodeFullMono(onnxLib, audioPath);
+    const fullMono = decodedMix || await decodeFullMono(onnxLib, audioPath);
     const audioDuration = fullMono.length / 22050;
     const beatTimes = Float64Array.from(beatStage.beats.beatTimes);
     const resolution = beatStage.beats.resolution || CHART_OUTPUT_RESOLUTION;

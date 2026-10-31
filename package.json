@@ -54,6 +54,7 @@
     "test:chart-interoperability": "node scripts/test-chart-interoperability.cjs",
     "test:clone-hero-export": "node scripts/test-clone-hero-export.cjs",
     "test:yarg-export": "node scripts/test-yarg-export.cjs",
+    "test:live-score": "node scripts/test-live-score.cjs",
     "test:source-chart-timing": "node engine/test/source-chart-timing.cjs",
     "test:source-chart-stage": "node engine/test/source-chart-stage.cjs",
     "test:imported-final-chart": "node scripts/test-imported-final-chart.cjs",

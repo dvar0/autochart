@@ -14,6 +14,7 @@
 - `npm run test:app-updates` — update feed signature, offer/what's-new state, download re-check and AppImage swap (no network); the feed itself comes from `scripts/make-update-feed.cjs` (see `docs/github-release.md`)
 - `npm run test:v010:frontend` / `test:v010:backend` — v0.1.0 UI and backend regression contracts
 - `npm run test:source-chart-timing` / `test:source-chart-stage` — imported-sync beat-grid math and real timing-stage/cache regression checks
+- `npm run test:live-score` — the song map behind the live board: engine levels and the board's state
 - `npm run test:imported-final-chart` — imported difficulty preservation, final-chart assembly, and durable slot-save checks
 - `npm run test:clone-hero-export` — real export/media compatibility checks using the bundled FFmpeg; see `docs/clone-hero-compatibility.md` for the audit and in-game checklist
 - `npm run test:yarg-export` — real YARG v0.15.0 scanner/chart-loader integration (requires .NET 10 and `AUTOCHART_YARG_CORE_PATH`); see `docs/yarg-compatibility.md`

@@ -1,3 +1,4 @@
+import { framePower } from "./songMap.mjs";
 import { createSession, graphPath, sessionDevice, tensor, runSession } from "./runtime.mjs";
 import { demucsOrchestration } from "./manifest.mjs";
 import { createStft } from "./stft.mjs";
@@ -205,7 +206,7 @@ function triangularWeights(N, transitionPower) {
 // Separate a stereo mix into the model's sources.
 // mixFlat: Float32Array length 2*L, planar (all left samples, then all right).
 // Returns [{ name, left, right }] in orch.sources order.
-async function separate(mixFlat, totalLength, sessions, orch, { onProgress = null, log = null } = {}) {
+async function separate(mixFlat, totalLength, sessions, orch, { onProgress = null, onPower = null, log = null } = {}) {
   if (totalLength !== mixFlat.length / 2) {
     throw new Error(`mix length mismatch: ${mixFlat.length} != 2*${totalLength}`);
   }
@@ -253,6 +254,20 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
     }
     // sum_weight[offset:end] += w_clipped[:targetLen]
     for (let t = 0; t < targetLen; t += 1) sumWeight[offset + t] += wClipped[t];
+
+    // Nothing later touches the audio before the next segment's start, so this
+    // stretch of each source is already final.
+    if (onPower) {
+      const stretchEnd = i + 1 < nTotal ? offsets[i + 1] : totalLength;
+      const power = {};
+      let first = 0;
+      orch.sources.forEach((name, s) => {
+        const part = framePower([rows[s * C], rows[s * C + 1]], orch.sampleRate, offset, stretchEnd, { weights: sumWeight });
+        power[name] = part.power;
+        first = part.first;
+      });
+      onPower({ first, power });
+    }
 
     const elapsed = (Date.now() - t0) / 1000;
     if (log) log(`  [seg ${i + 1}/${nTotal}] offset=${offset} chunk_len=${chunkLength} (${elapsed.toFixed(1)}s elapsed)`);

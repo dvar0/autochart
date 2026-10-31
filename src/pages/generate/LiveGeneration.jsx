@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import HighwayPreview from "../../highway/HighwayPreview.jsx";
 import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import LiveNoteStrip from "./LiveNoteStrip.jsx";
+import LiveScore from "./LiveScore.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
 import { describeRunStage, megabytesOf, runDownload, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
 import { BETA_MODELS, MODEL_FAMILIES } from "../../data/modelFamilies.js";
@@ -41,6 +42,8 @@ function liveBoardPhase(project) {
   if (runIsPreparing(project.genRun)) return "preparing";
   return "warming";
 }
+
+const SCORE_FADE_MS = 450;
 
 function signalMode(phase) {
   return phase === "separating" ? "split" : phase === "preparing" ? "prep" : "beat";
@@ -89,6 +92,19 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
   const download = phase === "downloading" ? runDownload(project.genRun) : null;
   const hasSelectedTrack = Boolean(project.track);
   const setLiveStageFocused = project.setLiveStageFocused;
+
+  // Until notes stream the board shows the song itself, then fades into the
+  // highway. A first download keeps its own signal.
+  const scoreOn = isLive && phase !== "notes" && !download;
+  const [scoreShown, setScoreShown] = useState(scoreOn);
+  useEffect(() => {
+    if (scoreOn) {
+      setScoreShown(true);
+      return undefined;
+    }
+    const timer = setTimeout(() => setScoreShown(false), SCORE_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [scoreOn]);
 
   // Interactive playback mode: the explicit "Play" click both switches the
   // board out of chase-cam AND starts audio from the top (the click IS the
@@ -241,12 +257,10 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
               </button>
             )}
           </>
-        ) : (
-          // One mounted signal for every wait, so each stage eases into the next.
-          <>
-            <StageSignal mode={signalMode(phase)} />
-          </>
-        )}
+        ) : download ? (
+          <StageSignal mode={signalMode(phase)} />
+        ) : null}
+        {scoreShown && <LiveScore map={project.genRun?.map || null} leaving={!scoreOn} />}
       </div>
       {isLive && <div className="live-stage-status">
         <div className="live-stage-status-row">
@@ -264,10 +278,10 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
             </small>
           </div>
           {!separating && !download && <span className="live-stage-notes">{live?.noteCount || 0} notes</span>}
-          {!separating && <span className="live-stage-pct">{Math.round(download ? downloadPercent(download) : pct)}%</span>}
+          <span className="live-stage-pct">{Math.round(download ? downloadPercent(download) : pct)}%</span>
         </div>
         <div className="gen-progressbar sm" aria-hidden="true">
-          {separating ? <i className="indeterminate" /> : <i style={{ width: `${download ? downloadPercent(download) : pct}%` }} />}
+          <i style={{ width: `${download ? downloadPercent(download) : pct}%` }} />
         </div>
       </div>}
     </div>

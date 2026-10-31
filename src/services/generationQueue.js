@@ -360,7 +360,7 @@ export function setQueueGenerator(generator) {
   readLengths();
 }
 
-const WATCHED_EVENTS = new Set(["stage", "log", "partial_chart", "analysis_audio", "runtime_fallback"]);
+const WATCHED_EVENTS = new Set(["stage", "log", "partial_chart", "analysis_audio", "runtime_fallback", "song_map"]);
 
 // The job charting this song right now, for its project page to show.
 export function queueJobIdFor(songId) {
@@ -392,9 +392,12 @@ function handleEvent(event) {
   if (!current || event?.jobId !== current.run.jobId) return;
   const { item, run, seen } = current;
   // What a project opened mid-run needs to catch up. A chart's notes arrive whole
-  // each time, so the latest event of each kind is enough.
+  // each time, so the latest event of each kind is enough; the song map comes in
+  // pieces, so each piece is kept.
   if (WATCHED_EVENTS.has(event.type)) {
-    const key = `${event.type}:${event.stage || ""}`;
+    const key = event.type === "song_map"
+      ? `song_map:${event.kind}:${event.final ? "final" : event.from || 0}`
+      : `${event.type}:${event.stage || ""}`;
     seen.set(key, { ...seen.get(key), ...event });
   }
   const before = `${itemPercent(item)}:${item.stage}:${item.onCpu}`;

@@ -3266,6 +3266,22 @@ video.bg-layer {
 .live-play-affordance {
   position: absolute;
   left: 10px;
+/* The song while a run gets ready: fades into the highway when notes start. */
+.live-score {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 82% at 50% -22%, color-mix(in srgb, var(--purple-bri) 20%, transparent) 0%, transparent 52%),
+    linear-gradient(180deg, #0b0e1a 0%, #07090f 72%);
+  transition: opacity .45s ease, transform .45s ease;
+}
+.live-score.is-leaving {
+  opacity: 0;
+  transform: scale(1.015);
+}
+.live-score canvas { display: block; }
   bottom: 10px;
   z-index: 4;
   border: var(--bw) solid color-mix(in srgb, var(--purple) 32%, transparent);

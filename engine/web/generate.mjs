@@ -7,6 +7,7 @@ import { beatOrchestration } from "../lib/onnx/beatDetect.mjs";
 import { separateStems, detectTiming, transcribe, transcriberChannels, needsStems, chartFromTokens } from "../lib/onnx/pipeline.mjs";
 import { releaseSessions } from "./host.mjs";
 import { stereoAt, ffmpegMonoAt, averageMonoAt } from "./audio.mjs";
+import { MAP_RATE, mixLevels, roundTimes } from "../lib/onnx/songMap.mjs";
 
 const TRANSCRIBER_RATE = 22050;
 const CHART_RESOLUTION = 192;
@@ -26,6 +27,13 @@ export async function generateChart({ manifest, audio, settings, knobNames, devi
     return out;
   };
 
+  onEvent({
+    type: "song_map",
+    kind: "mix",
+    rate: MAP_RATE,
+    seconds: audio.left.length / audio.sampleRate,
+    levels: mixLevels([audio.left, audio.right], audio.sampleRate),
+  });
   const orch = demucsOrchestration(manifest);
   const separation = !needsStems(manifest) ? { stems: [] } : await timed("demucs", async () => {
     const stereo = stereoAt(audio, orch.sampleRate);
@@ -34,6 +42,7 @@ export async function generateChart({ manifest, audio, settings, knobNames, devi
       log: log("demucs"),
       onDevice: stageDevice("demucs"),
       onProgress: ({ index, total }) => onEvent({ type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0 }),
+      onStems: ({ from, levels }) => onEvent({ type: "song_map", kind: "stems", from, levels }),
     });
     await releaseSessions();
     return out;
@@ -46,8 +55,13 @@ export async function generateChart({ manifest, audio, settings, knobNames, devi
       smooth: Boolean(settings.smoothing?.enabled),
       log: log("timing"),
       onDevice: stageDevice("timing"),
+      onChunk: ({ index, total, beats, downbeats }) => {
+        onEvent({ type: "song_map", kind: "beats", from: index, beats: roundTimes(beats), downbeats: roundTimes(downbeats) });
+        onEvent({ type: "stage", stage: "timing", status: "running", progress: total ? index / total : 0 });
+      },
     });
     await releaseSessions();
+    onEvent({ type: "song_map", kind: "beats", final: true, beats: roundTimes(out.beats.beatTimes), downbeats: roundTimes(out.beats.downbeatTimes) });
     return out;
   });
 

@@ -13,11 +13,13 @@ import { computePrefixBias } from "./prefixTables.mjs";
 import { loadEncoderSessions, loadDecoderSession, generate, makeRng } from "./transcribe.mjs";
 import { generateWithForcedSolo } from "./forceSolo.mjs";
 import * as stream from "./chartEventStream.mjs";
+import { stemLevels } from "./songMap.mjs";
 
 const VOCAB_KEYS = ["DIFF_BASE", "DESC_BASE", "N_DESCRIPTORS", "DESCRIPTOR_BIN_COUNT", "VOCAB_SIZE"];
 
 // Demucs over stereo audio at orch.sampleRate. Returns the folded stems.
-export async function separateStems({ manifest, device, left, right, log = null, onDevice = null, onProgress = null }) {
+// onStems gets each finished stretch's stem levels (songMap.mjs).
+export async function separateStems({ manifest, device, left, right, log = null, onDevice = null, onProgress = null, onStems = null }) {
   const orch = demucsOrchestration(manifest);
   const length = left.length;
   if (log) log("loading separation models");
@@ -30,20 +32,24 @@ export async function separateStems({ manifest, device, left, right, log = null,
   planar.set(left, 0);
   planar.set(right, length);
   if (log) log(`running ${orch.sources.length}-stem separation`);
-  const sourceStems = await separate(planar, length, sessions, orch, { log, onProgress });
+  const sourceStems = await separate(planar, length, sessions, orch, {
+    log,
+    onProgress,
+    onPower: onStems && (({ first, power }) => onStems({ from: first, levels: stemLevels(power, orch) })),
+  });
   return { stems: foldStems(sourceStems, orch), device: executionProvider, model: orch.model, sampleRate: orch.sampleRate };
 }
 
 // Beat This over mono audio at the beat stage's rate (22.05 kHz).
 export async function detectTiming({
-  manifest, device, mono, smooth, log = null, onDevice = null, onSmoothingStart = null, onSmoothingError = null,
+  manifest, device, mono, smooth, log = null, onDevice = null, onSmoothingStart = null, onSmoothingError = null, onChunk = null,
 }) {
   const orch = beatOrchestration(manifest);
   const sessions = await loadBeatSessions(manifest, device);
   const executionProvider = sessions.device || device;
   if (onDevice) onDevice(executionProvider);
   const detected = await detectBeats(mono, manifest, sessions, orch, {
-    log, smooth, onSmoothingStart, onSmoothingError,
+    log, smooth, onSmoothingStart, onSmoothingError, onChunk,
   });
   const activeBeatTimes = smooth ? detected.beatTimes : detected.rawBeatTimes;
   const timingMode = smooth ? "smoothed" : "raw";

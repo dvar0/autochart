@@ -18,5 +18,6 @@ module.exports = {
   ...require("./chartTokens.mjs"),
   ...require("./inpaint.mjs"),
   ...require("./resample.mjs"),
+  ...require("./songMap.mjs"),
   ...require("./pipeline.mjs"),
 };

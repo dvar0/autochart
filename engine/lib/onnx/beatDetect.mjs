@@ -228,6 +228,18 @@ function postprocessMinimal(beatLogits, downbeatLogits, fps) {
   };
 }
 
+// The beats one chunk found, before the whole song is aggregated and smoothed:
+// rough, for showing the run.
+function chunkTicks(pred, start, { chunkSize, borderSize, fps }) {
+  const { beatTimes, downbeatTimes } = postprocessMinimal(
+    pred.beat.subarray(borderSize, chunkSize - borderSize),
+    pred.downbeat.subarray(borderSize, chunkSize - borderSize),
+    fps,
+  );
+  const shift = (start + borderSize) / fps;
+  return { beats: Array.from(beatTimes, (t) => t + shift), downbeats: Array.from(downbeatTimes, (t) => t + shift) };
+}
+
 // ----------------------------- smoother ------------------------------------
 
 function median(values) {
@@ -562,6 +574,7 @@ async function detectBeats(signalMono22050, manifest, sessions, orch, {
   onSmoothingStart = null,
   onSmoothingEnd = null,
   onSmoothingError = null,
+  onChunk = null,
 } = {}) {
   const resolved = orch || beatOrchestration(manifest);
   if (!signalMono22050 || signalMono22050.length === 0) {
@@ -602,6 +615,7 @@ async function detectBeats(signalMono22050, manifest, sessions, orch, {
     const downbeatLogits = await out.downbeat_logits.getData(true);
     predChunks.push({ beat: Float32Array.from(beatLogits), downbeat: Float32Array.from(downbeatLogits) });
     if (log) log(`beat: core chunk ${i + 1}/${chunks.length}`);
+    if (onChunk) onChunk({ index: i + 1, total: chunks.length, ...chunkTicks(predChunks[i], starts[i], resolved) });
   }
 
   // 4) aggregate_prediction (keep_first = reverse order, earlier overwrites later on overlap).

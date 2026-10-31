@@ -16,6 +16,7 @@ import {
 } from "./edit/chartEditor.js";
 import { isUnsupportedGenerationTarget } from "./generationGate.js";
 import { canRetryUsingCpu } from "./hardwareRecovery.js";
+import { mergeSongMap } from "./liveScore.js";
 import {
   beginExclusiveMediaTransaction,
   beginMediaRequest,
@@ -447,10 +448,12 @@ function chartTextFromPartial(live, difficulty = "expert", metadata = {}) {
 }
 
 // One engine event's effect on a run's state.
-function runAfterEvent(run, event) {
+export function runAfterEvent(run, event) {
+  if (event.type === "song_map") return { ...run, map: mergeSongMap(run.map, event) };
   if (event.type === "stage") {
     const next = {
       ...run,
+      map: mergeSongMap(run.map, event),
       stages: {
         ...run.stages,
         [event.stage]: { status: event.status || "running", cache: event.cache === "hit", downloading: Boolean(event.downloading) },
@@ -514,7 +517,7 @@ function runAfterEvent(run, event) {
   return run;
 }
 
-function buildLiveGenerationPreview(live, difficulty, metadata) {
+export function buildLiveGenerationPreview(live, difficulty, metadata) {
   if (!live) return null;
   const chartText = chartTextFromPartial(live, difficulty, metadata);
   const committedBeats = Number(live.committedBeats) || 0;
