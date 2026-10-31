@@ -221,10 +221,10 @@ async function main() {
 
     // Fretformer 1 is still one pick away: v1 faders, solos disabled, it generates.
     await pickModel(V1_ID);
-    await waitFor(async () => (await faderNames()).join() === "Speed,Chords,Tech,Move,Repeat", "v1 style faders");
+    await waitFor(async () => (await faderNames()).join() === "Density,Chords,Tech,Move,Repeat", "v1 style faders");
     assert.equal(await warning(), "");
     assert.match(await cta(), /^Generate chart/);
-    assert.deepEqual(await faderNames(), ["Speed", "Chords", "Tech", "Move", "Repeat"]);
+    assert.deepEqual(await faderNames(), ["Density", "Chords", "Tech", "Move", "Repeat"]);
     await openMoreSettings();
     const v1Solos = settingButton("Mark solos");
     await waitFor(() => evaluate(`Boolean(${v1Solos})`), "Mark solos row");
@@ -284,7 +284,7 @@ async function main() {
       return true;
     })()`);
     await waitFor(async () => (await faderNames())[2] === "HOPOs", "six-stem faders");
-    assert.deepEqual(await faderNames(), ["Speed", "Chords", "HOPOs", "Taps", "Move"]);
+    assert.deepEqual(await faderNames(), ["Density", "Chords", "HOPOs", "Taps", "Move"]);
     assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge, .model-plate-note"))'), false, "no badge or note");
     await screenshot("3-six-stem-selected");
 

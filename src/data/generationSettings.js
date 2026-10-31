@@ -20,7 +20,7 @@ export const DEFAULT_GENERATOR_ID = "autochart.fretformer.v1-onnx";
 // only — "auto" is a separate category (see resolveDescriptorKnobValue) and
 // never sits anywhere on this scale.
 export const DESCRIPTOR_KNOBS = [
-  { id: "speed", key: "knobSpeed", name: "Speed", hint: "notes per second", compact: "Sp", ends: ["sparse", "dense"] },
+  { id: "speed", key: "knobSpeed", name: "Density", hint: "notes per second", compact: "Dn", ends: ["sparse", "dense"] },
   { id: "chords", key: "knobChords", name: "Chords", hint: "chord share", compact: "Ch", ends: ["singles", "chords"] },
   { id: "technique", key: "knobTechnique", name: "Technique", short: "Tech", hint: "hopos and taps", compact: "Tq", ends: ["plain", "taps"] },
   { id: "movement", key: "knobMovement", name: "Movement", short: "Move", hint: "fret travel", compact: "Mv", ends: ["narrow", "wide"] },

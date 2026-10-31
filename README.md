@@ -91,7 +91,7 @@ Each release includes `SHA256SUMS.txt`. Compare it against `sha256sum` (Linux),
   second or two of **Lead-in silence**. The opening often comes out cleaner.
 - **Not feeling a take? Generate another.** Every take comes out different, so
   it's worth trying two or three.
-- **The Style knobs are experimental.** Speed, Chords, Technique and the rest
+- **The Style knobs are experimental.** Density, Chords, Technique and the rest
   (under **Advanced**) only nudge the model. Don't expect big changes; leaving
   them on Auto is fine.
 - **Adding a difficulty to an existing chart?** Leave timing on **Imported chart
