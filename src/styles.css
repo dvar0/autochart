@@ -2816,6 +2816,7 @@ video.bg-layer {
   gap: 8px;
   margin-top: 4px;
 }
+.bar-pop-wide { grid-column: 1 / -1; }
 /* ---------- preview stage (monitor) ---------- */
 .gen-preview-card {
   grid-area: stage;

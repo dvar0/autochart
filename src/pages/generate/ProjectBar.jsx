@@ -149,6 +149,10 @@ export default function ProjectBar({ project }) {
               <input placeholder="Title" value={details.title} onChange={setField("title")} />
             </div>
             <div className="field">
+              <label>Album</label>
+              <input placeholder="Album" value={details.album} onChange={setField("album")} />
+            </div>
+            <div className="field">
               <label>Year</label>
               <input placeholder="Year" value={details.year} onChange={setField("year")} />
             </div>
@@ -156,7 +160,7 @@ export default function ProjectBar({ project }) {
               <label htmlFor="project-genre">Genre</label>
               <input id="project-genre" placeholder="e.g. Rock" value={details.genre || ""} onChange={setField("genre")} />
             </div>
-            <div className="field">
+            <div className="field bar-pop-wide">
               <label id="project-charter-label">Charter</label>
               <div
                 className="field-static"
