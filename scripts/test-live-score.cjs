@@ -70,6 +70,28 @@ const stemsAt = (from, length, value = 50) => ({
   assert.equal(progressAt(map.split, 1e6) >= 0.4, true, "the position never goes back");
 }
 
+// Steady steps glide at a steady speed, trail by about one step, and never stop between steps.
+{
+  let map = mergeSongMap(null, stage("demucs"), 0);
+  map = mergeSongMap(map, mix, 0);
+  let previous = 0;
+  for (let i = 1; i <= 10; i += 1) {
+    const at = i * 200;
+    if (i > 2) {
+      const before = progressAt(map.split, at - 1);
+      assert.ok(before < (i - 1) / 10, "the shown position trails the newest step");
+      assert.ok(before > (i - 2.5) / 10, "it trails by about one step");
+      assert.ok(before > previous, "still moving when the next step lands");
+      previous = before;
+    }
+    map = mergeSongMap(map, stage("demucs", { progress: i / 10 }), at);
+  }
+  // The last glide moves at about the run's own speed (0.1 per 200 ms).
+  const speed = (progressAt(map.split, 2150) - progressAt(map.split, 2000)) / 150;
+  assert.ok(Math.abs(speed - 0.1 / 200) < 0.1 / 200 * 0.15, `steady speed, got ${speed}`);
+  assert.equal(progressAt(map.split, 1e6), 1);
+}
+
 // A reused separation arrives whole and gets one quick pass.
 {
   let map = mergeSongMap(null, mix, 0);
