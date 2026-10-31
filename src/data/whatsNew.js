@@ -10,28 +10,31 @@
 //   action          the window's one button; "install-model" downloads that
 //                   model family right there, or say it's ready
 // The update notice before updating shows the same parts from update.json.
+// The text is translated where the window shows it (see src/i18n).
+import { msg } from "../i18n/index.js";
+
 export const WHATS_NEW = Object.freeze([
   {
     version: "0.2.0",
-    headline: "Fretformer 2 is here",
-    sub: "A new model that charts more like a person, with solos and sections.",
+    headline: msg("Fretformer 2 is here"),
+    sub: msg("A new model that charts more like a person, with solos and sections."),
     features: [
-      { icon: "spark", title: "Inpaint", text: "Pick some bars and generate just those again." },
-      { icon: "pencil", title: "Edit by hand", text: "Move, add and delete notes on the Edit tab." },
-      { icon: "queue", title: "Chart a whole list", text: "Pick songs in the Library and they chart one after another." },
-      { icon: "music", title: "Tighter timing", text: "Beats land on the drums far more often. Old takes keep theirs." },
-      { icon: "folder", title: "Projects come back", text: "Exports carry the project, so a song opens again with all its takes." },
-      { icon: "image", title: "Covers for every song", text: "Songs without album art get one of their own." },
+      { icon: "spark", title: msg("Inpaint"), text: msg("Pick some bars and generate just those again.") },
+      { icon: "pencil", title: msg("Edit by hand"), text: msg("Move, add and delete notes on the Edit tab.") },
+      { icon: "queue", title: msg("Chart a whole list"), text: msg("Pick songs in the Library and they chart one after another.") },
+      { icon: "music", title: msg("Tighter timing"), text: msg("Beats land on the drums far more often. Old takes keep theirs.") },
+      { icon: "folder", title: msg("Projects come back"), text: msg("Exports carry the project, so a song opens again with all its takes.") },
+      { icon: "image", title: msg("Covers for every song"), text: msg("Songs without album art get one of their own.") },
     ],
     fixes: [
-      "Watch the stems and beats come in while a song gets ready.",
-      "Style faders and more settings on Generate.",
-      "Drop song folders on the Library to bring them in.",
-      "Space plays and pauses on the Generate page.",
-      "Separations take far less room. Keep separated stems in Settings keeps them.",
-      "Exports use square album art.",
-      "Opening a project no longer shows a black screen.",
-      "The Library shows what's selected in light mode again.",
+      msg("Watch the stems and beats come in while a song gets ready."),
+      msg("Style faders and more settings on Generate."),
+      msg("Drop song folders on the Library to bring them in."),
+      msg("Space plays and pauses on the Generate page."),
+      msg("Separations take far less room. Keep separated stems in Settings keeps them."),
+      msg("Exports use square album art."),
+      msg("Opening a project no longer shows a black screen."),
+      msg("The Library shows what's selected in light mode again."),
     ],
     notesUrl: "https://github.com/dvar0/autochart/releases/tag/v0.2.0",
     action: { kind: "install-model", familyId: "fretformer-2", packId: "fretformer-2" },

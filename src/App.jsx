@@ -22,8 +22,12 @@ import {
   dismissUpdate, getUpdateState, markUpdateAnnounced, markWhatsNewSeen, onUpdateState, updatesAvailable,
 } from "./services/appUpdates.js";
 import { whatsNewBetween } from "./data/whatsNew.js";
+import { setLanguagePreference, t, useLanguage } from "./i18n/index.js";
 
 export default function App() {
+  // Redraws everything below when the language changes. Memoized parts and
+  // canvases call useLanguage() themselves.
+  useLanguage();
   const [themePreference, setThemePreference] = useState("system");
   const theme = useResolvedTheme(themePreference);
   // The browser version has no library: it opens on Start, where a project begins.
@@ -94,6 +98,7 @@ export default function App() {
       .then(async (settings) => {
         if (!active || !settings) return;
         if (["system", "light", "dark"].includes(settings.theme)) setThemePreference(settings.theme);
+        if (settings.language) setLanguagePreference(settings.language, { fromSettings: true });
         if (settings.railCollapsed) setRailCollapsed(true);
         if (!settings.setupComplete && !isWebApp()) {
           const hasLocalLibrary = await browserHasLocalSongRecords();
@@ -128,8 +133,8 @@ export default function App() {
   // The web works on one song at a time, so opening another closes this one.
   const confirmCloseSong = async () => !hasWorkToLose()
     || askConfirm({
-      title: "Close this song?",
-      body: "Anything you haven't exported will be lost.",
+      title: t("Close this song?"),
+      body: t("Anything you haven't exported will be lost."),
       confirmLabel: "Close song",
       danger: true,
     });
@@ -210,7 +215,7 @@ export default function App() {
   // it was.
   const handleOpenSongFolders = async (key, folders) => {
     if (folders.length > 1) {
-      if (isWebApp()) throw new Error("That's more than one song. Open one at a time here.");
+      if (isWebApp()) throw new Error(t("That's more than one song. Open one at a time here."));
       setPage("library");
       startBulkImport(folders).catch((error) => console.warn("[import] Folder import failed:", error));
       return;

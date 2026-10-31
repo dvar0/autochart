@@ -3,6 +3,7 @@ import EditOverview from "./EditOverview.jsx";
 import PianoRollEditor from "./PianoRollEditor.jsx";
 import EditHelp from "./EditHelp.jsx";
 import { MIN_COMPARE_CHARTS } from "../useGenerateProject.js";
+import { t } from "../../../i18n/index.js";
 
 function fmtTime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
@@ -23,17 +24,17 @@ export default function EditTimeline({ project, ws }) {
       <div className="edit-toolbar">
         {/* Same transport as the Generate tab's, under the stage. */}
         <div className="edit-transport">
-          <button className="transport-btn" onClick={ws.togglePlay} title="Play / pause (Space)">
-            {editor.playing ? <><I.pause aria-hidden="true" /> Pause</> : <><I.play aria-hidden="true" /> Play</>}
+          <button className="transport-btn" onClick={ws.togglePlay} title={t("Play / pause (Space)")}>
+            {editor.playing ? <><I.pause aria-hidden="true" /> {t("Pause")}</> : <><I.play aria-hidden="true" /> {t("Play")}</>}
           </button>
           <button
             className={"transport-btn ghost edit-loop" + (ws.loopOn && ws.loops.length ? " on" : "")}
             onClick={ws.toggleLoop}
             disabled={!ws.canLoop}
             aria-pressed={Boolean(ws.loopOn && ws.loops.length)}
-            title={ws.canLoop ? "Loop the area the playhead is in (L)" : "Select something to loop"}
+            title={ws.canLoop ? t("Loop the area the playhead is in (L)") : t("Select something to loop")}
           >
-            <I.loop aria-hidden="true" /> Loop
+            <I.loop aria-hidden="true" /> {t("Loop")}
           </button>
           <span className="transport-time">{fmtTime(editor.playhead.time)}</span>
         </div>
@@ -60,24 +61,24 @@ export default function EditTimeline({ project, ws }) {
 
         <div className="edit-view-controls">
           <div className="edit-zoom">
-            <button onClick={() => ws.rollApiRef.current?.zoom(0.8)} aria-label="Zoom out" title="Zoom out (−)"><I.minus /></button>
-            <button onClick={() => ws.rollApiRef.current?.zoom(1.25)} aria-label="Zoom in" title="Zoom in (+)"><I.plus /></button>
+            <button onClick={() => ws.rollApiRef.current?.zoom(0.8)} aria-label={t("Zoom out")} title={t("Zoom out (−)")}><I.minus /></button>
+            <button onClick={() => ws.rollApiRef.current?.zoom(1.25)} aria-label={t("Zoom in")} title={t("Zoom in (+)")}><I.plus /></button>
           </div>
           <div className="edit-menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
             <button
               className="edit-icon-btn"
               onClick={() => ws.setHelpOpen((v) => !v)}
               aria-expanded={ws.helpOpen}
-              aria-label="Mouse and keys"
-              title="Mouse and keys"
+              aria-label={t("Mouse and keys")}
+              title={t("Mouse and keys")}
             >
               ?
             </button>
             {ws.helpOpen && <EditHelp tab={ws.tab} />}
           </div>
           <div className="edit-history">
-            <button onClick={undoEditorChange} disabled={!editor.canUndo} title="Undo (Ctrl+Z)"><I.undo aria-hidden="true" /> Undo</button>
-            <button onClick={redoEditorChange} disabled={!editor.canRedo} title="Redo (Ctrl+Shift+Z)"><I.redo aria-hidden="true" /> Redo</button>
+            <button onClick={undoEditorChange} disabled={!editor.canUndo} title={t("Undo (Ctrl+Z)")}><I.undo aria-hidden="true" /> {t("Undo")}</button>
+            <button onClick={redoEditorChange} disabled={!editor.canRedo} title={t("Redo (Ctrl+Shift+Z)")}><I.redo aria-hidden="true" /> {t("Redo")}</button>
           </div>
           {/* Same button, same corner as the takes deck's. */}
           <button
@@ -86,13 +87,13 @@ export default function EditTimeline({ project, ws }) {
             disabled={!ws.comparing && ws.compareMarks.length < MIN_COMPARE_CHARTS}
             title={
               ws.comparing
-                ? "Back to single preview"
+                ? t("Back to single preview")
                 : ws.compareMarks.length < MIN_COMPARE_CHARTS
-                  ? "Check at least two takes to compare"
+                  ? t("Check at least two takes to compare")
                   : undefined
             }
           >
-            {ws.comparing ? <><I.close /> Comparing</> : `Compare (${ws.compareMarks.length})`}
+            {ws.comparing ? <><I.close /> {t("Comparing")}</> : t("Compare ({count})", { count: ws.compareMarks.length })}
           </button>
         </div>
       </div>

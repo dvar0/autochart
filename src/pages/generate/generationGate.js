@@ -1,3 +1,5 @@
+import { t } from "../../i18n/index.js";
+
 export function isUnsupportedGenerationTarget(status = {}) {
   return status?.supportedPlatform === false && status?.platform !== "browser";
 }
@@ -8,6 +10,6 @@ export function generationGateState(status = {}) {
   return {
     unsupported,
     showSetupCta: !unsupported && !ready,
-    message: status?.message || status?.error || "Chart generation needs setup before it can run.",
+    message: status?.message || status?.error || t("Chart generation needs setup before it can run."),
   };
 }

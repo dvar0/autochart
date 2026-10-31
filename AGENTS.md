@@ -15,6 +15,7 @@
 - `npm run test:v010:frontend` / `test:v010:backend` — v0.1.0 UI and backend regression contracts
 - `npm run test:source-chart-timing` / `test:source-chart-stage` — imported-sync beat-grid math and real timing-stage/cache regression checks
 - `npm run test:live-score` — the song map behind the live board: engine levels and the board's state
+- `npm run test:i18n` — translation check: every `t()`/`tn()`/`msg()` text has a Spanish and Brazilian Portuguese entry, placeholders match, no unused entries
 - `npm run test:imported-final-chart` — imported difficulty preservation, final-chart assembly, and durable slot-save checks
 - `npm run test:clone-hero-export` — real export/media compatibility checks using the bundled FFmpeg; see `docs/clone-hero-compatibility.md` for the audit and in-game checklist
 - `npm run test:yarg-export` — real YARG v0.15.0 scanner/chart-loader integration (requires .NET 10 and `AUTOCHART_YARG_CORE_PATH`); see `docs/yarg-compatibility.md`
@@ -41,6 +42,7 @@ No conventional test framework, linter, or formatter is configured. Custom Node 
 
 - No CSS framework — plain `src/styles.css` with `data-theme` attribute for theming.
 - No component library — all UI is hand-rolled in `src/components/`.
+- **UI text goes through `src/i18n/`:** wrap it in `t("English text", { vars })`, plurals in `tn(count, one, other)`, inline markup in `rich()`; text kept in data files is marked `msg("...")` and translated with `t(label)` where it's shown. The English text is the key; add each new text to `src/i18n/es.js` and `src/i18n/pt-BR.js`, then run `npm run test:i18n`. Stored data (take names, settings) stays English and is translated when displayed. Memo'd components that show text call `useLanguage()` so they re-render when the language changes. Dev builds have a pseudo-locale (`?lang=xx`) for spotting clipped or untranslated text.
 - `package.json` uses `"type": "module"` so JS files are ESM by default, but Electron and engine files are `.cjs`.
 - On-demand generation goes through the engine contract (`engine/manifest.json`, job JSON, result JSON), never direct calls from React into engine internals.
 - **Never call `getData()` on a WebGPU `gpu-buffer` tensor:** onnxruntime-node 1.27 aborts the whole process (`terminate called after throwing an instance of 'char const*'`). Keep such tensors on the device (feed them to another session; see `sliceGpuCache` in `transcribe.mjs`).

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import LanguagePicker from "../components/LanguagePicker.jsx";
+import { msg, rich, t, tn } from "../i18n/index.js";
 import { I } from "../icons.jsx";
 import { generationDownloadSize } from "../data/generationCatalog.js";
 import { DeviceReadout, UNCHECKED_DEVICE, browserLabel, deviceFromProbe, memoryText } from "../components/DeviceFacts.jsx";
@@ -52,25 +54,21 @@ const EMPTY_SETTINGS = {
 };
 
 const FOLDER_ROWS = [
-  { key: "cloneHeroLibraryFolder", title: "Clone Hero / YARG songs", choose: chooseCloneHeroLibraryFolder },
-  { key: "projectsFolder", title: "Projects", choose: chooseProjectsFolder },
-  { key: "cacheFolder", title: "Cache", choose: chooseCacheFolder },
-  { key: "modelsFolder", title: "Model files", choose: chooseModelsFolder },
+  { key: "cloneHeroLibraryFolder", title: msg("Clone Hero / YARG songs"), choose: chooseCloneHeroLibraryFolder },
+  { key: "projectsFolder", title: msg("Projects"), choose: chooseProjectsFolder },
+  { key: "cacheFolder", title: msg("Cache"), choose: chooseCacheFolder },
+  { key: "modelsFolder", title: msg("Model files"), choose: chooseModelsFolder },
 ];
 
-const KEEP_STEMS_HELP =
-  "Charts only need a few MB from each separation, so the separated stems (hundreds of MB a song) are "
-  + "deleted afterwards. Turn this on to keep them. Playing stems separates the song again when they're gone.";
+const KEEP_STEMS_HELP = msg("Charts only need a few MB from each separation, so the separated stems (hundreds of MB a song) are deleted afterwards. Turn this on to keep them. Playing stems separates the song again when they're gone.");
 
-const FILL_IN_DRAFTS_HELP =
-  "Inpaint normally redoes the bars you pick. Turn this on to also use it in Generate to write "
-  + "a whole chart, and to pick it for new projects. It's still experimental.";
+const FILL_IN_DRAFTS_HELP = msg("Inpaint normally redoes the bars you pick. Turn this on to also use it in Generate to write a whole chart, and to pick it for new projects. It's still experimental.");
 
 const NOTICE_BUTTONS = [
-  { key: "releaseNotes", label: "Release notes" },
-  { key: "thirdParty", label: "Licenses" },
-  { key: "ffmpegLicense", label: "FFmpeg license" },
-  { key: "privacy", label: "Privacy" },
+  { key: "releaseNotes", label: msg("Release notes") },
+  { key: "thirdParty", label: msg("Licenses") },
+  { key: "ffmpegLicense", label: msg("FFmpeg license") },
+  { key: "privacy", label: msg("Privacy") },
 ];
 
 // Last values the page saw. Revisits render these immediately and refresh them
@@ -91,21 +89,21 @@ function gpuName(hardware) {
 }
 
 function performanceSummary(hardware, unsupported) {
-  if (unsupported) return `${friendlyTarget(hardware)} is unsupported.`;
-  if (!hardware) return "Checking hardware…";
+  if (unsupported) return t("{platform} is unsupported.", { platform: friendlyTarget(hardware) });
+  if (!hardware) return t("Checking hardware…");
   const device = hardware.selectedMode === "cpu" ? hardware.cpu : gpuName(hardware);
-  return `Using ${hardware.selectedModeLabel}${device ? ` · ${device}` : ""}`;
+  const mode = hardware.selectedModeLabel;
+  return device ? t("Using {mode} · {device}", { mode, device }) : t("Using {mode}", { mode });
 }
 
 const EXPORT_FORMATS = [
-  { value: "sng", label: "One file (.sng)", help: "Goes straight into your Clone Hero or YARG songs folder." },
-  { value: "zip", label: "Folder (.zip)", help: "Unzips into a song folder you can edit by hand." },
+  { value: "sng", label: msg("One file (.sng)"), help: msg("Goes straight into your Clone Hero or YARG songs folder.") },
+  { value: "zip", label: msg("Folder (.zip)"), help: msg("Unzips into a song folder you can edit by hand.") },
 ];
-const USAGE_COUNTS_HELP =
-  "Counts like charts made, which model, and what failed, so we can see what works. Never your songs, files or anything that identifies you. Do Not Track turns it off too.";
+const USAGE_COUNTS_HELP = msg(
+  "Counts like charts made, which model, and what failed, so we can see what works. Never your songs, files or anything that identifies you. Do Not Track turns it off too.");
 
-const UPDATE_CHECK_HELP =
-  "Once a day, Autochart checks GitHub for a newer version. Nothing about you or your songs is sent.";
+const UPDATE_CHECK_HELP = msg("Once a day, Autochart checks GitHub for a newer version. Nothing about you or your songs is sent.");
 
 // One status for a family's generators: ready, missing, partial (some files),
 // or repair (a file failed verification).
@@ -136,7 +134,7 @@ function formatSize(bytes) {
 
 function StatusPill({ status, label = "" }) {
   const value = status || "missing";
-  return <span className={`setup-status ${value}`}>{label || humanizeStatus(value)}</span>;
+  return <span className={`setup-status ${value}`}>{label ? t(label) : humanizeStatus(value)}</span>;
 }
 
 // The browser's models count as usable before they're downloaded (they
@@ -144,9 +142,24 @@ function StatusPill({ status, label = "" }) {
 function webModelFilesPill(setup) {
   if (!setup) return { status: "checking" };
   const statuses = Object.values(setup.generatorReadiness || {});
-  if (statuses.some((status) => status.downloaded)) return { status: "ready", label: "Downloaded" };
-  if (statuses.some((status) => status.status === "partial")) return { status: "partial", label: "Partly downloaded" };
-  return { status: "missing", label: "Not downloaded" };
+  if (statuses.some((status) => status.downloaded)) return { status: "ready", label: msg("Downloaded") };
+  if (statuses.some((status) => status.status === "partial")) return { status: "partial", label: msg("Partly downloaded") };
+  return { status: "missing", label: msg("Not downloaded") };
+}
+
+// A model's status line. The main process words it in English, so model
+// statuses are said again here in the current language.
+const MODEL_STATUS_TEXT = {
+  ready: msg("{model} is ready."),
+  missing: msg("{model} is missing."),
+  corrupt: msg("{model} needs repair."),
+  unsupported: msg("{model} is not supported on this platform."),
+  partial: msg("{model} is partly installed."),
+};
+
+function componentMessage(component) {
+  const text = component.kind === "chart-model" && MODEL_STATUS_TEXT[component.status];
+  return text ? t(text, { model: component.label }) : component.message || component.kind;
 }
 
 function ComponentCard({ component }) {
@@ -156,7 +169,7 @@ function ComponentCard({ component }) {
       <div className="setup-component-main">
         <div>
           <h3>{component.label}</h3>
-          <p>{component.message || component.kind}</p>
+          <p>{componentMessage(component)}</p>
         </div>
         <StatusPill status={component.status} />
       </div>
@@ -167,7 +180,7 @@ function ComponentCard({ component }) {
       </div>
       {files.length > 0 && (
         <details className="setup-details">
-          <summary>Exact files</summary>
+          <summary>{t("Exact files")}</summary>
           <div className="setup-file-list">
             {files.map((file, index) => (
               <div key={`${file.path}-${index}`} className="setup-file-row">
@@ -186,18 +199,18 @@ function ComponentCard({ component }) {
 // processor, and some don't name the graphics card.
 function WebHardwareDetails({ hardware }) {
   const webgpu = hardware.webgpuAvailable
-    ? hardware.selectedMode === "webgpu" ? "Available" : "Available, set to processor"
-    : "Not available";
-  const gpu = hardware.webgpuAvailable ? hardware.gpuDetails || "Not named by this browser" : "Not reachable";
-  const threads = hardware.cpuCount ? `${hardware.cpuCount} threads` : "Not reported";
+    ? hardware.selectedMode === "webgpu" ? t("Available") : t("Available, set to processor")
+    : t("Not available");
+  const gpu = hardware.webgpuAvailable ? hardware.gpuDetails || t("Not named by this browser") : t("Not reachable");
+  const threads = hardware.cpuCount ? tn(hardware.cpuCount, "{count} thread", "{count} threads") : t("Not reported");
   return (
     <div className="hardware-details">
-      <div><span>Browser</span><b>{browserLabel()}</b></div>
+      <div><span>{t("Browser")}</span><b>{browserLabel()}</b></div>
       <div><span>WebGPU</span><b>{webgpu}</b></div>
       <div><span>GPU</span><b>{gpu}</b></div>
-      <div><span>CPU</span><b>{threads}{hardware.crossOriginIsolated ? "" : ", one used (page not isolated)"}</b></div>
-      <div><span>Memory</span><b>{memoryText(hardware.totalMemoryMb ? hardware.totalMemoryMb / 1024 : null)}</b></div>
-      <div><span>Runtime</span><b>{humanizeRuntime(hardware.selectedRuntimePack)}</b></div>
+      <div><span>CPU</span><b>{hardware.crossOriginIsolated ? threads : t("{threads}, one used (page not isolated)", { threads })}</b></div>
+      <div><span>{t("Memory")}</span><b>{memoryText(hardware.totalMemoryMb ? hardware.totalMemoryMb / 1024 : null)}</b></div>
+      <div><span>{t("Runtime")}</span><b>{humanizeRuntime(hardware.selectedRuntimePack)}</b></div>
     </div>
   );
 }
@@ -219,18 +232,18 @@ function DiagnosticsSheet({ setup, hardware, busy, onCheck, onClose }) {
   return (
     <>
       <div className="settings-sheet-scrim" onClick={onClose} aria-hidden="true" />
-      <section className="settings-sheet" role="dialog" aria-label="Diagnostics">
+      <section className="settings-sheet" role="dialog" aria-label={t("Diagnostics")}>
         <header className="ms-head">
-          <h2>Diagnostics</h2>
-          <button type="button" className="ms-close" onClick={onClose} aria-label="Close diagnostics" title="Close (Esc)">
+          <h2>{t("Diagnostics")}</h2>
+          <button type="button" className="ms-close" onClick={onClose} aria-label={t("Close diagnostics")} title={t("Close (Esc)")}>
             <I.plus />
           </button>
         </header>
         <div className="settings-sheet-body">
           <div className="advanced-row">
             <div>
-              <b>Model files</b>
-              <small>{isWebApp() ? "Checks which model files this browser has." : "Checks every installed file against its checksum."}</small>
+              <b>{t("Model files")}</b>
+              <small>{isWebApp() ? t("Checks which model files this browser has.") : t("Checks every installed file against its checksum.")}</small>
             </div>
             <div className="advanced-row-actions">
               {isWebApp()
@@ -240,9 +253,9 @@ function DiagnosticsSheet({ setup, hardware, busy, onCheck, onClose }) {
                 className="settings-secondary"
                 onClick={onCheck}
                 disabled={Boolean(busy)}
-                title={busy ? "Wait for the current settings operation to finish." : "Check the model files again"}
+                title={busy ? t("Wait for the current settings operation to finish.") : t("Check the model files again")}
               >
-                <I.spark /> {busy === "loading" ? "Checking…" : "Check files"}
+                <I.spark /> {busy === "loading" ? t("Checking…") : t("Check files")}
               </button>
             </div>
           </div>
@@ -252,17 +265,17 @@ function DiagnosticsSheet({ setup, hardware, busy, onCheck, onClose }) {
           {hardware && isWebApp() && <WebHardwareDetails hardware={hardware} />}
           {hardware && !isWebApp() && (
             <div className="hardware-details">
-              <div><span>Platform</span><b>{friendlyTarget(hardware)}</b></div>
-              {hardware.supportLabel && <div><span>Support</span><b>{humanizeSupportLabel(hardware.supportLabel)}</b></div>}
-              <div><span>CPU</span><b>{hardware.cpu || "Unknown"}</b></div>
-              <div><span>GPU</span><b>{hardware.nvidia?.detected ? hardware.nvidia.gpus.map((gpu) => gpu.name).join(", ") : "Not detected"}</b></div>
-              <div><span>Runtime</span><b>{humanizeRuntime(hardware.selectedRuntimePack)}</b></div>
-              <div><span>Provider</span><b>{humanizeStatus(hardware.providerStatus)}</b></div>
+              <div><span>{t("Platform")}</span><b>{friendlyTarget(hardware)}</b></div>
+              {hardware.supportLabel && <div><span>{t("Support")}</span><b>{humanizeSupportLabel(hardware.supportLabel)}</b></div>}
+              <div><span>CPU</span><b>{hardware.cpu || t("Unknown")}</b></div>
+              <div><span>GPU</span><b>{hardware.nvidia?.detected ? hardware.nvidia.gpus.map((gpu) => gpu.name).join(", ") : t("Not detected")}</b></div>
+              <div><span>{t("Runtime")}</span><b>{humanizeRuntime(hardware.selectedRuntimePack)}</b></div>
+              <div><span>{t("Provider")}</span><b>{humanizeStatus(hardware.providerStatus)}</b></div>
             </div>
           )}
           {setup?.sourceRoots?.length > 0 && (
             <div className="setup-file-list">
-              <b className="settings-sheet-label">Folders checked</b>
+              <b className="settings-sheet-label">{t("Folders checked")}</b>
               {setup.sourceRoots.map((root) => (
                 <div className="setup-file-row" key={root}>
                   <span>{root}</span>
@@ -317,7 +330,7 @@ export default function Settings() {
       // After the scan so a fresh check's digests are reused here.
       setManifest(await listGenerators());
     } catch (err) {
-      setMessage({ text: err.message || "Could not load settings.", tone: "error" });
+      setMessage({ text: err.message || t("Could not load settings."), tone: "error" });
     } finally {
       if (fresh) setBusy("");
     }
@@ -350,11 +363,11 @@ export default function Settings() {
         result?.canceled || label === "opening"
           ? ""
           : label === "clear-cache"
-            ? "Cache cleared."
-            : "Settings updated."
+            ? t("Cache cleared.")
+            : t("Settings updated.")
       );
     } catch (err) {
-      setMessage({ text: err.message || "Settings action failed.", tone: "error" });
+      setMessage({ text: err.message || t("Settings action failed."), tone: "error" });
     } finally {
       setBusy("");
     }
@@ -364,10 +377,10 @@ export default function Settings() {
     const cachePath = settings.cacheFolder;
     if (!cachePath) return;
     const confirmed = await askConfirm({
-      title: "Clear the cache?",
-      body: "This deletes Autochart's separations and analysis for good. Your projects stay.",
+      title: t("Clear the cache?"),
+      body: t("This deletes Autochart's separations and analysis for good. Your projects stay."),
       detail: cachePath,
-      confirmLabel: "Clear cache",
+      confirmLabel: t("Clear cache"),
       danger: true,
     });
     if (confirmed) {
@@ -394,7 +407,7 @@ export default function Settings() {
     } catch (err) {
       if (seq !== hardwareModeSeq.current) return;
       setSettings(previous);
-      setMessage({ text: err.message || "Could not update hardware mode.", tone: "error" });
+      setMessage({ text: err.message || t("Could not update hardware mode."), tone: "error" });
     }
   };
 
@@ -407,24 +420,24 @@ export default function Settings() {
       setSettings({ ...EMPTY_SETTINGS, ...next });
     } catch (err) {
       setSettings(previous);
-      setMessage({ text: err.message || "Could not save the model setting.", tone: "error" });
+      setMessage({ text: err.message || t("Could not save the model setting."), tone: "error" });
     }
   };
 
   const installModels = async (family) => {
     setBusy(`installing-${family.id}`);
     setMessage("");
-    setInstallProgress({ phase: "starting", percent: 0, message: "Preparing download." });
+    setInstallProgress({ phase: "starting", percent: 0, message: t("Preparing download.") });
     try {
       const result = await installAssets(family.packId);
       if (result?.settings) setSettings({ ...EMPTY_SETTINGS, ...result.settings });
       if (result?.setup) setSetup(result.setup);
       await refreshModels();
       setInstallProgress((current) => ({ ...(current || {}), phase: "complete", percent: 100 }));
-      setMessage("Model installed.");
+      setMessage(t("Model installed."));
     } catch (err) {
       setInstallProgress((current) => ({ ...(current || {}), phase: "failed" }));
-      setMessage({ text: err.message || "Could not install the model.", tone: "error" });
+      setMessage({ text: err.message || t("Could not install the model."), tone: "error" });
     } finally {
       setBusy("");
     }
@@ -440,7 +453,7 @@ export default function Settings() {
   // Browser version: models and separations live in the browser's storage, which
   // phones run short of, so they can be removed here.
   const removeDownloads = async (request, question) => {
-    const confirmed = await askConfirm({ title: "Remove downloads?", body: question, confirmLabel: "Remove", danger: true });
+    const confirmed = await askConfirm({ title: t("Remove downloads?"), body: question, confirmLabel: t("Remove"), danger: true });
     if (!confirmed) return;
     setBusy(request.all ? "removing-all" : `removing-${request.packId}`);
     setMessage("");
@@ -449,9 +462,9 @@ export default function Settings() {
       if (result?.setup) setSetup(result.setup);
       await refreshModels();
       setInstallProgress(null);
-      setMessage("Removed.");
+      setMessage(t("Removed."));
     } catch (err) {
-      setMessage({ text: err.message || "Could not remove the models.", tone: "error" });
+      setMessage({ text: err.message || t("Could not remove the models."), tone: "error" });
     } finally {
       setBusy("");
     }
@@ -463,7 +476,9 @@ export default function Settings() {
       .reduce((sum, id) => sum + (generatorsById.get(id)?.setup?.bytes || 0), 0);
     void removeDownloads(
       { packId: family.packId },
-      `${family.label} leaves this browser${bytes ? `, freeing ${formatSize(bytes)}` : ""}. It downloads again the next time you use it.`
+      bytes
+        ? t("{model} leaves this browser, freeing {size}. It downloads again the next time you use it.", { model: family.label, size: formatSize(bytes) })
+        : t("{model} leaves this browser. It downloads again the next time you use it.", { model: family.label })
     );
   };
 
@@ -473,12 +488,14 @@ export default function Settings() {
 
   const removeAll = () => {
     const parts = [
-      setup?.cachedBytes >= 1e6 ? `models ${formatSize(setup.cachedBytes)}` : "",
-      setup?.stemBytes >= 1e6 ? `separations ${formatSize(setup.stemBytes)}` : "",
+      setup?.cachedBytes >= 1e6 ? t("models {size}", { size: formatSize(setup.cachedBytes) }) : "",
+      setup?.stemBytes >= 1e6 ? t("separations {size}", { size: formatSize(setup.stemBytes) }) : "",
     ].filter(Boolean).join(", ");
     void removeDownloads(
       { all: true },
-      `Models and separations leave this browser${parts ? ` (${parts})` : ""}. They come back the next time you generate. Your songs and charts stay.`
+      parts
+        ? t("Models and separations leave this browser ({sizes}). They come back the next time you generate. Your songs and charts stay.", { sizes: parts })
+        : t("Models and separations leave this browser. They come back the next time you generate. Your songs and charts stay.")
     );
   };
 
@@ -486,10 +503,10 @@ export default function Settings() {
     try {
       const opened = await openNotice(key);
       if (!opened) {
-        setMessage({ text: "Notices are available in the desktop app.", tone: "info" });
+        setMessage({ text: t("Notices are available in the desktop app."), tone: "info" });
       }
     } catch (err) {
-      setMessage({ text: err.message || "Could not open the notice.", tone: "error" });
+      setMessage({ text: err.message || t("Could not open the notice."), tone: "error" });
     }
   };
 
@@ -508,11 +525,11 @@ export default function Settings() {
     <>
       {NOTICE_BUTTONS.map((notice) => (
         <button key={notice.key} className="settings-secondary" onClick={() => openBundledNotice(notice.key)}>
-          {notice.label}
+          {t(notice.label)}
         </button>
       ))}
       <a className="settings-secondary" href={NOTICE_LINKS.ffmpeg} target="_blank" rel="noreferrer">
-        FFmpeg legal
+        {t("FFmpeg legal")}
       </a>
     </>
   );
@@ -537,8 +554,8 @@ export default function Settings() {
             className="settings-secondary model-remove"
             onClick={() => removeFamily(family)}
             disabled={Boolean(busy)}
-            aria-label={`Remove ${family.label}`}
-            title={`Remove ${family.label} from this browser`}
+            aria-label={t("Remove {model}", { model: family.label })}
+            title={t("Remove {model} from this browser", { model: family.label })}
           >
             <I.trash />
           </button>
@@ -550,18 +567,18 @@ export default function Settings() {
     const installing = busy === `installing-${family.id}`;
     const spaceShort = web && generatorsById.get(family.generatorId)?.setup?.spaceShort;
     const label = installing
-      ? "Installing…"
+      ? t("Installing…")
       : spaceShort
-        ? "Not enough space"
+        ? t("Not enough space")
         : status === "missing"
-          ? `Download${size ? ` · ${size}` : ""}`
-          : "Repair";
+          ? size ? t("Download · {size}", { size }) : t("Download")
+          : t("Repair");
     const reason = spaceShort
-      ? `Needs ${spaceShort.neededMb} MB, about ${spaceShort.freeMb} MB is free on this device.`
+      ? t("Needs {needed} MB, about {free} MB is free on this device.", { needed: spaceShort.neededMb, free: spaceShort.freeMb })
       : !downloadable
-        ? "Not available to download yet."
+        ? t("Not available to download yet.")
         : busy && !installing
-          ? "Wait for the current settings operation to finish."
+          ? t("Wait for the current settings operation to finish.")
           : "";
     return (
       <>
@@ -570,7 +587,7 @@ export default function Settings() {
           onClick={() => installModels(family)}
           disabled={!downloadable || Boolean(spaceShort) || Boolean(busy)}
           aria-describedby={`settings-install-reason-${family.id}`}
-          title={reason || `Download ${family.label}`}
+          title={reason || t("Download {model}", { model: family.label })}
         >
           {label}
         </button>
@@ -586,7 +603,7 @@ export default function Settings() {
     ...family,
     action: familyAction(family),
     pickable: isReady(family.generatorId),
-    reason: `Download ${family.label} first`,
+    reason: t("Download {model} first", { model: family.label }),
   });
   const families = MODEL_FAMILIES.filter((family) => !(web && family.desktopOnly));
   const modelRows = [
@@ -600,9 +617,9 @@ export default function Settings() {
         // In the browser it downloads the first time Inpaint runs.
         action: downloaded
           ? <StatusPill status="ready" />
-          : installed ? null : <span className="model-row-note">With {family.label}</span>,
+          : installed ? null : <span className="model-row-note">{t("With {model}", { model: family.label })}</span>,
         pickable: installed && settings.fillInDrafts,
-        reason: installed ? "Turn on Write whole charts first" : `Download ${family.label} first`,
+        reason: installed ? t("Turn on Write whole charts first") : t("Download {model} first", { model: family.label }),
       };
     }),
     ...families.filter((family) => family.experimental).map(familyRow),
@@ -621,18 +638,21 @@ export default function Settings() {
     <div className="ac-body settings-page">
       <main className="settings-main">
         <header className="page-head settings-head">
-          <h1 className="page-title">Settings</h1>
-          <button className="settings-secondary" onClick={() => setDiagnosticsOpen(true)} title="Model files and hardware">
-            <I.info /> Diagnostics
-          </button>
+          <h1 className="page-title">{t("Settings")}</h1>
+          <div className="settings-head-actions">
+            <LanguagePicker />
+            <button className="settings-secondary" onClick={() => setDiagnosticsOpen(true)} title={t("Model files and hardware")}>
+              <I.info /> {t("Diagnostics")}
+            </button>
+          </div>
         </header>
 
         {settings.settingsRecovery && (
           <section className="settings-card settings-recovery" role="status">
             <div>
-              <h2 className="settings-card-title">Your settings were reset</h2>
+              <h2 className="settings-card-title">{t("Your settings were reset")}</h2>
               <p className="settings-card-sub">
-                The old settings file couldn't be read. It's saved at <code>{settings.settingsRecovery.backupPath}</code>.
+                {rich("The old settings file couldn't be read. It's saved at <code>{path}</code>.", { code: (text) => <code>{text}</code> }, { path: settings.settingsRecovery.backupPath })}
               </p>
             </div>
             <button
@@ -640,7 +660,7 @@ export default function Settings() {
               disabled={Boolean(busy)}
               onClick={() => runAction("dismiss-recovery", dismissSettingsRecoveryNotice)}
             >
-              Dismiss
+              {t("Dismiss")}
             </button>
           </section>
         )}
@@ -648,8 +668,8 @@ export default function Settings() {
         <div className={"settings-grid" + (isWebApp() ? " is-web" : "")}>
           <section className="settings-card settings-models" aria-labelledby="settings-models-title">
             <div className="settings-card-head">
-              <h2 className="settings-card-title" id="settings-models-title">Models</h2>
-              <span className="settings-card-hint" id="settings-models-pick">Pick the one new projects start with</span>
+              <h2 className="settings-card-title" id="settings-models-title">{t("Models")}</h2>
+              <span className="settings-card-hint" id="settings-models-pick">{t("Pick the one new projects start with")}</span>
             </div>
 
             <div
@@ -672,28 +692,28 @@ export default function Settings() {
                       className="model-pick"
                       onClick={() => updateModelPreference({ defaultGeneratorId: row.generatorId })}
                       disabled={!row.pickable}
-                      title={row.pickable ? `Start new projects with ${row.label}` : row.reason}
+                      title={row.pickable ? t("Start new projects with {model}", { model: row.label }) : row.reason}
                     />
                     <span className="model-radio" aria-hidden="true" />
                     <span className={`model-badge ${row.id}`} aria-hidden="true">{row.badge}</span>
                     <div className="model-row-copy">
                       <div className="model-row-name">
                         <b>{row.label}</b>
-                        {row.recommended && <span className="model-tag recommended">Recommended</span>}
-                        {row.experimental && <span className="model-tag beta">Experimental</span>}
+                        {row.recommended && <span className="model-tag recommended">{t("Recommended")}</span>}
+                        {row.experimental && <span className="model-tag beta">{t("Experimental")}</span>}
                       </div>
                       <small>{row.about}</small>
                     </div>
                     <div className="model-row-action">
                       {isBetaGenerator(row.generatorId) && (
                         <div className="model-row-option">
-                          <span id="settings-fill-in-drafts">Write whole charts</span>
-                          <span className="model-tag beta">Beta</span>
+                          <span id="settings-fill-in-drafts">{t("Write whole charts")}</span>
+                          <span className="model-tag beta">{t("Beta")}</span>
                           <i
                             className="ms-info"
                             role="img"
-                            aria-label={FILL_IN_DRAFTS_HELP}
-                            title={FILL_IN_DRAFTS_HELP}
+                            aria-label={t(FILL_IN_DRAFTS_HELP)}
+                            title={t(FILL_IN_DRAFTS_HELP)}
                           >
                             <I.info />
                           </i>
@@ -720,15 +740,15 @@ export default function Settings() {
 
             {web && (
               <div className="model-storage">
-                <span>{storedBytes ? `${formatSize(storedBytes)} on this device` : "Nothing downloaded yet"}</span>
+                <span>{storedBytes ? t("{size} on this device", { size: formatSize(storedBytes) }) : t("Nothing downloaded yet")}</span>
                 <button
                   type="button"
                   className="settings-secondary"
                   onClick={removeAll}
                   disabled={Boolean(busy) || !storedBytes}
-                  title="Remove every model and separated stem from this browser"
+                  title={t("Remove every model and separated stem from this browser")}
                 >
-                  <I.trash /> Remove all
+                  <I.trash /> {t("Remove all")}
                 </button>
               </div>
             )}
@@ -737,7 +757,7 @@ export default function Settings() {
           {/* The browser keeps its files in its own storage: no folders to pick. */}
           {!isWebApp() && <section className="settings-card settings-folders" aria-labelledby="settings-folders-title">
             <div className="settings-card-head">
-              <h2 className="settings-card-title" id="settings-folders-title">Folders</h2>
+              <h2 className="settings-card-title" id="settings-folders-title">{t("Folders")}</h2>
             </div>
             <div className="folder-list">
               {FOLDER_ROWS.map((row) => {
@@ -746,15 +766,15 @@ export default function Settings() {
                 return (
                   <div className="folder-row" key={row.key}>
                     <div className="folder-row-copy">
-                      <b>{row.title}</b>
+                      <b>{t(row.title)}</b>
                       <button
                         type="button"
                         className={"folder-path" + (value ? "" : " empty")}
                         onClick={() => runAction("opening", () => openSettingsPath(row.key))}
                         disabled={Boolean(busy) || !value}
-                        title={value ? `Open ${value}` : ""}
+                        title={value ? t("Open {path}", { path: value }) : ""}
                       >
-                        {value ? shortPath(value, home) : "Not set"}
+                        {value ? shortPath(value, home) : t("Not set")}
                       </button>
                     </div>
                     <div className="folder-row-actions">
@@ -763,34 +783,34 @@ export default function Settings() {
                           className="folder-link"
                           onClick={confirmAndClearCache}
                           disabled={Boolean(busy) || !value}
-                          title="Delete separations and analysis"
+                          title={t("Delete separations and analysis")}
                         >
-                          Clear
+                          {t("Clear")}
                         </button>
                       )}
                       <button
                         className="folder-link"
                         onClick={() => runAction(`reset-${row.key}`, () => resetSettingsPath(row.key))}
                         disabled={Boolean(busy) || atDefault}
-                        title={atDefault ? "Already the default" : "Go back to the default folder"}
+                        title={atDefault ? t("Already the default") : t("Go back to the default folder")}
                       >
-                        Reset
+                        {t("Reset")}
                       </button>
                       <button
                         className="settings-secondary"
                         onClick={() => runAction(row.key, row.choose)}
                         disabled={Boolean(busy)}
-                        title="Choose another folder"
+                        title={t("Choose another folder")}
                       >
-                        Change
+                        {t("Change")}
                       </button>
                     </div>
                   </div>
                 );
               })}
               <div className="folder-option">
-                <span id="settings-keep-stems">Keep separated stems</span>
-                <i className="ms-info" role="img" aria-label={KEEP_STEMS_HELP} title={KEEP_STEMS_HELP}>
+                <span id="settings-keep-stems">{t("Keep separated stems")}</span>
+                <i className="ms-info" role="img" aria-label={t(KEEP_STEMS_HELP)} title={t(KEEP_STEMS_HELP)}>
                   <I.info />
                 </i>
                 <button
@@ -809,7 +829,7 @@ export default function Settings() {
 
           <section className="settings-card settings-perf" aria-labelledby="settings-perf-title">
             <div className="settings-card-head">
-              <h2 className="settings-card-title" id="settings-perf-title">Performance</h2>
+              <h2 className="settings-card-title" id="settings-perf-title">{t("Performance")}</h2>
               {!isWebApp() && (
                 <span className="settings-card-hint" title={hardwareModeCaveat(settings.hardwareMode, targetPlatform)}>
                   {performanceSummary(hardware, unsupported)}
@@ -844,8 +864,8 @@ export default function Settings() {
           {isWebApp() && (
             <section className="settings-card settings-export" aria-labelledby="settings-export-title">
               <div className="settings-card-head">
-                <h2 className="settings-card-title" id="settings-export-title">Export</h2>
-                <span className="settings-card-hint">What Export downloads</span>
+                <h2 className="settings-card-title" id="settings-export-title">{t("Export")}</h2>
+                <span className="settings-card-hint">{t("What Export downloads")}</span>
               </div>
               <div
                 className="perf-modes"
@@ -862,9 +882,9 @@ export default function Settings() {
                       aria-checked={selected}
                       className={selected ? "active" : ""}
                       onClick={() => void updateModelPreference({ exportFormat: format.value })}
-                      title={format.help}
+                      title={t(format.help)}
                     >
-                      {format.label}
+                      {t(format.label)}
                     </button>
                   );
                 })}
@@ -873,13 +893,13 @@ export default function Settings() {
           )}
 
         {/* About is quiet text, not a card that looks like a setting. */}
-        <footer className="settings-about-foot" aria-label="About">
+        <footer className="settings-about-foot" aria-label={t("About")}>
           <div className="about-line">
-          <span>{web ? "Your songs and charts stay in this browser." : "Everything stays on this computer. No telemetry."}</span>
+          <span>{web ? t("Your songs and charts stay in this browser.") : t("Everything stays on this computer. No telemetry.")}</span>
           {web ? (
             <div className="folder-option">
-              <span id="settings-usage-counts">Share usage counts</span>
-              <i className="ms-info" role="img" aria-label={USAGE_COUNTS_HELP} title={USAGE_COUNTS_HELP}>
+              <span id="settings-usage-counts">{t("Share usage counts")}</span>
+              <i className="ms-info" role="img" aria-label={t(USAGE_COUNTS_HELP)} title={t(USAGE_COUNTS_HELP)}>
                 <I.info />
               </i>
               <button
@@ -895,8 +915,8 @@ export default function Settings() {
             </div>
           ) : (
             <div className="folder-option">
-              <span id="settings-check-updates">Check for updates</span>
-              <i className="ms-info" role="img" aria-label={UPDATE_CHECK_HELP} title={UPDATE_CHECK_HELP}>
+              <span id="settings-check-updates">{t("Check for updates")}</span>
+              <i className="ms-info" role="img" aria-label={t(UPDATE_CHECK_HELP)} title={t(UPDATE_CHECK_HELP)}>
                 <I.info />
               </i>
               <button

@@ -20,23 +20,25 @@ import {
   generatorStemSetId,
 } from "./useGenerateProject.js";
 import { useOwnedFullscreen } from "../../hooks/useOwnedFullscreen.js";
+import { msg, t } from "../../i18n/index.js";
+import { separationName } from "./separationNames.js";
 
 const HIGHWAY_VOLUME_KEY = "highway.volume";
 const DEMUCS_STEMS = [
-  { id: "other", label: "Guitar / other" },
-  { id: "drums", label: "Drums" },
-  { id: "bass", label: "Bass" },
-  { id: "vocals", label: "Vocals" },
+  { id: "other", label: msg("Guitar / other") },
+  { id: "drums", label: msg("Drums") },
+  { id: "bass", label: msg("Bass") },
+  { id: "vocals", label: msg("Vocals") },
 ];
 
 // The six-stem models separate with htdemucs_6s: guitar gets its own stem and
 // other holds the rest (piano included).
 const SIX_STEM_DEMUCS_STEMS = [
-  { id: "guitar", label: "Guitar" },
-  { id: "other", label: "Other" },
-  { id: "drums", label: "Drums" },
-  { id: "bass", label: "Bass" },
-  { id: "vocals", label: "Vocals" },
+  { id: "guitar", label: msg("Guitar") },
+  { id: "other", label: msg("Other") },
+  { id: "drums", label: msg("Drums") },
+  { id: "bass", label: msg("Bass") },
+  { id: "vocals", label: msg("Vocals") },
 ];
 
 function demucsStemsFor(generator) {
@@ -232,7 +234,7 @@ function DemucsCompareLane({
       <div className="demucs-compare-lane-head">
         <span className="compare-badge">{slot}</span>
         <label>
-          <span>Separation</span>
+          <span>{t("Separation")}</span>
           <select
             value={artifact?.id || ""}
             onChange={(e) => {
@@ -242,33 +244,33 @@ function DemucsCompareLane({
             disabled={loading}
           >
             {artifacts.map((item) => (
-              <option key={item.id} value={item.id}>{item.name}</option>
+              <option key={item.id} value={item.id}>{separationName(item.name)}</option>
             ))}
           </select>
         </label>
         <label>
-          <span>Stem</span>
+          <span>{t("Stem")}</span>
           <select
             value={lane.stem}
             onChange={(e) => onSelect(artifact, e.target.value).catch(() => {})}
             disabled={!artifact || loading}
           >
-            <option value="">Choose stem…</option>
+            <option value="">{t("Choose stem…")}</option>
             {stems.map((stem) => (
-              <option key={stem.id} value={stem.id}>{stem.label}</option>
+              <option key={stem.id} value={stem.id}>{t(stem.label)}</option>
             ))}
           </select>
         </label>
         <button className={"demucs-mix-btn" + (lane.muted ? " active" : "")} onClick={onToggleMute} disabled={!loaded}>
-          Mute
+          {t("Mute")}
         </button>
         <button className={"demucs-mix-btn" + (lane.solo ? " active" : "")} onClick={onToggleSolo} disabled={!loaded}>
-          Solo
+          {t("Solo")}
         </button>
       </div>
       <button className="demucs-compare-wave" onClick={onSeek} disabled={!loaded}>
         <canvas ref={canvasRef} aria-hidden="true" />
-        {!loaded && <span>{loading ? `Loading ${selectedStem?.label || "stem"}…` : "Choose a stem to load this lane"}</span>}
+        {!loaded && <span>{loading ? (selectedStem ? t("Loading {stem}…", { stem: t(selectedStem.label) }) : t("Loading stem…")) : t("Choose a stem to load this lane")}</span>}
       </button>
       {loaded && (
         <audio
@@ -351,7 +353,7 @@ function DemucsAuditionStage({ project }) {
       return undefined;
     }
     let cancelled = false;
-    setWaveStatus("Building waveform…");
+    setWaveStatus(t("Building waveform…"));
     decodeWaveformData(demucsAudition.data)
       .then(({ peaks: nextPeaks, duration: nextDuration }) => {
         if (cancelled) return;
@@ -581,8 +583,8 @@ function DemucsAuditionStage({ project }) {
           {!demucsAudition?.url && (
             <div className="demucs-wave-empty">
               <I.volume />
-              <b>Nothing playing</b>
-              <span>Pick a stem below to listen.</span>
+              <b>{t("Nothing playing")}</b>
+              <span>{t("Pick a stem below to listen.")}</span>
             </div>
           )}
           {waveStatus && <div className="demucs-wave-status">{waveStatus}</div>}
@@ -591,7 +593,7 @@ function DemucsAuditionStage({ project }) {
 
       <div className="demucs-stage-transport">
         <button className="transport-btn" onClick={togglePlay} disabled={auditionMode === "compare" ? !compareLanes.some((lane) => lane.audition) : !demucsAudition?.url}>
-          {playing ? <><I.pause /> Pause</> : <><I.play /> Play</>}
+          {playing ? <><I.pause /> {t("Pause")}</> : <><I.play /> {t("Play")}</>}
         </button>
         <button className="transport-btn ghost" onClick={() => seekTo(Math.max(0, time - 10))} disabled={!activeDuration}>-10s</button>
         <span className="transport-time">{fmtTime(time)}</span>
@@ -604,7 +606,7 @@ function DemucsAuditionStage({ project }) {
           value={Math.min(time, activeDuration || 0)}
           onChange={(e) => seekTo(Number(e.target.value))}
           disabled={!activeDuration}
-          aria-label="Audition time"
+          aria-label={t("Stem position")}
         />
         <span className="transport-time">{fmtTime(activeDuration)}</span>
         <button className="transport-btn ghost" onClick={() => seekTo(Math.min(activeDuration || 0, time + 10))} disabled={!activeDuration}>+10s</button>
@@ -613,8 +615,8 @@ function DemucsAuditionStage({ project }) {
             className="volume-mute-btn"
             type="button"
             onClick={handleMute}
-            title={muted || volume <= 0 ? "Unmute audition" : "Mute audition"}
-            aria-label={muted || volume <= 0 ? "Unmute audition" : "Mute audition"}
+            title={muted || volume <= 0 ? t("Unmute stem") : t("Mute stem")}
+            aria-label={muted || volume <= 0 ? t("Unmute stem") : t("Mute stem")}
             aria-pressed={muted || volume <= 0}
           >
             {muted || volume <= 0 ? <I.volumeMute /> : <I.volume />}
@@ -627,12 +629,12 @@ function DemucsAuditionStage({ project }) {
             step={0.01}
             value={volume}
             onChange={handleVolume}
-            aria-label="Audition volume"
+            aria-label={t("Stem volume")}
           />
         </div>
       </div>
 
-      {auditionMode === "single" && <div className="demucs-stage-stems" aria-label="Audition stems from selected separation">
+      {auditionMode === "single" && <div className="demucs-stage-stems" aria-label={t("Stems from the selected separation")}>
         {stemChoices.map((stem) => {
           const loading = demucsAuditionLoadingKey === demucsAuditionKey(activeArtifact?.id, stemSetId, stem.id);
           const active = demucsAudition?.id === activeArtifact?.id && demucsAudition?.stem === stem.id &&
@@ -645,7 +647,7 @@ function DemucsAuditionStage({ project }) {
               disabled={!activeArtifact || loading}
             >
               {loading ? <span className="cta-spinner" aria-hidden="true" /> : <I.play />}
-              {stem.label}
+              {t(stem.label)}
             </button>
           );
         })}
@@ -827,7 +829,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
     try {
       await onOpenSongFolders(folders);
     } catch (error) {
-      setFolderError(error?.message || "That folder couldn't be opened.");
+      setFolderError(error?.message || t("That folder couldn't be opened."));
     } finally {
       setFolderBusy(false);
     }
@@ -844,12 +846,12 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
     if (folderBusy) return;
     readDrop(e.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
       if (folders.length || songs.length > 1) openSongFolders(songs);
-      else if (directories || archives) setFolderError("No Clone Hero song in there. It needs a notes.chart and the song's audio.");
+      else if (directories || archives) setFolderError(t("No Clone Hero song in there. It needs a notes.chart and the song's audio."));
       else if (file) {
         setFolderError("");
         handleMediaFile(file);
       }
-    }).catch((err) => setFolderError(err instanceof SongArchiveError ? err.message : "That drop couldn't be read."));
+    }).catch((err) => setFolderError(err instanceof SongArchiveError ? err.message : t("That drop couldn't be read.")));
   };
 
   const handleCompareLayout = (layout) => {
@@ -951,8 +953,8 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
       {/* What's on stage sits on the highway; the stage itself gets the room. */}
       <div className="stage-overlay">
         {showingDemucsStage ? (
-          <div className="stage-label" title={demucsAudition?.label || activeDemucsArtifact?.name || "Audio separation"}>
-            <span className="stage-label-name">{demucsAudition?.label || activeDemucsArtifact?.name || "Audio separation"}</span>
+          <div className="stage-label" title={demucsAudition?.label || (activeDemucsArtifact ? separationName(activeDemucsArtifact.name) : t("Audio separation"))}>
+            <span className="stage-label-name">{demucsAudition?.label || (activeDemucsArtifact ? separationName(activeDemucsArtifact.name) : t("Audio separation"))}</span>
           </div>
         ) : track && !inCompare && !showingLiveStage && selectedSingleVersion ? (
           <div className="stage-label" title={selectedSingleVersion.name}>
@@ -963,22 +965,22 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
         ) : <span />}
         {!showingDemucsStage && track && inCompare && (
           <div className="stage-overlay-actions">
-            <div className="segmented compare-layout-tabs" aria-label="Compare layout">
+            <div className="segmented compare-layout-tabs" aria-label={t("Compare layout")}>
               <button
                 className={compareLayout === "joined" ? "active" : ""}
                 onClick={() => handleCompareLayout("joined")}
               >
-                Joined
+                {t("Joined")}
               </button>
               <button
                 className={compareLayout === "split" ? "active" : ""}
                 onClick={() => handleCompareLayout("split")}
               >
-                Split
+                {t("Split")}
               </button>
             </div>
             <button className="compare-pill" onClick={regenCompare ? ws.toggleCompare : exitCompare}>
-              <I.close /> Close compare
+              <I.close /> {t("Close compare")}
             </button>
           </div>
         )}
@@ -1052,18 +1054,18 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
             </svg>
           </div>
           <div className="dz-title">
-            {dropHot ? "Drop to import" : sourceAudioFile ? "Media is ready" : "No chart yet"}
+            {dropHot ? t("Drop to import") : sourceAudioFile ? t("Media is ready") : t("No chart yet")}
           </div>
           <div className={"dz-sub" + (folderError ? " is-error" : "")} role={folderError ? "alert" : undefined}>
             {folderError || (sourceAudioFile
-              ? "Generate a chart to preview it."
+              ? t("Generate a chart to preview it.")
               : canOpenFolders
-                ? "Drop a song, music video or Clone Hero song folder here, or click to browse."
-                : "Drop a song or music video here, or click to browse.")}
+                ? t("Drop a song, music video or Clone Hero song folder here, or click to browse.")
+                : t("Drop a song or music video here, or click to browse."))}
           </div>
           {!sourceAudioFile && (
             <span className="dz-browse">
-              <I.upload /> Choose a media file
+              <I.upload /> {t("Choose a media file")}
             </span>
           )}
           {canOpenFolders && (
@@ -1077,7 +1079,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
                 folderInputRef.current?.click();
               }}
             >
-              <I.folder /> {folderBusy ? "Opening…" : "Open a Clone Hero song folder"}
+              <I.folder /> {folderBusy ? t("Opening…") : t("Open a Clone Hero song folder")}
             </button>
           )}
         </label>
@@ -1153,9 +1155,9 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
 
           {!regenCompare && <div className="compare-transport">
             <button className="transport-btn" onClick={handleComparePlay}>
-              {comparePlaying ? <><I.pause /> Pause</> : <><I.play /> Play</>}
+              {comparePlaying ? <><I.pause /> {t("Pause")}</> : <><I.play /> {t("Play")}</>}
             </button>
-            <button className="transport-btn ghost icon-only" onClick={handleCompareRestart} title="Restart all charts" aria-label="Restart all charts">
+            <button className="transport-btn ghost icon-only" onClick={handleCompareRestart} title={t("Restart all charts")} aria-label={t("Restart all charts")}>
               <I.restart aria-hidden="true" />
             </button>
             <span className="transport-time">{fmtTime(compareProgress.time)}</span>
@@ -1189,8 +1191,8 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
                 className="volume-mute-btn"
                 type="button"
                 onClick={handleCompareMute}
-                title={compareMuted || compareVolume <= 0 ? "Unmute chart audio" : "Mute chart audio"}
-                aria-label={compareMuted || compareVolume <= 0 ? "Unmute chart audio" : "Mute chart audio"}
+                title={compareMuted || compareVolume <= 0 ? t("Unmute chart audio") : t("Mute chart audio")}
+                aria-label={compareMuted || compareVolume <= 0 ? t("Unmute chart audio") : t("Mute chart audio")}
                 aria-pressed={compareMuted || compareVolume <= 0}
               >
                 {compareMuted || compareVolume <= 0 ? <I.volumeMute /> : <I.volume />}
@@ -1203,15 +1205,15 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
                 step={0.01}
                 value={compareVolume}
                 onChange={handleCompareVolumeChange}
-                aria-label="Volume"
+                aria-label={t("Volume")}
               />
             </div>
             {compareLayout === "joined" && (
               <button
                 className="transport-btn ghost icon-only"
                 onClick={handleCompareFullscreen}
-                title={compareFullscreen ? "Exit full screen" : "Full screen"}
-                aria-label={compareFullscreen ? "Exit full screen" : "Full screen"}
+                title={compareFullscreen ? t("Exit full screen") : t("Full screen")}
+                aria-label={compareFullscreen ? t("Exit full screen") : t("Full screen")}
               >
                 {compareFullscreen ? <I.fullscreenExit aria-hidden="true" /> : <I.fullscreen aria-hidden="true" />}
               </button>
@@ -1225,7 +1227,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
 
 function EditStageActions({ project }) {
   const { editor } = project;
-  const saveLabel = editor.dirty ? "Saving…" : editor.savedAt ? "Saved" : "";
+  const saveLabel = editor.dirty ? t("Saving…") : editor.savedAt ? t("Saved") : "";
   if (!saveLabel) return null;
   return <span className={"stage-edit-meta" + (editor.dirty ? " busy" : "")}>{saveLabel}</span>;
 }

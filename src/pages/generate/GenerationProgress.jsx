@@ -2,20 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { I } from "../../icons.jsx";
 import ProgressRing from "../../components/ProgressRing.jsx";
 import { LITE_FAMILY, minutesText, separationSecondsLeft } from "./liteOffer.js";
+import { msg, rich, t } from "../../i18n/index.js";
 
 // Mirrors the ONNX event sequence: queued → audio → demucs → timing →
 // smoothing → transcription → chart-writing finalization → done → saved.
 // Transcription and chart-writing are deliberately separate stages and ranges.
 export const GENERATION_STAGES = [
-  { id: "queued", label: "Queue job" },
-  { id: "audio", label: "Read audio" },
-  { id: "demucs", label: "Separate stems" },
-  { id: "timing", label: "Detect timing" },
-  { id: "smoothing", label: "Smooth tempo" },
-  { id: "transcription", label: "Transcribe notes" },
-  { id: "chart", label: "Write chart" },
-  { id: "done", label: "Finalize chart" },
-  { id: "saved", label: "Load result" },
+  { id: "queued", label: msg("Queue job") },
+  { id: "audio", label: msg("Read audio") },
+  { id: "demucs", label: msg("Separate stems") },
+  { id: "timing", label: msg("Detect timing") },
+  { id: "smoothing", label: msg("Smooth tempo") },
+  { id: "transcription", label: msg("Transcribe notes") },
+  { id: "chart", label: msg("Write chart") },
+  { id: "done", label: msg("Finalize chart") },
+  { id: "saved", label: msg("Load result") },
 ];
 
 const PROGRESS_ORDER = GENERATION_STAGES.map((stage) => stage.id);
@@ -34,11 +35,11 @@ const STAGE_RANGES = {
 // The panel's steps: the stages someone watching would tell apart. Each one's
 // share of the track is its share of the run percent.
 const GENERATION_STEPS = [
-  { id: "read", label: "Read audio", stages: ["queued", "audio"] },
-  { id: "stems", label: "Separate stems", stages: ["demucs"] },
-  { id: "beats", label: "Detect timing", stages: ["timing", "smoothing"] },
-  { id: "notes", label: "Transcribe notes", stages: ["transcription"] },
-  { id: "chart", label: "Write chart", stages: ["chart", "done", "saved"] },
+  { id: "read", label: msg("Read audio"), stages: ["queued", "audio"] },
+  { id: "stems", label: msg("Separate stems"), stages: ["demucs"] },
+  { id: "beats", label: msg("Detect timing"), stages: ["timing", "smoothing"] },
+  { id: "notes", label: msg("Transcribe notes"), stages: ["transcription"] },
+  { id: "chart", label: msg("Write chart"), stages: ["chart", "done", "saved"] },
 ].map((step) => ({
   ...step,
   start: STAGE_RANGES[step.stages[0]][0],
@@ -118,31 +119,31 @@ export function runProgressPercent(run) {
 
 export function describeRunStage(run) {
   if (!run) return "";
-  if (run.canceled) return "Stopped";
-  if (run.error) return "Generation failed";
-  if (run.finishedAt) return "Chart ready";
+  if (run.canceled) return t("Stopped");
+  if (run.error) return t("Generation failed");
+  if (run.finishedAt) return t("Chart ready");
   for (let i = GENERATION_STAGES.length - 1; i >= 0; i -= 1) {
     const stage = GENERATION_STAGES[i];
     const info = stageInfoFor(run, stage.id);
     if (!info) continue;
     // The board shows how much; this stays one line.
-    if (info.status === "running" && info.downloading) return "Downloading the model…";
-    if (info.status === "running") return `${stage.label}…`;
+    if (info.status === "running" && info.downloading) return t("Downloading the model…");
+    if (info.status === "running") return t("{step}…", { step: t(stage.label) });
     const next = GENERATION_STAGES[i + 1];
-    return `${(next || stage).label}…`;
+    return t("{step}…", { step: t((next || stage).label) });
   }
-  return run.waitingForQueue ? "Waiting for the queue…" : "Starting engine…";
+  return run.waitingForQueue ? t("Waiting for the queue…") : t("Starting engine…");
 }
 
 // The step a run is on, in a few words: the progress panel's title and the
 // live board's top bar.
 export function runHeadline(run) {
   if (!run) return "";
-  if (run.canceled) return "Stopped";
-  if (run.error) return "Generation failed";
-  if (run.finishedAt) return "Chart ready";
-  if (runIsSeparating(run)) return "Separating stems";
-  return describeRunStage(run) || "Starting engine…";
+  if (run.canceled) return t("Stopped");
+  if (run.error) return t("Generation failed");
+  if (run.finishedAt) return t("Chart ready");
+  if (runIsSeparating(run)) return t("Separating stems");
+  return describeRunStage(run) || t("Starting engine…");
 }
 
 // A run is "streaming" once the model has emitted any partial chart. Demucs
@@ -204,13 +205,15 @@ function stepView(run, step, percent, now) {
   }
   const reused = status === "completed" && timed.length > 0 && timed.every((info) => info.cache);
   let note = seconds >= 1 ? fmtElapsed(seconds) : "";
-  if (reused) note = "reused";
-  else if (status === "failed" || status === "stopped" || status === "skipped") note = status;
+  if (reused) note = t("reused");
+  else if (status === "failed") note = t("failed");
+  else if (status === "stopped") note = t("stopped");
+  else if (status === "skipped") note = t("skipped");
   return {
     ...step,
     status,
     note,
-    label: status === "running" && infos.some((info) => info.downloading) ? "Download model" : step.label,
+    label: status === "running" && infos.some((info) => info.downloading) ? t("Download model") : t(step.label),
     fill: Math.max(0, Math.min(1, (percent - step.start) / (step.end - step.start))),
   };
 }
@@ -236,18 +239,18 @@ function StepMark({ step }) {
 function LiteOffer({ run, now, offer, liteSwitch, onSwitch, onKeepGoing }) {
   if (liteSwitch) {
     const text = liteSwitch.phase === "downloading"
-      ? `Downloading ${LITE_FAMILY.label}… ${Math.round(liteSwitch.percent || 0)}%`
+      ? t("Downloading {model}… {percent}%", { model: LITE_FAMILY.label, percent: Math.round(liteSwitch.percent || 0) })
       : liteSwitch.phase === "failed"
         ? liteSwitch.error
         : liteSwitch.phase === "starting"
-          ? `Starting with ${LITE_FAMILY.label}…`
-          : "Stopping…";
+          ? t("Starting with {model}…", { model: LITE_FAMILY.label })
+          : t("Stopping…");
     return (
       <div className={"gen-lite-offer" + (liteSwitch.phase === "failed" ? " is-failed" : "")} role="status" aria-live="polite">
         <p>{text}</p>
         {liteSwitch.phase === "failed" && (
           <div className="gen-lite-actions">
-            <button type="button" className="settings-secondary" onClick={onSwitch}>Try again</button>
+            <button type="button" className="settings-secondary" onClick={onSwitch}>{t("Try again")}</button>
           </div>
         )}
       </div>
@@ -258,13 +261,16 @@ function LiteOffer({ run, now, offer, liteSwitch, onSwitch, onKeepGoing }) {
   return (
     <div className="gen-lite-offer" role="status" aria-live="polite">
       <p>
-        Separating stems needs {left == null ? "a long time" : minutesText(left)} more on this device.{" "}
-        <b>{LITE_FAMILY.label}</b> skips this step and finishes much sooner, but follows the melody less closely.
-        {offer.needsDownload && LITE_FAMILY.downloadMb ? ` Switching downloads it first (${LITE_FAMILY.downloadMb} MB).` : ""}
+        {rich(
+          "Separating stems needs {time} more on this device. <b>{model}</b> skips this step and finishes much sooner, but follows the melody less closely.",
+          { b: (text) => <b>{text}</b> },
+          { time: left == null ? t("a long time") : minutesText(left), model: LITE_FAMILY.label },
+        )}
+        {offer.needsDownload && LITE_FAMILY.downloadMb ? " " + t("Switching downloads it first ({size} MB).", { size: LITE_FAMILY.downloadMb }) : ""}
       </p>
       <div className="gen-lite-actions">
-        <button type="button" className="settings-secondary" onClick={onSwitch}>Switch to Lite</button>
-        <button type="button" className="settings-secondary" onClick={onKeepGoing}>Keep going</button>
+        <button type="button" className="settings-secondary" onClick={onSwitch}>{t("Switch to Lite")}</button>
+        <button type="button" className="settings-secondary" onClick={onKeepGoing}>{t("Keep going")}</button>
       </div>
     </div>
   );
@@ -315,7 +321,7 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
   const steps = runSteps(run, barPct, now);
 
   return (
-    <div className={"gen-progress" + stateClass} role="region" aria-label="Chart generation progress">
+    <div className={"gen-progress" + stateClass} role="region" aria-label={t("Chart generation progress")}>
       <button
         type="button"
         className={"gen-progress-head" + (expanded ? " open" : "")}
@@ -333,11 +339,11 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
       <div
         className="gen-track"
         role="progressbar"
-        aria-label="Chart generation completion"
+        aria-label={t("Chart generation completion")}
         aria-valuenow={barPct}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuetext={`${barPct}% complete — ${headline}`}
+        aria-valuetext={t("{percent}% complete — {step}", { percent: barPct, step: headline })}
         aria-busy={running}
       >
         {steps.map((step) => (
@@ -361,8 +367,8 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
       {run.runtimeFallback && (
         <div className="gen-progress-notice" role="status" aria-live="polite">
           {run.runtimeFallback.reason
-            ? `Ran on CPU, the GPU wasn't available. ${run.runtimeFallback.reason}`
-            : "Ran on CPU, the GPU wasn't available."}
+            ? `${t("Ran on CPU, the GPU wasn't available.")} ${run.runtimeFallback.reason}`
+            : t("Ran on CPU, the GPU wasn't available.")}
         </div>
       )}
 
@@ -381,7 +387,7 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
           {run.summary && <p className="gen-run-summary">{run.summary}</p>}
 
           {run.logs.length > 0 && (
-            <div className="gen-log-body" ref={logRef} tabIndex={0} aria-label="Engine log">
+            <div className="gen-log-body" ref={logRef} tabIndex={0} aria-label={t("Engine log")}>
               {run.logs.map((line, i) => (
                 <div key={i} className="gen-log-line">{plainLogLine(line.message)}</div>
               ))}

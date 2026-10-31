@@ -4,6 +4,7 @@ import { I } from "../../icons.jsx";
 import RichText from "../../components/RichText.jsx";
 import useCoverArt from "../../hooks/useCoverArt.js";
 import { coverArtSeed } from "../../lib/coverArt/render.js";
+import { t } from "../../i18n/index.js";
 
 // The generated cover a song without album art gets in the Library and its
 // exports, for the title and artist as typed. A song opening shows its cover
@@ -96,21 +97,21 @@ export default function ProjectBar({ project }) {
         <input
           className="project-title-input"
           value={details.title}
-          placeholder="Untitled song"
+          placeholder={t("Untitled song")}
           onChange={setField("title")}
-          aria-label="Song title"
+          aria-label={t("Song title")}
         />
         <input
           className="project-artist-input"
           value={details.artist}
-          placeholder="Unknown artist"
+          placeholder={t("Unknown artist")}
           onChange={setField("artist")}
-          aria-label="Artist"
+          aria-label={t("Artist")}
         />
       </div>
 
       <div className="project-bar-actions">
-        <BarPopover icon={<I.music />} label="Song" isSet={Boolean(sourceAudioFile)}>
+        <BarPopover icon={<I.music />} label={t("Song")} isSet={Boolean(sourceAudioFile)}>
           <div className="bar-pop-current">
             {sourceAudioName ? (
               <>
@@ -118,7 +119,7 @@ export default function ProjectBar({ project }) {
                 {sourceAudioMeta && <small>{sourceAudioMeta}</small>}
               </>
             ) : (
-              <b>No media yet</b>
+              <b>{t("No media yet")}</b>
             )}
           </div>
           <label
@@ -126,48 +127,48 @@ export default function ProjectBar({ project }) {
             aria-disabled={busy}
           >
             <I.upload />
-            <span>{sourceAudioFile ? "Start new project with this media" : "Add media"}</span>
+            <span>{sourceAudioFile ? t("Start new project with this media") : t("Add media")}</span>
             <input type="file" accept={MEDIA_ACCEPT} onChange={pickAudio} disabled={busy} />
           </label>
           <label className={"bar-pop-btn" + (background?.type === "image" ? " is-set" : "") + (busy ? " disabled" : "")} aria-disabled={busy}>
             <I.image />
-            <span>Image background</span>
+            <span>{t("Image background")}</span>
             <input type="file" accept="image/*" onChange={pickBackground("image")} disabled={busy} />
           </label>
           <label className={"bar-pop-btn" + (background?.type === "video" ? " is-set" : "") + (busy ? " disabled" : "")} aria-disabled={busy}>
             <I.play />
-            <span>Video background</span>
+            <span>{t("Video background")}</span>
             <input type="file" accept="video/*" onChange={pickBackground("video")} disabled={busy} />
           </label>
           <button className="bar-pop-btn" onClick={clearBackground} disabled={busy || !background}>
             <I.trash />
-            <span>Remove background</span>
+            <span>{t("Remove background")}</span>
           </button>
           <div className="bar-pop-fields">
             <div className="field">
-              <label>Title</label>
-              <input placeholder="Title" value={details.title} onChange={setField("title")} />
+              <label>{t("Title")}</label>
+              <input placeholder={t("Title")} value={details.title} onChange={setField("title")} />
             </div>
             <div className="field">
-              <label>Album</label>
-              <input placeholder="Album" value={details.album} onChange={setField("album")} />
+              <label>{t("Album")}</label>
+              <input placeholder={t("Album")} value={details.album} onChange={setField("album")} />
             </div>
             <div className="field">
-              <label>Year</label>
-              <input placeholder="Year" value={details.year} onChange={setField("year")} />
+              <label>{t("Year")}</label>
+              <input placeholder={t("Year")} value={details.year} onChange={setField("year")} />
             </div>
             <div className="field">
-              <label htmlFor="project-genre">Genre</label>
-              <input id="project-genre" placeholder="e.g. Rock" value={details.genre || ""} onChange={setField("genre")} />
+              <label htmlFor="project-genre">{t("Genre")}</label>
+              <input id="project-genre" placeholder={t("e.g. Rock")} value={details.genre || ""} onChange={setField("genre")} />
             </div>
             <div className="field bar-pop-wide">
-              <label id="project-charter-label">Charter</label>
+              <label id="project-charter-label">{t("Charter")}</label>
               <div
                 className="field-static"
                 role="textbox"
                 aria-readonly="true"
                 aria-labelledby="project-charter-label"
-                title="Generated charts are credited to Autochart. Imported chart credits are preserved."
+                title={t("Generated charts are credited to Autochart. Imported chart credits are preserved.")}
               >
                 <RichText value={details.charter || "Autochart"} />
               </div>
@@ -179,9 +180,9 @@ export default function ProjectBar({ project }) {
           className="bar-btn bar-save"
           onClick={handleSave}
           disabled={busy || !songId}
-          title={songId ? "Save this project" : "Generate a chart first"}
+          title={songId ? t("Save this project") : t("Generate a chart first")}
         >
-          {busyAction === "saving" ? "Saving…" : "Save"}
+          {busyAction === "saving" ? t("Saving…") : t("Save")}
         </button>
       </div>
     </header>

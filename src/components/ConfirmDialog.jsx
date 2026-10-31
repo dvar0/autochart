@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { t } from "../i18n/index.js";
 
 // The app's one "are you sure?". askConfirm() opens it from anywhere and resolves
 // to true or false; ConfirmHost, mounted once in App, draws it.
@@ -70,7 +71,7 @@ export function ConfirmHost() {
           {request.detail && <p className="confirm-detail" title={request.detail}>{request.detail}</p>}
           <div className="lib-prompt-actions">
             <button type="button" className="btn-quiet" onClick={() => answer(false)} autoFocus={Boolean(request.danger)}>
-              Cancel
+              {t("Cancel")}
             </button>
             <button
               type="button"
@@ -78,7 +79,7 @@ export function ConfirmHost() {
               className={request.danger ? "btn-quiet btn-danger" : "btn-primary"}
               onClick={() => answer(true)}
             >
-              {request.confirmLabel || "OK"}
+              {request.confirmLabel || t("OK")}
             </button>
           </div>
         </div>

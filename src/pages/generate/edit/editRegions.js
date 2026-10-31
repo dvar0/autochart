@@ -4,6 +4,7 @@
 // the model copies whatever pattern remains to its left).
 
 import { FRET_COLORS } from "../../../data/notePalette.js";
+import { t, tn } from "../../../i18n/index.js";
 
 // Bar start ticks from the time-signature map, through the end of the song.
 // A `TS n d` bar is n beats of a 1/d note: resolution * 4 / d ticks per beat.
@@ -246,11 +247,11 @@ export function inpaintRuns(doc) {
 
 // A try's name: its number within its press, and the press number.
 export function tryName(doc, redo, index) {
-  if (index < 0) return "Original";
+  if (index < 0) return t("Original");
   const runId = redo.takeRuns?.[index];
   const runIndex = (doc?.runs || []).findIndex((run) => run.id === runId);
   const number = redo.takeRuns ? redo.takeRuns.slice(0, index + 1).filter((id) => id === runId).length : index + 1;
-  return runIndex < 0 ? `Try ${number}` : `Try ${number} (#${runIndex + 1})`;
+  return runIndex < 0 ? t("Try {number}", { number }) : t("Try {number} (#{run})", { number, run: runIndex + 1 });
 }
 
 // Splits an inpainted span along section lines. Each piece names the span
@@ -291,12 +292,12 @@ function wholeSectionNames(regions, sections) {
 // A redo's name in the history list says where it is: "Chorus 2", "Bars 9–12".
 export function redoLabel(bars, regions, sections) {
   const names = wholeSectionNames(regions, sections);
-  if (names) return names.length <= 2 ? names.join(" + ") : `${names.length} sections`;
+  if (names) return names.length <= 2 ? names.join(" + ") : tn(names.length, "{count} section", "{count} sections");
   return regions.map((region) => barNumberLabel(bars, region)).join(", ");
 }
 
 export function barNumberLabel(bars, region) {
   const first = barIndexAt(bars, region.startTick) + 1;
   const last = barIndexAt(bars, region.endTick - 1) + 1;
-  return first === last ? `Bar ${first}` : `Bars ${first}–${last}`;
+  return first === last ? t("Bar {number}", { number: first }) : t("Bars {first}–{last}", { first, last });
 }

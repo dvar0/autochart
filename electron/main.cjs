@@ -301,6 +301,13 @@ function sameResolvedPath(left, right) {
 
 
 
+// The renderer sends the picker's title and button in the app's language;
+// anything else falls back to the English.
+function dialogLabels(labels, title, buttonLabel) {
+  const pick = (value, fallback) => (typeof value === "string" && value.trim() && value.length <= 200 ? value : fallback);
+  return { title: pick(labels?.title, title), buttonLabel: pick(labels?.buttonLabel, buttonLabel) };
+}
+
 async function chooseSettingsFolder(key, title, buttonLabel) {
   const defaults = resolveDefaultSettings();
   const current = await readAppSettings();
@@ -548,24 +555,24 @@ function registerIpcHandlers() {
     return settingsForRenderer(settings);
   });
 
-  ipcMain.handle("settings:chooseProjectsFolder", async () => {
-    return chooseSettingsFolder("projectsFolder", "Choose Autochart projects folder", "Use this folder");
+  ipcMain.handle("settings:chooseProjectsFolder", async (_event, labels) => {
+    const text = dialogLabels(labels, "Choose Autochart projects folder", "Use this folder");
+    return chooseSettingsFolder("projectsFolder", text.title, text.buttonLabel);
   });
 
-  ipcMain.handle("settings:chooseModelsFolder", async () => {
-    return chooseSettingsFolder("modelsFolder", "Choose chart generation files folder", "Use this folder");
+  ipcMain.handle("settings:chooseModelsFolder", async (_event, labels) => {
+    const text = dialogLabels(labels, "Choose chart generation files folder", "Use this folder");
+    return chooseSettingsFolder("modelsFolder", text.title, text.buttonLabel);
   });
 
-  ipcMain.handle("settings:chooseCacheFolder", async () => {
-    return chooseSettingsFolder(
-      "cacheFolder",
-      "Choose a parent folder for Autochart cache storage",
-      "Use this folder"
-    );
+  ipcMain.handle("settings:chooseCacheFolder", async (_event, labels) => {
+    const text = dialogLabels(labels, "Choose a parent folder for Autochart cache storage", "Use this folder");
+    return chooseSettingsFolder("cacheFolder", text.title, text.buttonLabel);
   });
 
-  ipcMain.handle("settings:chooseCloneHeroLibraryFolder", async () => {
-    return chooseSettingsFolder("cloneHeroLibraryFolder", "Choose Clone Hero songs folder", "Use this folder");
+  ipcMain.handle("settings:chooseCloneHeroLibraryFolder", async (_event, labels) => {
+    const text = dialogLabels(labels, "Choose Clone Hero songs folder", "Use this folder");
+    return chooseSettingsFolder("cloneHeroLibraryFolder", text.title, text.buttonLabel);
   });
 
   ipcMain.handle("settings:clearCloneHeroLibraryFolder", async () => {
@@ -777,7 +784,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("library:exportSong", async (_event, payload) => {
-    const { songId, versionId, albumArt } = normalizeExportPayload(payload);
+    const { songId, versionId, albumArt, labels } = normalizeExportPayload(payload);
     if (!songId) throw new Error("No project selected to export.");
     const win = BrowserWindow.getFocusedWindow();
     const context = await libraryContext();
@@ -785,8 +792,7 @@ function registerIpcHandlers() {
     const defaultName = safeFolderName(song.meta?.title);
 
     const result = await dialog.showOpenDialog(win ?? undefined, {
-      title: "Choose folder for Clone Hero export",
-      buttonLabel: "Export here",
+      ...dialogLabels(labels, "Choose folder for Clone Hero export", "Export here"),
       properties: ["openDirectory", "createDirectory"],
       defaultPath: path.join(app.getPath("documents"), defaultName),
     });
@@ -808,11 +814,10 @@ function registerIpcHandlers() {
 
   // Export all picks once. The renderer holds a grant, never a path.
   let exportGrant = null;
-  ipcMain.handle("library:chooseExportFolder", async (event) => {
+  ipcMain.handle("library:chooseExportFolder", async (event, labels) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win ?? undefined, {
-      title: "Choose folder for Clone Hero export",
-      buttonLabel: "Export here",
+      ...dialogLabels(labels, "Choose folder for Clone Hero export", "Export here"),
       properties: ["openDirectory", "createDirectory"],
       defaultPath: app.getPath("documents"),
     });

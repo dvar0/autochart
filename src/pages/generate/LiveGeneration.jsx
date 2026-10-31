@@ -7,6 +7,7 @@ import { StageSignal } from "./StageAnimations.jsx";
 import { describeRunStage, runDownload, runHeadline, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
 import { BETA_MODELS, MODEL_FAMILIES } from "../../data/modelFamilies.js";
 import { I } from "../../icons.jsx";
+import { t, tn } from "../../i18n/index.js";
 
 // The live stage and take-card both share runProgressPercent as the single
 // canonical percent source. They MUST NOT read the raw live.percent — that
@@ -19,11 +20,11 @@ function livePercent(project) {
 
 function beatLabel(live) {
   if (!live?.totalBeats) return "";
-  return `${Math.round(live.committedBeats || 0)} / ${Math.round(live.totalBeats)} beats`;
+  return t("{done} / {total} beats", { done: Math.round(live.committedBeats || 0), total: Math.round(live.totalBeats) });
 }
 
 function statusLabel(project) {
-  return describeRunStage(project.genRun) || "Starting engine…";
+  return describeRunStage(project.genRun) || t("Starting engine…");
 }
 
 // Until a model stage reports in, the engine is still reading the audio.
@@ -226,9 +227,9 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
                 type="button"
                 className="live-play-affordance"
                 onClick={enterInteractive}
-                title="Switch the live board to interactive playback"
+                title={t("Switch the live board to interactive playback")}
               >
-                <I.play /> Play
+                <I.play /> {t("Play")}
               </button>
             )}
           </>
@@ -245,21 +246,21 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
                 type="button"
                 className="live-play-affordance live-chart-affordance"
                 onClick={dismissToChart}
-                title="Back to the selected chart"
+                title={t("Back to the selected chart")}
               >
-                <I.close /> Chart
+                <I.close /> {t("Chart")}
               </button>
             )}
-            <span className="live-stage-step" aria-hidden="true">{runHeadline(project.genRun) || "Starting engine…"}</span>
+            <span className="live-stage-step" aria-hidden="true">{runHeadline(project.genRun) || t("Starting engine…")}</span>
             <span className="live-stage-pct" aria-hidden="true">{Math.round(pct)}%</span>
             {phase === "notes" && livePlaying && (
               <button
                 type="button"
                 className="live-play-affordance live-back-affordance"
                 onClick={exitInteractive}
-                title="Back to live follow mode"
+                title={t("Back to live follow mode")}
               >
-                ● Live
+                ● {t("Live")}
               </button>
             )}
           </div>
@@ -299,15 +300,15 @@ export function LiveGenerationTakeCard({ project, selected = false, onClick }) {
       role={clickable ? "button" : undefined}
       aria-pressed={clickable ? selected : undefined}
       tabIndex={clickable ? 0 : undefined}
-      title={clickable ? "Show live generation board" : undefined}
-      aria-label={clickable ? "Show live generation board" : undefined}
+      title={clickable ? t("Show live generation board") : undefined}
+      aria-label={clickable ? t("Show live generation board") : undefined}
     >
       <div className="take-card-top">
         <span className="live-dot" aria-hidden="true"><i /></span>
         <span className="take-name">
           {download
-            ? `Downloading the model · ${Math.round(downloadPercent(download))}%`
-            : separating ? "Separating stems…" : `Generating take · ${Math.round(pct)}%`}
+            ? t("Downloading the model · {percent}%", { percent: Math.round(downloadPercent(download)) })
+            : separating ? t("Separating stems…") : t("Generating take · {percent}%", { percent: Math.round(pct) })}
         </span>
       </div>
       <div className="live-take-viewport">
@@ -322,8 +323,8 @@ export function LiveGenerationTakeCard({ project, selected = false, onClick }) {
       </div>
       <div className="take-meta">
         {separating
-          ? "Vocals, guitar, bass, drums"
-          : [beatLabel(live), `${live?.noteCount || 0} notes`].filter(Boolean).join(" · ")}
+          ? t("Vocals, guitar, bass, drums")
+          : [beatLabel(live), tn(live?.noteCount || 0, "{count} note", "{count} notes")].filter(Boolean).join(" · ")}
       </div>
       {!separating && (
         <div className="take-tags">

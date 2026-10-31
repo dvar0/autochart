@@ -9,6 +9,7 @@ import {
 } from "react";
 import { GameEngine } from "./GameEngine.js";
 import { HighwayRenderer } from "./HighwayRenderer.js";
+import { t } from "../i18n/index.js";
 import HighwayBackground from "./HighwayBackground.jsx";
 import { annotateNotes, markStarNotes, resolveStarPhrases } from "./noteFlags.js";
 import { hasElectronLibrary } from "../services/runtimeBridge.js";
@@ -34,9 +35,9 @@ function computeBeats(tempoMap, resolution, endTime) {
   const beats = [];
   if (!tempoMap || !resolution) return beats;
   for (let tick = 0; ; tick += resolution) {
-    const t = tempoMap.tickToSeconds(tick);
-    if (t > endTime + 2) break;
-    beats.push(t);
+    const seconds = tempoMap.tickToSeconds(tick);
+    if (seconds > endTime + 2) break;
+    beats.push(seconds);
     if (beats.length > 200000) break;
   }
   return beats;
@@ -383,7 +384,7 @@ function JoinedHighwayCompare(
     };
 
     if (!audioBuffer) {
-      setError("Audio is not loaded for this project.");
+      setError(t("Audio is not loaded for this project."));
       return () => {
         cancelled = true;
       };
@@ -418,7 +419,7 @@ function JoinedHighwayCompare(
           .map((chart, index) => prepareRenderState(chart, canvasRefs.current[index], index))
           .filter(Boolean);
         statesRef.current = states;
-        if (!states.length) throw new Error("No chart lanes are available for joined compare.");
+        if (!states.length) throw new Error(t("No chart lanes are available for joined compare."));
 
         motionMq = window.matchMedia("(prefers-reduced-motion: reduce)");
         adapter.setReduceMotion(motionMq.matches);
@@ -495,16 +496,16 @@ function JoinedHighwayCompare(
               />
               <div className="joined-highway-label">
                 <span className="compare-badge">{chart.badge || index + 1}</span>
-                <span className="joined-highway-name" title={chart.name || "Chart"}>
-                  {chart.name || "Chart"}
+                <span className="joined-highway-name" title={chart.name || t("Chart")}>
+                  {chart.name || t("Chart")}
                 </span>
               </div>
             </div>
           ))}
         </div>
-        {!visibleCharts.length && <div className="highway-empty">Choose two chart versions to compare.</div>}
+        {!visibleCharts.length && <div className="highway-empty">{t("Choose two chart versions to compare.")}</div>}
         {visibleCharts.length > 0 && !ready && !error && (
-          <div className="highway-empty highway-loading">Loading joined compare…</div>
+          <div className="highway-empty highway-loading">{t("Loading joined compare…")}</div>
         )}
         {error && <div className="highway-empty play-error">{error}</div>}
       </div>

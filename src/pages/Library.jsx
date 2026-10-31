@@ -43,6 +43,7 @@ import {
   setSongFavorite,
 } from "../services/songLibrary.js";
 import { DEFAULT_DEMUCS_ID } from "../services/songSchema.js";
+import { formatDate, t, tn, useLanguage } from "../i18n/index.js";
 
 // Last loaded library. The page unmounts whenever another page opens, so a
 // revisit renders this immediately and refreshes it from disk underneath.
@@ -55,7 +56,7 @@ function fmtProjectDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   const now = new Date();
-  return date.toLocaleDateString("en-US", {
+  return formatDate(date, {
     month: "short",
     day: "numeric",
     ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
@@ -95,7 +96,7 @@ function hasValidation(value) {
 
 function versionNoteLabel(version) {
   const count = Number(version?.meta?.noteCount ?? version?.noteCount);
-  return Number.isFinite(count) && count > 0 ? `${Math.round(count)} notes` : "-";
+  return Number.isFinite(count) && count > 0 ? tn(Math.round(count), "{count} note", "{count} notes") : "-";
 }
 
 function versionValidationState(version) {
@@ -105,7 +106,7 @@ function versionValidationState(version) {
     return null;
   }
   const warningCount = countValidationWarnings(chartValidation) + countValidationWarnings(packageValidation);
-  return warningCount ? { label: `${warningCount} warning${warningCount === 1 ? "" : "s"}` } : null;
+  return warningCount ? { label: tn(warningCount, "{count} warning", "{count} warnings") } : null;
 }
 
 function buildProjectSummary(record) {
@@ -126,12 +127,12 @@ function buildProjectSummary(record) {
     totalTakes: sourceVersions.length,
     latestTakeDate: latestGenerated ? fmtProjectDate(versionDate(latestGenerated)) : "",
     canExportFinal: finalAssignedCount > 0 && !finalIssue,
-    finalBlocker: finalIssue || "Assign a difficulty first",
+    finalBlocker: finalIssue || t("Assign a difficulty first"),
   };
 }
 
 function FavoriteButton({ song, onToggleFavorite, className = "" }) {
-  const label = song.fav ? `Remove ${song.title} from favorites` : `Add ${song.title} to favorites`;
+  const label = song.fav ? t("Remove {title} from favorites", { title: song.title }) : t("Add {title} to favorites", { title: song.title });
   return (
     <button
       type="button"
@@ -144,7 +145,7 @@ function FavoriteButton({ song, onToggleFavorite, className = "" }) {
       aria-pressed={Boolean(song.fav)}
       title={label}
     >
-      {song.fav ? <I.star aria-hidden="true" /> : "Add to favorites"}
+      {song.fav ? <I.star aria-hidden="true" /> : t("Add to favorites")}
     </button>
   );
 }
@@ -173,13 +174,14 @@ function QueueBadge({ mark }) {
 }
 
 const GridTile = memo(function GridTile({ song, selected, queueMark, onSelect, onToggleFavorite }) {
+  useLanguage();
   return (
     <div className={"tile" + (selected ? " sel" : "") + queueClass(queueMark)} style={queueProgress(queueMark)} data-song-id={song.id}>
       <button
         type="button"
         className="tile-select"
         onClick={(event) => onSelect(song.id, event)}
-        aria-label={`${song.title} by ${song.artist}`}
+        aria-label={t("{title} by {artist}", { title: song.title, artist: song.artist })}
         aria-pressed={Boolean(selected)}
       >
         <div className="tile-art">
@@ -198,6 +200,7 @@ const GridTile = memo(function GridTile({ song, selected, queueMark, onSelect, o
 });
 
 const ListRow = memo(function ListRow({ song, selected, queueMark, onSelect, onToggleFavorite, theme }) {
+  useLanguage();
   const { accent } = useCoverAccent(song, theme);
   return (
     <div className={"row" + (selected ? " sel" : "") + queueClass(queueMark)} style={{ "--art-accent": accent, ...queueProgress(queueMark) }} data-song-id={song.id}>
@@ -205,7 +208,7 @@ const ListRow = memo(function ListRow({ song, selected, queueMark, onSelect, onT
         type="button"
         className="row-select"
         onClick={(event) => onSelect(song.id, event)}
-        aria-label={`${song.title} by ${song.artist}`}
+        aria-label={t("{title} by {artist}", { title: song.title, artist: song.artist })}
         aria-pressed={Boolean(selected)}
       >
         <div className="row-thumb">
@@ -273,7 +276,7 @@ function DetailPanel({
             {song.fav && <FavoriteButton song={song} onToggleFavorite={onToggleFavorite} />}
           </div>
           <div className="detail-artist">{song.artist}</div>
-          <div className="detail-updated">Updated {summary.updated}</div>
+          <div className="detail-updated">{t("Updated {date}", { date: summary.updated })}</div>
           {!song.fav && <FavoriteButton song={song} onToggleFavorite={onToggleFavorite} />}
         </div>
       </div>
@@ -282,8 +285,8 @@ function DetailPanel({
         <section className="project-snapshot-final">
           <div className="snapshot-final-top">
             <div>
-              <span>Final chart</span>
-              <b>{summary.finalAssignedCount} of {FINAL_SLOT_DISPLAY_ORDER.length}</b>
+              <span>{t("Final chart")}</span>
+              <b>{t("{count} of {total}", { count: summary.finalAssignedCount, total: FINAL_SLOT_DISPLAY_ORDER.length })}</b>
             </div>
           </div>
           <div className="snapshot-diff-list">
@@ -295,7 +298,7 @@ function DetailPanel({
                 <div
                   key={difficulty}
                   className={`snapshot-diff tone-${diff?.color || "green"}` + (assigned ? " filled" : "")}
-                  title={assigned?.name || "Empty"}
+                  title={assigned?.name || t("Empty")}
                 >
                   <span className="snapshot-diff-key">{SLOT_LETTERS[difficulty]}</span>
                   <span className="snapshot-diff-main">
@@ -309,7 +312,7 @@ function DetailPanel({
                         {validation && <span className="snapshot-diff-check warn">{validation.label}</span>}
                       </>
                     ) : (
-                      <span>Empty</span>
+                      <span>{t("Empty")}</span>
                     )}
                   </span>
                 </div>
@@ -320,8 +323,8 @@ function DetailPanel({
 
         <p className="snapshot-takes">
           {summary.totalTakes
-            ? `${summary.totalTakes} take${summary.totalTakes === 1 ? "" : "s"}${summary.latestTakeDate ? ` · latest ${summary.latestTakeDate}` : ""}`
-            : "No takes yet"}
+            ? tn(summary.totalTakes, "{count} take", "{count} takes") + (summary.latestTakeDate ? ` · ${t("latest {date}", { date: summary.latestTakeDate })}` : "")
+            : t("No takes yet")}
         </p>
       </div>
 
@@ -330,37 +333,37 @@ function DetailPanel({
           className="act fill"
           onClick={() => onOpen(song.id)}
         >
-          <I.open /> Open project
+          <I.open /> {t("Open project")}
         </button>
         <div className="detail-action-row">
           <button
             className="act slim ghost"
             onClick={() => onExportFinal(song.id)}
             disabled={actionDisabled}
-            title={summary.canExportFinal ? "Export final chart" : summary.finalBlocker}
+            title={summary.canExportFinal ? t("Export final chart") : summary.finalBlocker}
           >
-            <I.upload /> <span>{actionBusy === "exporting" ? "Exporting…" : "Export"}</span>
+            <I.upload /> <span>{actionBusy === "exporting" ? t("Exporting…") : t("Export")}</span>
           </button>
           <button
             className="act slim purple"
             onClick={(event) => onSaveFinal(song.id, event.currentTarget)}
             aria-label={
               actionBusy === "saving-library"
-                ? `Saving final chart to ${GAME_LIBRARY_NAME}`
-                : `Save final chart to ${GAME_LIBRARY_NAME}`
+                ? t("Saving final chart to {library}", { library: GAME_LIBRARY_NAME })
+                : t("Save final chart to {library}", { library: GAME_LIBRARY_NAME })
             }
             disabled={actionDisabled}
-            title={summary.canExportFinal ? `Save an Autochart copy to ${GAME_LIBRARY_NAME}` : summary.finalBlocker}
+            title={summary.canExportFinal ? t("Save an Autochart copy to {library}", { library: GAME_LIBRARY_NAME }) : summary.finalBlocker}
           >
-            <I.check /> <span>{actionBusy === "saving-library" ? GAME_LIBRARY_SAVING_LABEL : GAME_LIBRARY_SAVE_LABEL}</span>
+            <I.check /> <span>{t(actionBusy === "saving-library" ? GAME_LIBRARY_SAVING_LABEL : GAME_LIBRARY_SAVE_LABEL)}</span>
           </button>
         </div>
         <button
           className="act slim quiet-danger"
           onClick={() => onDeleteProject(song.id)}
-          title="Delete this project and move its directory to the operating system Trash"
+          title={t("Delete this project and move its folder to the Trash")}
         >
-          <I.trash /> Delete project
+          <I.trash /> {t("Delete project")}
         </button>
       </div>
     </div>
@@ -369,21 +372,24 @@ function DetailPanel({
 
 // The import's progress, then its result with Undo.
 function ImportNotice({ bulk, onStop, onUndo, onDismiss }) {
-  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const { phase, imported = [], failed = [] } = bulk;
   let message;
   if (phase === "running") {
     message = bulk.stopping
-      ? `Stopping after this song… ${imported.length} imported`
-      : `Importing ${Math.min(bulk.done + 1, bulk.total)} of ${bulk.total}${bulk.name ? ` · ${bulk.name}` : ""}`;
+      ? t("Stopping after this song… {count} imported", { count: imported.length })
+      : t("Importing {number} of {total}", { number: Math.min(bulk.done + 1, bulk.total), total: bulk.total }) + (bulk.name ? ` · ${bulk.name}` : "");
   } else if (phase === "done") {
-    message = imported.length === 1 ? `Imported “${imported[0].title}”` : `Imported ${plural(imported.length, "song")}`;
-    if (bulk.stopped) message += ` · stopped with ${bulk.total - bulk.done} left`;
+    message = imported.length === 1
+      ? t("Imported “{title}”", { title: imported[0].title })
+      : tn(imported.length, "Imported {count} song", "Imported {count} songs");
+    if (bulk.stopped) message += ` · ${t("stopped with {count} left", { count: bulk.total - bulk.done })}`;
   } else if (phase === "undoing") {
-    message = `Removing ${plural(imported.length, "imported project")}…`;
+    message = tn(imported.length, "Removing {count} imported project…", "Removing {count} imported projects…");
   } else {
-    message = `Removed ${plural(bulk.removed, "imported project")}${bulk.disposition === "trash" ? " (moved to Trash)" : ""}`;
-    if (bulk.kept) message += ` · kept ${bulk.kept} that ${bulk.kept === 1 ? "is" : "are"} open`;
+    message = bulk.disposition === "trash"
+      ? tn(bulk.removed, "Removed {count} imported project (moved to Trash)", "Removed {count} imported projects (moved to Trash)")
+      : tn(bulk.removed, "Removed {count} imported project", "Removed {count} imported projects");
+    if (bulk.kept) message += ` · ${tn(bulk.kept, "kept {count} that is open", "kept {count} that are open")}`;
   }
   const problems = phase === "undone" ? bulk.undoFailed || [] : failed;
   return (
@@ -391,23 +397,23 @@ function ImportNotice({ bulk, onStop, onUndo, onDismiss }) {
       <div className="import-notice-row">
         <span className="import-notice-msg">{message}</span>
         {phase === "running" && !bulk.stopping && (
-          <button type="button" className="btn-quiet" onClick={onStop}>Stop</button>
+          <button type="button" className="btn-quiet" onClick={onStop}>{t("Stop")}</button>
         )}
         {phase === "done" && imported.length > 0 && (
-          <button type="button" className="btn-quiet" onClick={onUndo} title="Remove the projects this import created (Ctrl+Z)">
-            Undo
+          <button type="button" className="btn-quiet" onClick={onUndo} title={t("Remove the projects this import created (Ctrl+Z)")}>
+            {t("Undo")}
           </button>
         )}
         {(phase === "done" || phase === "undone") && (
-          <button type="button" className="import-notice-close" onClick={onDismiss} aria-label="Dismiss"><I.close /></button>
+          <button type="button" className="import-notice-close" onClick={onDismiss} aria-label={t("Dismiss")}><I.close /></button>
         )}
       </div>
       {problems.length > 0 && phase !== "running" && (
         <details className="import-notice-problems">
           <summary>
             {phase === "undone"
-              ? `${plural(problems.length, "project")} couldn't be removed`
-              : `${plural(problems.length, "song")} couldn't be imported`}
+              ? tn(problems.length, "{count} project couldn't be removed", "{count} projects couldn't be removed")
+              : tn(problems.length, "{count} song couldn't be imported", "{count} songs couldn't be imported")}
           </summary>
           <ul>
             {problems.map((problem, index) => (
@@ -571,17 +577,17 @@ export default function Library({
     setStatusMsg("");
     readDrop(event.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
       if (folders.length || songs.length > 1 || (queueOpen && songs.length)) {
-        if (bulkImportBusy()) setImportError("Songs are still importing. Drop more once they're in.");
+        if (bulkImportBusy()) setImportError(t("Songs are still importing. Drop more once they're in."));
         else {
           startBulkImport(songs, { onSaved: queueOpen ? (saved) => addToQueue([saved]) : undefined })
             .catch((err) => setImportError(err.message || String(err)));
         }
       } else if (directories || archives) {
-        setImportError("No Clone Hero songs in there. Each song needs a notes.chart and its audio.");
+        setImportError(t("No Clone Hero songs in there. Each song needs a notes.chart and its audio."));
       } else if (file) {
         onCreate?.(file);
       }
-    }).catch((err) => setImportError(err instanceof SongArchiveError ? err.message : "That drop couldn't be read."));
+    }).catch((err) => setImportError(err instanceof SongArchiveError ? err.message : t("That drop couldn't be read.")));
   };
 
   // Show projects as they land, and pick the first one imported. Coming back
@@ -643,7 +649,7 @@ export default function Library({
       await setSongFavorite(songId, next);
     } catch (err) {
       setSongs((items) => items.map((song) => (song.id === songId ? { ...song, fav: !next } : song)));
-      setImportError(err.message || "Could not update project favorite.");
+      setImportError(err.message || t("Could not update the favorite."));
     }
   }, []);
 
@@ -716,7 +722,7 @@ export default function Library({
 
   const openImportedSong = async (songId) => {
     const rec = await getSongRecord(songId);
-    if (!rec) throw new Error("Project not found in library storage.");
+    if (!rec) throw new Error(t("This project is gone from the library."));
     const payload = await recordToImported(rec);
     onImport?.(payload);
   };
@@ -735,19 +741,19 @@ export default function Library({
     setImportError(null);
     setStatusMsg("");
     if (getQueue().items.some((item) => item.songId === songId && item.runs.some((run) => run.status === "running"))) {
-      setImportError("This song is being charted. Stop the queue before deleting it.");
+      setImportError(t("This song is being charted. Stop the queue before deleting it."));
       return;
     }
     try {
       const details = await getProjectDeletionDetails(songId);
       const projectTitle = details.title || song.title || songId;
       const confirmed = await askConfirm({
-        title: `Delete “${projectTitle}”?`,
+        title: t("Delete “{title}”?", { title: projectTitle }),
         body: details.disposition === "trash"
-          ? "Its folder moves to the Trash."
-          : "It's deleted from this browser for good.",
+          ? t("Its folder moves to the Trash.")
+          : t("It's deleted from this browser for good."),
         detail: details.path,
-        confirmLabel: "Delete project",
+        confirmLabel: t("Delete project"),
         danger: true,
       });
       if (!confirmed) return;
@@ -758,8 +764,8 @@ export default function Library({
       await loadLibrary();
       setStatusMsg(
         result.disposition === "trash"
-          ? `Moved \"${projectTitle}\" to Trash from ${result.path}.`
-          : `Deleted \"${projectTitle}\" from ${result.path}.`
+          ? t("Moved “{title}” to the Trash from {path}.", { title: projectTitle, path: result.path })
+          : t("Deleted “{title}” from {path}.", { title: projectTitle, path: result.path })
       );
     } catch (err) {
       setImportError(err.message || String(err));
@@ -772,17 +778,17 @@ export default function Library({
     setDetailAction("exporting");
     try {
       const rec = await getSongRecord(songId);
-      if (!rec) throw new Error("Project not found in library storage.");
+      if (!rec) throw new Error(t("This project is gone from the library."));
       const finalVersion = await ensureFinalVersionSaved(rec);
       const result = await exportChart(songId, finalVersion.id);
       if (result.canceled) {
-        setStatusMsg(result.message || "Export canceled.");
+        setStatusMsg(result.message || t("Export canceled."));
       } else {
-        setStatusMsg(result.message || `Exported final chart to ${result.path}`);
+        setStatusMsg(result.message || t("Exported final chart to {path}", { path: result.path }));
       }
       await loadLibrary();
     } catch (err) {
-      setImportError(err.message || "Final chart export failed.");
+      setImportError(err.message || t("Final chart export failed"));
     } finally {
       setDetailAction("");
     }
@@ -794,14 +800,14 @@ export default function Library({
     setDetailAction("saving-library");
     try {
       const rec = await getSongRecord(songId);
-      if (!rec) throw new Error("Project not found in library storage.");
+      if (!rec) throw new Error(t("This project is gone from the library."));
       const finalVersion = await ensureFinalVersionSaved(rec);
       const result = await saveChartToCloneHeroLibrary(songId, finalVersion.id);
-      setStatusMsg(result.message || `Saved final chart to ${result.path}`);
+      setStatusMsg(result.message || t("Saved final chart to {path}", { path: result.path }));
       await loadLibrary();
     } catch (err) {
       if (isMissingLibraryFolderError(err)) libraryFolderGate.request(() => saveFinalToLibrary(songId));
-      else setImportError(err.message || `Could not save final chart to ${GAME_LIBRARY_NAME}.`);
+      else setImportError(err.message || t("Could not save final chart to {library}.", { library: GAME_LIBRARY_NAME }));
     } finally {
       setDetailAction("");
     }
@@ -826,8 +832,8 @@ export default function Library({
           <div className="search">
             <I.search aria-hidden="true" />
             <input
-              aria-label="Search projects, artists, and charters"
-              placeholder="Search projects, artists, charters"
+              aria-label={t("Search projects, artists, and charters")}
+              placeholder={t("Search projects, artists, charters")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -837,8 +843,8 @@ export default function Library({
               type="button"
               className={view === "grid" ? "active" : ""}
               onClick={() => setView("grid")}
-              title="Grid view"
-              aria-label="Grid view"
+              title={t("Grid view")}
+              aria-label={t("Grid view")}
               aria-pressed={view === "grid"}
             >
               <I.grid aria-hidden="true" />
@@ -847,8 +853,8 @@ export default function Library({
               type="button"
               className={view === "list" ? "active" : ""}
               onClick={() => setView("list")}
-              title="List view"
-              aria-label="List view"
+              title={t("List view")}
+              aria-label={t("List view")}
               aria-pressed={view === "list"}
             >
               <I.list aria-hidden="true" />
@@ -859,19 +865,19 @@ export default function Library({
             className={"btn-quiet queue-toggle-btn" + (queueOpen ? " is-open" : "")}
             onClick={() => setQueueOpen(!queueOpen)}
             aria-pressed={queueOpen}
-            title={queueOpen ? "Back to the library. The queue keeps its songs and keeps running." : "Chart several songs, one after another"}
+            title={queueOpen ? t("Back to the library. The queue keeps its songs and keeps running.") : t("Chart several songs, one after another")}
           >
             {queueOpen ? <I.close /> : queue.running ? <ProgressRing value={queueSummary(queue).percent} /> : <I.queue />}
-            <span>{queueOpen ? "Close queue" : "Queue"}</span>
+            <span>{queueOpen ? t("Close queue") : t("Queue")}</span>
             {!queueOpen && queue.items.length > 0 && <b className="queue-toggle-count">{queue.items.length}</b>}
           </button>
           <button
             type="button"
             className={queueOpen ? "btn-quiet library-new-quiet" : "btn-primary"}
             onClick={() => (onCreate ? onCreate() : setPage("generate"))}
-            title="Start from a song, or open a Clone Hero song folder. You can also drop either onto the Library."
+            title={t("Start from a song, or open a Clone Hero song folder. You can also drop either onto the Library.")}
           >
-            <I.plus /> New project
+            <I.plus /> {t("New project")}
           </button>
         </div>
 
@@ -881,13 +887,13 @@ export default function Library({
               <span className="empty-ico">
                 <I.search />
               </span>
-              <div className="empty-title">No projects found</div>
+              <div className="empty-title">{t("No projects found")}</div>
               <div className="empty-sub">
                 {query.trim()
-                  ? `Nothing matches “${query.trim()}”.`
+                  ? t("Nothing matches “{query}”.", { query: query.trim() })
                   : filter === "favorites"
-                    ? "You haven't starred any projects yet."
-                    : "Nothing here yet. Start a new project, or drop songs or Clone Hero song folders here."}
+                    ? t("You haven't starred any projects yet.")
+                    : t("Nothing here yet. Start a new project, or drop songs or Clone Hero song folders here.")}
               </div>
             </div>
           ) : (
@@ -909,10 +915,10 @@ export default function Library({
                 <div className="list">
                   <div className="list-cols" aria-hidden="true">
                     <span />
-                    <span>Title</span>
-                    <span>Album</span>
-                    <span className="num">Year</span>
-                    <span className="num">Takes</span>
+                    <span>{t("Title")}</span>
+                    <span>{t("Album")}</span>
+                    <span className="num">{t("Year")}</span>
+                    <span className="num">{t("Takes")}</span>
                   </div>
                   {filtered.map((s) => (
                     <ListRow
@@ -933,9 +939,11 @@ export default function Library({
 
         <div className="statusbar">
           <span className="status-chunk">
-            {filtered.length} {filter === "favorites" ? "favorite" : "project"}{filtered.length !== 1 ? "s" : ""}
+            {filter === "favorites"
+              ? tn(filtered.length, "{count} favorite", "{count} favorites")
+              : tn(filtered.length, "{count} project", "{count} projects")}
           </span>
-          {query.trim() && <span className="status-chunk">match “{query.trim()}”</span>}
+          {query.trim() && <span className="status-chunk">{t("match “{query}”", { query: query.trim() })}</span>}
           <span className="statusbar-spacer" />
           {(importError || statusMsg) && (
             <span
@@ -975,8 +983,8 @@ export default function Library({
       <div className="library-drop-veil" aria-hidden="true">
         <span>
           {queueOpen
-            ? "Drop to add these to the queue"
-            : dropHot === "songs" ? "Drop to import these songs" : "Drop to start a project with this song"}
+            ? t("Drop to add these to the queue")
+            : dropHot === "songs" ? t("Drop to import these songs") : t("Drop to start a project with this song")}
         </span>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { GENERATOR_LABELS } from "../../data/humanLabels.js";
-import { DEFAULT_GENERATOR_ID } from "../../data/generationSettings.js";
+import { DEFAULT_GENERATOR_ID, generationVersionName } from "../../data/generationSettings.js";
+import { t } from "../../i18n/index.js";
 
 // The first model is "Fretformer 1" wherever a person reads it; older takes
 // stored its label as plain "Fretformer".
@@ -25,11 +26,12 @@ export function modelName(version, generators = []) {
 // have their own place next to it. Takes from elsewhere keep their name.
 export function takeTitle(version, generators = []) {
   const name = String(version?.name || "");
-  if (!version?.settings?.generation) return name;
+  // Names the app gave charts it didn't write show in the current language.
+  if (!version?.settings?.generation) return IMPORTED_NAMES[name]?.() || name;
   const model = modelName(version, generators);
   if (!model) return name;
   const edit = name.match(/\bEdit (\d+)$/i);
-  return edit ? `${model} · Edit ${edit[1]}` : model;
+  return edit ? t("{model} · Edit {number}", { model, number: edit[1] }) : model;
 }
 
 // A take's number, the one in its stored name, so a removed take doesn't
@@ -38,3 +40,27 @@ export function takeNumber(version, index) {
   const match = String(version?.name || "").match(/#(\d+)/);
   return match ? match[1] : String(index);
 }
+
+// A take card's heading. Generated takes store a name like "Fretformer 2
+// Expert #5" (and edits add " Edit 1") in whatever language was on when they
+// were made; it's rebuilt from the take's settings so it reads in the current
+// language. Other names show as they are.
+export function takeCardName(version, generators = []) {
+  const name = String(version?.name || "");
+  const edit = name.match(/^(.*?)\s+Edit\s+(\d+)$/i);
+  const base = edit ? edit[1] : name;
+  const generation = version?.settings?.generation;
+  const number = base.match(/#(\d+)$/);
+  const shown = !generation
+    ? IMPORTED_NAMES[base]?.() || base
+    : number
+      ? generationVersionName(modelName(version, generators) || base.replace(/\s.*$/, ""), generation, number[1])
+      : base;
+  return edit ? t("{name} Edit {number}", { name: shown, number: edit[2] }) : shown;
+}
+
+// Names the app gives charts it didn't write; saved in English.
+const IMPORTED_NAMES = {
+  "Imported Clone Hero": () => t("Imported Clone Hero"),
+  "Edited outside Autochart": () => t("Edited outside Autochart"),
+};

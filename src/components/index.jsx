@@ -6,6 +6,7 @@ import ProgressRing from "./ProgressRing.jsx";
 import { getQueue, queueSummary, subscribeQueue } from "../services/generationQueue.js";
 import useCoverArt from "../hooks/useCoverArt.js";
 import { peekCoverArt } from "../lib/coverArt/index.js";
+import { t } from "../i18n/index.js";
 
 // Generated cover for a song without album art: a seeded print drawn off the
 // main thread (see lib/coverArt), faded in once it is ready. Covers already
@@ -46,8 +47,8 @@ export function FretStrip({ className = "" }) {
 }
 
 const LIB_FILTERS = [
-  { id: "all", name: "Projects" },
-  { id: "favorites", name: "Favorites" },
+  { id: "all", get name() { return t("Projects"); } },
+  { id: "favorites", get name() { return t("Favorites"); } },
 ];
 
 export function Rail({
@@ -71,16 +72,16 @@ export function Rail({
   const queueRunning = queue.running;
   const queuePercent = queueRunning ? queueSummary(queue).percent : 0;
   const home = web
-    ? { id: "start", name: "Start", icon: <I.home /> }
-    : { id: "library", name: "Library", icon: <I.music /> };
+    ? { id: "start", name: t("Start"), icon: <I.home /> }
+    : { id: "library", name: t("Library"), icon: <I.music /> };
   const pages = [
     home,
-    ...(web ? [] : [{ id: "generate", name: "Project", icon: <I.bolt /> }]),
-    { id: "settings", name: "Settings", icon: <I.gear /> },
+    ...(web ? [] : [{ id: "generate", name: t("Project"), icon: <I.bolt /> }]),
+    { id: "settings", name: t("Settings"), icon: <I.gear /> },
   ];
-  const themeLabel = theme === "system" ? "System theme" : theme === "light" ? "Light mode" : "Dark mode";
+  const themeLabel = theme === "system" ? t("System theme") : theme === "light" ? t("Light mode") : t("Dark mode");
   return (
-    <aside className={"rail" + (collapsed ? " collapsed" : "")} aria-label="Primary navigation">
+    <aside className={"rail" + (collapsed ? " collapsed" : "")} aria-label={t("Primary navigation")}>
       <div className="brand">
         {/* On the web the logo goes back to the hub site; Start is right below it. */}
         {web ? (
@@ -95,8 +96,8 @@ export function Rail({
             type="button"
             className="brand-row"
             onClick={() => onNav(home.id)}
-            title={`Autochart — ${home.name}`}
-            aria-label={`Autochart — ${home.name}`}
+            title={t("Autochart — {page}", { page: home.name })}
+            aria-label={t("Autochart — {page}", { page: home.name })}
           >
             <span className="logo-star">
               <I.star />
@@ -109,14 +110,14 @@ export function Rail({
           type="button"
           className="brand-strip-btn"
           onClick={onToggleCollapse}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+          aria-label={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
           aria-expanded={!collapsed}
         >
           <FretStrip className="brand-strip" />
         </button>
       </div>
-      <nav className="rail-nav" aria-label="Sections">
+      <nav className="rail-nav" aria-label={t("Sections")}>
         {pages.map((it) => (
           <button
             key={it.id}
@@ -135,7 +136,7 @@ export function Rail({
 
       {page === "library" && (
         <div className="rail-section">
-          <div className="rail-label">COLLECTION</div>
+          <div className="rail-label">{t("Collection")}</div>
           {LIB_FILTERS.map((f) => (
             <button
               key={f.id}
@@ -154,43 +155,43 @@ export function Rail({
 
       {web && (
         <div className="rail-section">
-          <div className="rail-label">SONG</div>
+          <div className="rail-label">{t("Song")}</div>
           <button
             type="button"
             className={"rail-item rail-song" + (page === "generate" ? " active" : "")}
             onClick={() => onNav("generate")}
             disabled={!songTitle}
-            title={songTitle || "No song open"}
+            title={songTitle || t("No song open")}
             aria-current={page === "generate" ? "page" : undefined}
           >
             <I.music />
-            <span className="rail-item-label">{songTitle || "No song open"}</span>
+            <span className="rail-item-label">{songTitle || t("No song open")}</span>
           </button>
         </div>
       )}
 
       <div className="rail-spacer" />
-      <label className="rail-item quiet rail-theme" title={`Color theme: ${themeLabel}`}>
+      <label className="rail-item quiet rail-theme" title={t("Color theme: {theme}", { theme: themeLabel })}>
         {theme === "system" ? <I.sunMoon aria-hidden="true" /> : theme === "light" ? <I.sun aria-hidden="true" /> : <I.moon aria-hidden="true" />}
         <span className="rail-item-label" aria-hidden="true">{themeLabel}</span>
         <span className="rail-item-label rail-theme-chevron" aria-hidden="true"><I.chev /></span>
         <select
           className="rail-theme-select"
-          aria-label="Color theme"
+          aria-label={t("Color theme")}
           value={theme}
           onChange={(event) => setTheme(event.target.value)}
         >
-          <option value="system">System theme</option>
-          <option value="light">Light mode</option>
-          <option value="dark">Dark mode</option>
+          <option value="system">{t("System theme")}</option>
+          <option value="light">{t("Light mode")}</option>
+          <option value="dark">{t("Dark mode")}</option>
         </select>
       </label>
       {web && (
         <div className="rail-links">
-          <a className="rail-item quiet" href={SITE_LINKS.repo} target="_blank" rel="noreferrer" title="Code on GitHub" aria-label="Code on GitHub">
+          <a className="rail-item quiet" href={SITE_LINKS.repo} target="_blank" rel="noreferrer" title={t("Code on GitHub")} aria-label={t("Code on GitHub")}>
             <I.github />
           </a>
-          <a className="rail-item quiet" href={SITE_LINKS.privacy} target="_blank" rel="noreferrer" title="Privacy" aria-label="Privacy">
+          <a className="rail-item quiet" href={SITE_LINKS.privacy} target="_blank" rel="noreferrer" title={t("Privacy")} aria-label={t("Privacy")}>
             <I.shield />
           </a>
         </div>
@@ -201,13 +202,13 @@ export function Rail({
           type="button"
           className={"rail-item quiet rail-version" + (update.update ? " has-update" : "") + (update.update && !update.dismissed ? " fresh" : "")}
           onClick={onUpdates}
-          title={update.update ? `Autochart ${update.update.version} is out` : `Autochart ${update.currentVersion}`}
+          title={update.update ? t("Autochart {version} is out", { version: update.update.version }) : `Autochart ${update.currentVersion}`}
         >
           <span className="rail-version-icon" aria-hidden="true">
             {update.update ? <I.download /> : <I.info />}
           </span>
           <span className="rail-item-label">
-            {update.update ? `${update.update.version} is out` : `Version ${update.currentVersion}`}
+            {update.update ? t("{version} is out", { version: update.update.version }) : t("Version {version}", { version: update.currentVersion })}
           </span>
         </button>
       )}

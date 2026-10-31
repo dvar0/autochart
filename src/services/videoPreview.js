@@ -1,4 +1,5 @@
 import { electronFiles, electronLibrary } from "./runtimeBridge.js";
+import { t } from "../i18n/index.js";
 
 const backgroundPreviews = new WeakMap();
 
@@ -29,12 +30,12 @@ export async function playableVideoUrl(url, getSource) {
   if (await canDecodeVideo(url)) return url;
   const library = electronLibrary();
   if (!library?.prepareVideoPreview) {
-    throw new Error("This video codec cannot be played here. Open it in the desktop app to create a compatible preview.");
+    throw new Error(t("This video codec can't play here. Open it in the desktop app to make a preview that plays."));
   }
   const compatible = await library.prepareVideoPreview(await getSource());
   // The native converter confirmed that this container has no video stream.
   if (compatible === null) return null;
-  if (!await canDecodeVideo(compatible)) throw new Error("The compatible video preview could not be decoded.");
+  if (!await canDecodeVideo(compatible)) throw new Error(t("The video preview couldn't be decoded."));
   return compatible;
 }
 
@@ -57,7 +58,7 @@ export function resolveVideoBackground(background) {
     const ready = playableVideoUrl(background.url, async () => {
       if (background.source) return background.source;
       const capability = await electronFiles()?.registerLibraryAsset?.(background.file, "background-video");
-      if (!capability?.token) throw new Error("Select the video from disk to create a compatible preview.");
+      if (!capability?.token) throw new Error(t("Pick the video from disk to make a preview that plays."));
       return { kind: "selected-file", token: capability.token };
     });
     backgroundPreviews.set(background, ready);

@@ -2,6 +2,7 @@ import { isVideoMedia, makeVideoThumbnail } from "./mediaMetadata.js";
 import { importSongFolders } from "./songImport.js";
 import { deleteProjectRecord, getProjectDeletionDetails, revokeCoverUrl, updateSongRecord } from "./songLibrary.js";
 import { createVideoFileUrl } from "./videoPreview.js";
+import { t } from "../i18n/index.js";
 
 // The desktop Library's song import (song folders and song files), kept
 // outside the page so it carries on (and can still be undone) if the Library
@@ -76,7 +77,7 @@ export function bulkImportBusy() {
 }
 
 export async function startBulkImport(folders, { onSaved } = {}) {
-  if (bulkImportBusy()) throw new Error("Songs are still importing. Try again once they're in.");
+  if (bulkImportBusy()) throw new Error(t("Songs are still importing. Try again once they're in."));
   stopRequested = false;
   const imported = [];
   set({ phase: "running", total: folders.length, done: 0, name: folders[0]?.name || "", imported, failed: [] });

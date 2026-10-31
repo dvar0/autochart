@@ -1,4 +1,6 @@
 import { DIFF } from "../data/difficultyMetadata.js";
+import { t } from "../i18n/index.js";
+import { leadInText } from "../pages/generate/separationNames.js";
 import {
   SOURCE_CHART_TIMING_DETECTOR_ID,
   timingDetectorLabel,
@@ -40,15 +42,17 @@ function versionSourceVariantLabel(version = null) {
 }
 
 function versionTimingLabel(version) {
-  if (!version || version.source !== "generated") return "imported timing";
+  if (!version || version.source !== "generated") return t("imported timing");
   const generation = version.settings?.generation || {};
   const controls = generation.controls || {};
   const resolved = generation.resolved || {};
   const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
   const label = timingDetectorLabel(timingDetector);
   if (timingDetector === SOURCE_CHART_TIMING_DETECTOR_ID) return label;
-  if (!timingSmoothingEnabledFromGeneration(generation)) return `${label} (raw grid)`;
-  return `${label} (${usesOlderTimingSmoother(generation) ? "old smoothing" : "smoothed"})`;
+  if (!timingSmoothingEnabledFromGeneration(generation)) return t("{timing} (raw grid)", { timing: label });
+  return usesOlderTimingSmoother(generation)
+    ? t("{timing} (old smoothing)", { timing: label })
+    : t("{timing} (smoothed)", { timing: label });
 }
 
 function assignedSlotEntries(slotVersions = {}, order = FINAL_SLOT_ORDER) {
@@ -70,9 +74,14 @@ export function finalTimingMismatchMessage(slotVersions = {}, order = FINAL_SLOT
   if (firstVersion.source === "generated" && otherVersion.source === "generated" && olderTiming(firstVersion) !== olderTiming(otherVersion)) {
     const [oldDifficulty, newDifficulty] = olderTiming(firstVersion) ? [firstDifficulty, otherDifficulty] : [otherDifficulty, firstDifficulty];
     const oldName = DIFF[oldDifficulty]?.name || oldDifficulty;
-    return `${oldName} was made with older timing, so it can't share a final chart with ${DIFF[newDifficulty]?.name || newDifficulty}. Generate ${oldName} again to use them together.`;
+    return t("{old} was made with older timing, so it can't share a final chart with {other}. Generate {old} again to use them together.", { old: oldName, other: DIFF[newDifficulty]?.name || newDifficulty });
   }
-  return `Final chart needs one shared beatmap. ${DIFF[firstDifficulty]?.name || firstDifficulty} uses ${versionTimingLabel(firstVersion)}; ${DIFF[otherDifficulty]?.name || otherDifficulty} uses ${versionTimingLabel(otherVersion)}.`;
+  return t("Final chart needs one shared beatmap. {first} uses {firstTiming}; {other} uses {otherTiming}.", {
+    first: DIFF[firstDifficulty]?.name || firstDifficulty,
+    firstTiming: versionTimingLabel(firstVersion),
+    other: DIFF[otherDifficulty]?.name || otherDifficulty,
+    otherTiming: versionTimingLabel(otherVersion),
+  });
 }
 
 export function finalSourceVariantMismatchMessage(slotVersions = {}, order = FINAL_SLOT_ORDER) {
@@ -83,7 +92,12 @@ export function finalSourceVariantMismatchMessage(slotVersions = {}, order = FIN
   const mismatch = assigned.find(([, version]) => versionSourceVariantKey(version) !== firstKey);
   if (!mismatch) return "";
   const [otherDifficulty, otherVersion] = mismatch;
-  return `Final chart needs one shared source audio. ${DIFF[firstDifficulty]?.name || firstDifficulty} uses ${versionSourceVariantLabel(firstVersion)}; ${DIFF[otherDifficulty]?.name || otherDifficulty} uses ${versionSourceVariantLabel(otherVersion)}.`;
+  return t("Final chart needs one shared source audio. {first} uses {firstAudio}; {other} uses {otherAudio}.", {
+    first: DIFF[firstDifficulty]?.name || firstDifficulty,
+    firstAudio: leadInText(versionSourceVariantLabel(firstVersion)),
+    other: DIFF[otherDifficulty]?.name || otherDifficulty,
+    otherAudio: leadInText(versionSourceVariantLabel(otherVersion)),
+  });
 }
 
 export function finalValidationMessage(slotVersions = {}, order = FINAL_SLOT_ORDER) {
@@ -158,7 +172,7 @@ export function buildFinalChartVersion({
   const cleanSlots = cleanFinalSlots(slots, sourceVersions);
   const slotVersions = buildFinalSlotVersions(cleanSlots, sourceVersions);
   const assignedCount = Object.values(slotVersions).filter(Boolean).length;
-  if (!assignedCount) throw new Error("Assign at least one difficulty before building the final chart.");
+  if (!assignedCount) throw new Error(t("Assign at least one difficulty before building the final chart."));
   const validationMessage = finalValidationMessage(slotVersions);
   if (validationMessage) throw new Error(validationMessage);
   const resolvedBaseVersion = baseVersion || sourceVersions.find((version) => version.source === "imported-chart") || sourceVersions[0] || null;

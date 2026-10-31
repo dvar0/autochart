@@ -26,6 +26,7 @@ import { generatorDifficultyIds, generatorStemSetId, readsStems, sourceChartPayl
 import { hasElectronEngine, isWebApp } from "./runtimeBridge.js";
 import { getSongRecord, getStoredAssetSource, readSongAudioSeconds } from "./songLibrary.js";
 import { DEFAULT_DEMUCS_ID } from "./songSchema.js";
+import { msg, t, tn } from "../i18n/index.js";
 
 // The desktop Library's queue: songs charted one job at a time, each start to
 // finish, with its own run logic and the same engine contract as a project's
@@ -41,14 +42,15 @@ import { DEFAULT_DEMUCS_ID } from "./songSchema.js";
 
 const STORAGE_KEY = "autochart.generationQueue.v1";
 const NO_LEAD_IN = { kind: "original", leadInSilenceSeconds: 0, leadInSilenceMs: 0, key: "lead-in:0", label: "No lead-in" };
+// Kept in English with the queue; shown with t(stage).
 const STAGE_LABELS = {
-  audio: "Getting ready",
-  demucs: "Separating",
-  timing: "Finding the beat",
-  smoothing: "Finding the beat",
-  transcription: "Charting",
-  chart: "Charting",
-  done: "Charting",
+  audio: msg("Getting ready"),
+  demucs: msg("Separating"),
+  timing: msg("Finding the beat"),
+  smoothing: msg("Finding the beat"),
+  transcription: msg("Charting"),
+  chart: msg("Charting"),
+  done: msg("Charting"),
 };
 // How long each step takes against the song's length, near enough to weigh a
 // song that still needs separating against one that doesn't.
@@ -428,9 +430,9 @@ function handleEvent(event) {
 }
 
 function cleanError(error) {
-  const message = String(error?.message || error || "Generation failed.")
+  const message = String(error?.message || error || t("Generation failed."))
     .replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
-  return /\bENOENT\b/.test(message) ? "This project's song file is missing." : message;
+  return /\bENOENT\b/.test(message) ? t("This project's song file is missing.") : message;
 }
 
 // The saved default separation, or the one the project picked if it can be reused.
@@ -444,9 +446,9 @@ function separationFor(record) {
 
 async function chartInput(item, run) {
   const record = await getSongRecord(item.songId);
-  if (!record) throw new Error("This project is gone from the library.");
+  if (!record) throw new Error(t("This project is gone from the library."));
   const audioSource = await getStoredAssetSource(item.songId, record.assets?.audio);
-  if (audioSource?.kind !== "project-asset") throw new Error("This project has no saved song file.");
+  if (audioSource?.kind !== "project-asset") throw new Error(t("This project has no saved song file."));
   const generator = state.generator;
   const versions = record.versions || [];
   const sourceChart = sourceChartPayloadFromVersions(versions, record);
@@ -487,7 +489,7 @@ async function chartInput(item, run) {
 // A project's run goes first; the queue carries on once it's over.
 async function waitForProjects(item) {
   while (projectRunsActive() && !stopRequested) {
-    item.stage = "Waiting for your project";
+    item.stage = msg("Waiting for your project");
     emit();
     await Promise.race([whenProjectsIdle(), stopSignal]);
   }
@@ -520,7 +522,7 @@ async function runChart(item, run) {
         if (!item.separated.includes(stemSet)) item.separated.push(stemSet);
       }
     } else {
-      throw new Error("The engine didn't return a chart.");
+      throw new Error(t("The engine didn't return a chart."));
     }
   } catch (error) {
     run.status = "failed";
@@ -543,7 +545,7 @@ async function runChart(item, run) {
 
 async function saveItem(item) {
   const record = await getSongRecord(item.songId);
-  if (!record) throw new Error("This project is gone from the library.");
+  if (!record) throw new Error(t("This project is gone from the library."));
   const finalVersion = await ensureFinalVersionSaved(record);
   await saveChartToCloneHeroLibrary(item.songId, finalVersion.id);
   item.saved = true;
@@ -655,7 +657,7 @@ export async function exportQueue() {
     for (const item of targets) {
       try {
         const record = await getSongRecord(item.songId);
-        if (!record) throw new Error("This project is gone from the library.");
+        if (!record) throw new Error(t("This project is gone from the library."));
         const finalVersion = await ensureFinalVersionSaved(record);
         await exportChartToChosenFolder(item.songId, finalVersion.id, folder.grant);
         item.saveError = "";
@@ -667,7 +669,7 @@ export async function exportQueue() {
       state.saving = { kind: "export", done, total: targets.length };
       emit();
     }
-    state.note = `Exported ${exported} ${exported === 1 ? "song" : "songs"} to ${folder.path}`;
+    state.note = tn(exported, "Exported {count} song to {path}", "Exported {count} songs to {path}", { path: folder.path });
   } finally {
     state.saving = null;
     emit();

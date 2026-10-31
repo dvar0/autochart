@@ -4,6 +4,7 @@
 // song's length, or (in the browser) a device that can't separate at all.
 
 import { MODEL_FAMILIES } from "../../data/modelFamilies.js";
+import { tn } from "../../i18n/index.js";
 
 export const LITE_FAMILY = MODEL_FAMILIES.find((family) => family.id === "fretformer-2-lite");
 export const LITE_GENERATOR_ID = LITE_FAMILY.generatorId;
@@ -63,7 +64,7 @@ export function separationSecondsLeft(clock, now = Date.now()) {
 // "about 12 minutes"
 export function minutesText(seconds) {
   const minutes = Math.max(1, Math.round(seconds / 60));
-  return `about ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return tn(minutes, "about {count} minute", "about {count} minutes");
 }
 
 // A browser that can't separate in reasonable time before trying: very little

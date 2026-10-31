@@ -34,6 +34,7 @@
     "test:app-updates": "node scripts/test-app-updates.cjs",
     "test:usage-counts": "node cloudflare/usage-counts/test.mjs",
     "test:video-preview": "node scripts/test-video-preview.cjs",
+    "test:i18n": "node scripts/test-i18n.cjs",
     "test:v010:frontend": "node scripts/test-v010-frontend.cjs",
     "test:highway": "node scripts/test-highway.cjs",
     "test:highway-playback": "electron scripts/test-highway-playback-electron.cjs",

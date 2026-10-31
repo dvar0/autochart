@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { HighwayRenderer } from "./HighwayRenderer.js";
+import { t } from "../i18n/index.js";
 import { GameEngine } from "./GameEngine.js";
 import {
   activeLyricPhrase,
@@ -62,9 +63,9 @@ function computeBeats(tempoMap, resolution, endTime) {
   const beats = [];
   if (!tempoMap || !resolution) return beats;
   for (let tick = 0; ; tick += resolution) {
-    const t = tempoMap.tickToSeconds(tick);
-    if (t > endTime + 2) break;
-    beats.push(t);
+    const seconds = tempoMap.tickToSeconds(tick);
+    if (seconds > endTime + 2) break;
+    beats.push(seconds);
     if (beats.length > 200000) break;
   }
   return beats;
@@ -346,9 +347,9 @@ function HighwayPreview(
     const startedAt = performance.now();
     const durationMs = Math.min(1180, Math.max(340, Math.abs(distance) * 155));
     const step = (now) => {
-      const t = Math.min(1, (now - startedAt) / durationMs);
-      engine.seek(from + distance * (1 - Math.pow(1 - t, 3)));
-      if (t < 1) followRafRef.current = requestAnimationFrame(step);
+      const amount = Math.min(1, (now - startedAt) / durationMs);
+      engine.seek(from + distance * (1 - Math.pow(1 - amount, 3)));
+      if (amount < 1) followRafRef.current = requestAnimationFrame(step);
       else followRafRef.current = 0;
     };
     followRafRef.current = requestAnimationFrame(step);
@@ -461,22 +462,22 @@ function HighwayPreview(
         <HighwayBackground background={background} videoRef={videoRef} onVideoReady={() => syncVideo(engineRef.current?.songTime || 0, Boolean(engineRef.current?.running))} />
         <canvas ref={canvasRef} className="highway-canvas" />
         {activeLyric && activeLyricWords.length > 0 && <div className="highway-lyrics" aria-live="polite">{activeLyricWords.map((word) => <span key={word.key} className={word.active ? "highway-lyric-word active" : "highway-lyric-word"}>{word.sep}{word.text}</span>)}</div>}
-        {!track && <div className="highway-empty">Import a song to preview the chart.</div>}
-        {track && !ready && !error && !visualOnly && <div className="highway-empty highway-loading">Loading chart…</div>}
+        {!track && <div className="highway-empty">{t("Import a song to preview the chart.")}</div>}
+        {track && !ready && !error && !visualOnly && <div className="highway-empty highway-loading">{t("Loading chart…")}</div>}
         {error && <div className="highway-empty play-error" role="alert">{error}</div>}
       </div>
       {!hideTransport && <div className="transport">
-        <button className="transport-btn" onClick={playing ? pausePreview : playPreview} disabled={!ready}>{playing ? <><I.pause aria-hidden="true" /> Pause</> : <><I.play aria-hidden="true" /> Play</>}</button>
-        <button className="transport-btn ghost icon-only" onClick={restartPreview} disabled={!ready} title="Restart from the beginning" aria-label="Restart from the beginning"><I.restart aria-hidden="true" /></button>
+        <button className="transport-btn" onClick={playing ? pausePreview : playPreview} disabled={!ready}>{playing ? <><I.pause aria-hidden="true" /> {t("Pause")}</> : <><I.play aria-hidden="true" /> {t("Play")}</>}</button>
+        <button className="transport-btn ghost icon-only" onClick={restartPreview} disabled={!ready} title={t("Restart from the beginning")} aria-label={t("Restart from the beginning")}><I.restart aria-hidden="true" /></button>
         <span className="transport-time">{fmtTime(progress.time)}</span>
-        <div className="timeline"><DensityStrip lanes={track ? [{ notes: track.notes, solos: track.solos }] : []} duration={progress.duration || 0} /><input className="seekbar" type="range" min={0} max={progress.duration || 0} step={0.05} value={Math.min(progress.time, progress.duration || 0)} onChange={(event) => seekPreview(Number(event.target.value))} disabled={!ready} aria-label="Preview position" /></div>
+        <div className="timeline"><DensityStrip lanes={track ? [{ notes: track.notes, solos: track.solos }] : []} duration={progress.duration || 0} /><input className="seekbar" type="range" min={0} max={progress.duration || 0} step={0.05} value={Math.min(progress.time, progress.duration || 0)} onChange={(event) => seekPreview(Number(event.target.value))} disabled={!ready} aria-label={t("Preview position")} /></div>
         <span className="transport-time">{fmtTime(progress.duration)}</span>
-        {volumeProp === undefined && <div className={"volume-control" + (mutedState ? " is-muted" : "")}><button className="volume-mute-btn" type="button" onClick={handleMuteToggle} title={mutedState ? "Unmute chart audio" : "Mute chart audio"} aria-label={mutedState ? "Unmute chart audio" : "Mute chart audio"} aria-pressed={mutedState}>{mutedState ? <I.volumeMute aria-hidden="true" /> : <I.volume aria-hidden="true" />}</button><input className="volume-slider" type="range" min={0} max={1} step={0.01} value={volume} onChange={handleVolumeChange} aria-label="Volume" /></div>}
+        {volumeProp === undefined && <div className={"volume-control" + (mutedState ? " is-muted" : "")}><button className="volume-mute-btn" type="button" onClick={handleMuteToggle} title={mutedState ? t("Unmute chart audio") : t("Mute chart audio")} aria-label={mutedState ? t("Unmute chart audio") : t("Mute chart audio")} aria-pressed={mutedState}>{mutedState ? <I.volumeMute aria-hidden="true" /> : <I.volume aria-hidden="true" />}</button><input className="volume-slider" type="range" min={0} max={1} step={0.01} value={volume} onChange={handleVolumeChange} aria-label={t("Volume")} /></div>}
         {!hideControls && <div className="highway-menu">
-          <button type="button" className="transport-btn ghost highway-toggle" onClick={() => setHighwayPanel((open) => !open)} title="Adjust visual highway settings" aria-expanded={highwayPanel} aria-controls="highway-settings-panel">Highway</button>
-          {highwayPanel && <div className="highway-settings-panel" id="highway-settings-panel"><div className="settings-title">Highway settings</div><div className="settings-row"><div><div className="settings-label">Tilt</div><div className="settings-hint">Lower is flatter. Higher is steeper.</div></div><div className="calib"><button type="button" onClick={() => adjustHighwayTilt(-HIGHWAY_TILT_STEP)} aria-label="Decrease highway tilt">−</button><span className="calib-val">{tilt.toFixed(2)}</span><button type="button" onClick={() => adjustHighwayTilt(HIGHWAY_TILT_STEP)} aria-label="Increase highway tilt">+</button></div></div><div className="settings-row"><div><div className="settings-label">Lyrics</div><div className="settings-hint">Show lyric events from the chart.</div></div><button type="button" className={"visual-toggle" + (lyricsEnabled ? " on" : "")} onClick={toggleLyrics} aria-pressed={lyricsEnabled}>{lyricsEnabled ? "On" : "Off"}</button></div></div>}
+          <button type="button" className="transport-btn ghost highway-toggle" onClick={() => setHighwayPanel((open) => !open)} title={t("Adjust visual highway settings")} aria-expanded={highwayPanel} aria-controls="highway-settings-panel">{t("Highway")}</button>
+          {highwayPanel && <div className="highway-settings-panel" id="highway-settings-panel"><div className="settings-title">{t("Highway settings")}</div><div className="settings-row"><div><div className="settings-label">{t("Tilt")}</div><div className="settings-hint">{t("Lower is flatter. Higher is steeper.")}</div></div><div className="calib"><button type="button" onClick={() => adjustHighwayTilt(-HIGHWAY_TILT_STEP)} aria-label={t("Decrease highway tilt")}>−</button><span className="calib-val">{tilt.toFixed(2)}</span><button type="button" onClick={() => adjustHighwayTilt(HIGHWAY_TILT_STEP)} aria-label={t("Increase highway tilt")}>+</button></div></div><div className="settings-row"><div><div className="settings-label">{t("Lyrics")}</div><div className="settings-hint">{t("Show lyric events from the chart.")}</div></div><button type="button" className={"visual-toggle" + (lyricsEnabled ? " on" : "")} onClick={toggleLyrics} aria-pressed={lyricsEnabled}>{lyricsEnabled ? t("On") : t("Off")}</button></div></div>}
         </div>}
-        <button className="transport-btn ghost icon-only" onClick={handleFullscreenToggle} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? <I.fullscreenExit aria-hidden="true" /> : <I.fullscreen aria-hidden="true" />}</button>
+        <button className="transport-btn ghost icon-only" onClick={handleFullscreenToggle} title={fullscreen ? t("Exit full screen") : t("Full screen")} aria-label={fullscreen ? t("Exit full screen") : t("Full screen")}>{fullscreen ? <I.fullscreenExit aria-hidden="true" /> : <I.fullscreen aria-hidden="true" />}</button>
       </div>}
     </div>
   );

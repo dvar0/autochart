@@ -1,4 +1,6 @@
 import { formatSize as formatBytes } from "../data/generationCatalog.js";
+import { t, tn } from "../i18n/index.js";
+
 function clampPercent(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return null;
@@ -7,7 +9,7 @@ function clampPercent(value) {
 
 function fileName(filePath) {
   const parts = String(filePath || "").split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || "Preparing download";
+  return parts[parts.length - 1] || t("Preparing download");
 }
 
 import { I } from "../icons.jsx";
@@ -15,17 +17,18 @@ import ProgressRing from "./ProgressRing.jsx";
 
 function progressLabel(progress) {
   if (!progress) return "";
-  if (progress.phase === "catalog") return "Fetching package catalog";
-  if (progress.phase === "checking") return `Checking ${fileName(progress.filePath)}`;
+  const file = fileName(progress.filePath);
+  if (progress.phase === "catalog") return t("Fetching package catalog");
+  if (progress.phase === "checking") return t("Checking {file}", { file });
   if (progress.phase === "verifying") return progress.skipped
-    ? `Already downloaded ${fileName(progress.filePath)}`
-    : `Verified ${fileName(progress.filePath)}`;
-  if (progress.phase === "extracting") return `Extracting ${fileName(progress.filePath)}`;
-  if (progress.phase === "complete") return "Chart generation package installed";
-  if (progress.phase === "failed") return "Chart generation package failed";
-  if (progress.skipped) return `Already downloaded ${fileName(progress.filePath)}`;
-  if (progress.filePath) return `Downloading ${fileName(progress.filePath)}`;
-  return progress.packLabel ? `Downloading ${progress.packLabel}` : "Downloading chart generation package";
+    ? t("Already downloaded {file}", { file })
+    : t("Verified {file}", { file });
+  if (progress.phase === "extracting") return t("Extracting {file}", { file });
+  if (progress.phase === "complete") return t("Chart generation package installed");
+  if (progress.phase === "failed") return t("Chart generation package failed");
+  if (progress.skipped) return t("Already downloaded {file}", { file });
+  if (progress.filePath) return t("Downloading {file}", { file });
+  return progress.packLabel ? t("Downloading {file}", { file: progress.packLabel }) : t("Downloading chart generation package");
 }
 
 export default function InstallProgress({ progress }) {
@@ -56,7 +59,7 @@ export default function InstallProgress({ progress }) {
           )}
         </span>
         <b>{progressLabel(progress)}</b>
-        <span className="install-progress-pct">{percent == null ? (isActive ? "" : progress.phase) : `${percent}%`}</span>
+        <span className="install-progress-pct">{percent == null ? (isActive ? "" : isComplete ? t("Done") : t("Failed")) : `${percent}%`}</span>
       </div>
       <div
         className="gen-progressbar"
@@ -68,7 +71,9 @@ export default function InstallProgress({ progress }) {
         <i className={percent == null ? "indeterminate" : ""} style={{ width: `${percent ?? 100}%` }} />
       </div>
       <div className="install-progress-meta">
-        <span>{progress.fileIndex && progress.totalFiles ? `File ${progress.fileIndex}/${progress.totalFiles}` : progress.totalFiles ? `${progress.totalFiles} files` : ""}</span>
+        <span>{progress.fileIndex && progress.totalFiles
+          ? t("File {number}/{total}", { number: progress.fileIndex, total: progress.totalFiles })
+          : progress.totalFiles ? tn(progress.totalFiles, "{count} file", "{count} files") : ""}</span>
         <span>{filePercent == null ? fileText : `${filePercent}%${fileText ? ` · ${fileText}` : ""}`}</span>
         <span>{totalText}</span>
       </div>

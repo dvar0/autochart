@@ -1,4 +1,5 @@
 import { GAME_LIBRARY_NAME } from "../data/gameLibrary.js";
+import { t } from "../i18n/index.js";
 import { exportCover } from "../lib/coverArt/exportCover.js";
 import { getSongRecord, loadCoverBlob } from "./songLibrary.js";
 import {
@@ -35,7 +36,7 @@ function webExport() {
 async function audioPayloadFromInput(input) {
   if (engineAcceptsAudioBlobs()) {
     const blob = input.audioFile;
-    if (!(blob instanceof Blob)) throw new Error("Choose a song file first.");
+    if (!(blob instanceof Blob)) throw new Error(t("Choose a song file first."));
     return {
       kind: "blob",
       blob,
@@ -55,9 +56,7 @@ async function audioPayloadFromInput(input) {
     ? await electronFiles()?.registerGenerationInput?.(blob)
     : null;
   if (!capability?.token) {
-    throw new Error(
-      "This audio exists only in memory. Save it to the project before generation or choose a file from disk."
-    );
+    throw new Error(t("This audio only exists in memory. Save it to the project, or pick a file from disk, before generating."));
   }
   return {
     kind: "selected-file",
@@ -308,11 +307,11 @@ export async function exportChart(songId, versionId = null) {
   if (hasElectronLibrary()) {
     const rec = await getSongRecord(songId);
     if (!rec) throw new Error("Project not found in library.");
-    const result = await invokeLibraryExport("exportSong", { songId, versionId });
+    const result = await invokeLibraryExport("exportSong", { songId, versionId, labels: exportFolderLabels() });
     if (result.canceled) {
-      return { canceled: true, message: "Export canceled." };
+      return { canceled: true, message: t("Export canceled.") };
     }
-    return result;
+    return result.path ? { ...result, message: t("Exported to {path}", { path: result.path }) } : result;
   }
 
   const rec = await getSongRecord(songId);
@@ -346,8 +345,13 @@ export async function saveChartToCloneHeroLibrary(songId, versionId = null) {
 }
 
 // Export all: one folder picked once, then each song into it.
+// The system folder picker's title and button, in the app's language.
+function exportFolderLabels() {
+  return { title: t("Choose folder for Clone Hero export"), buttonLabel: t("Export here") };
+}
+
 export function chooseExportFolder() {
-  return electronLibrary().chooseExportFolder();
+  return electronLibrary().chooseExportFolder(exportFolderLabels());
 }
 
 export function exportChartToChosenFolder(songId, versionId, grant) {

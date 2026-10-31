@@ -13,6 +13,7 @@
 // taps, movement); each generator lists its knobs in capabilities.descriptorKnobs.
 
 import { GENERATOR_LABELS } from "./humanLabels.js";
+import { msg, t } from "../i18n/index.js";
 
 export const DEFAULT_GENERATOR_ID = "autochart.fretformer.v1-onnx";
 
@@ -20,17 +21,17 @@ export const DEFAULT_GENERATOR_ID = "autochart.fretformer.v1-onnx";
 // only — "auto" is a separate category (see resolveDescriptorKnobValue) and
 // never sits anywhere on this scale.
 export const DESCRIPTOR_KNOBS = [
-  { id: "speed", key: "knobSpeed", name: "Density", hint: "notes per second", compact: "Dn", ends: ["sparse", "dense"] },
-  { id: "chords", key: "knobChords", name: "Chords", hint: "chord share", compact: "Ch", ends: ["singles", "chords"] },
-  { id: "technique", key: "knobTechnique", name: "Technique", short: "Tech", hint: "hopos and taps", compact: "Tq", ends: ["plain", "taps"] },
-  { id: "movement", key: "knobMovement", name: "Movement", short: "Move", hint: "fret travel", compact: "Mv", ends: ["narrow", "wide"] },
-  { id: "repetition", key: "knobRepetition", name: "Repetition", short: "Repeat", hint: "riff reuse", compact: "Rp", ends: ["varied", "repeats"] },
+  { id: "speed", key: "knobSpeed", name: msg("Density"), hint: msg("notes per second"), compact: "Dn", ends: [msg("sparse"), msg("dense")] },
+  { id: "chords", key: "knobChords", name: msg("Chords"), hint: msg("chord share"), compact: "Ch", ends: [msg("singles"), msg("chords")] },
+  { id: "technique", key: "knobTechnique", name: msg("Technique"), short: msg("Tech"), hint: msg("hopos and taps"), compact: "Tq", ends: [msg("plain"), msg("taps")] },
+  { id: "movement", key: "knobMovement", name: msg("Movement"), short: msg("Move"), hint: msg("fret travel"), compact: "Mv", ends: [msg("narrow"), msg("wide")] },
+  { id: "repetition", key: "knobRepetition", name: msg("Repetition"), short: msg("Repeat"), hint: msg("riff reuse"), compact: "Rp", ends: [msg("varied"), msg("repeats")] },
 ];
 
 // Knobs the six-stem models have: v1's Technique split into HOPOs and taps.
 const V2_ONLY_DESCRIPTOR_KNOBS = [
-  { id: "hopos", key: "knobHopos", name: "HOPOs", hint: "hammer-on share", compact: "Ho", ends: ["strums", "hopos"] },
-  { id: "taps", key: "knobTaps", name: "Taps", hint: "tap share", compact: "Ta", ends: ["none", "taps"] },
+  { id: "hopos", key: "knobHopos", name: msg("HOPOs"), hint: msg("hammer-on share"), compact: "Ho", ends: [msg("strums"), msg("hopos")] },
+  { id: "taps", key: "knobTaps", name: msg("Taps"), hint: msg("tap share"), compact: "Ta", ends: [msg("none"), msg("taps")] },
 ];
 
 // Every knob any generator uses, for labelling saved takes of either model.
@@ -67,8 +68,8 @@ const RAW_TIMING_SMOOTHING = {
 export const TIMING_DETECTOR_OPTIONS = [
   {
     id: SOURCE_CHART_TIMING_DETECTOR_ID,
-    name: "Imported chart sync",
-    shortName: "Source sync",
+    name: msg("Imported chart sync"),
+    shortName: msg("Source sync"),
     detector: "source_chart",
     raw: false,
     sourceChart: true,
@@ -76,8 +77,8 @@ export const TIMING_DETECTOR_OPTIONS = [
   },
   {
     id: "beat_this_custom_timing",
-    name: "Automatic timing",
-    shortName: "Automatic",
+    name: msg("Automatic timing"),
+    shortName: msg("Automatic"),
     detector: "beat_this_custom_timing",
     raw: true,
     smoothing: DEFAULT_TIMING_SMOOTHING,
@@ -95,31 +96,31 @@ export const TRANSCRIBER_MODEL = {
 };
 
 export const GENERATION_DIFFICULTIES = [
-  { id: "easy", name: "Easy", tone: "green" },
-  { id: "medium", name: "Medium", tone: "amber" },
-  { id: "hard", name: "Hard", tone: "peach" },
-  { id: "expert", name: "Expert", tone: "red" },
+  { id: "easy", name: msg("Easy"), tone: "green" },
+  { id: "medium", name: msg("Medium"), tone: "amber" },
+  { id: "hard", name: msg("Hard"), tone: "peach" },
+  { id: "expert", name: msg("Expert"), tone: "red" },
 ];
 
 export const GENERATION_PRESETS = [
   {
     id: "tight",
-    name: "Tight",
-    summary: "Plays it safe",
+    name: msg("Tight"),
+    summary: msg("Plays it safe"),
     temperature: 0.9,
     topP: 0.95,
   },
   {
     id: "standard",
-    name: "Standard",
-    summary: "A bit of variety",
+    name: msg("Standard"),
+    summary: msg("A bit of variety"),
     temperature: 0.95,
     topP: 0.98,
   },
   {
     id: "wild",
-    name: "Wild",
-    summary: "Riskier, more surprising",
+    name: msg("Wild"),
+    summary: msg("Riskier, more surprising"),
     temperature: 1,
     topP: 1,
   },
@@ -169,7 +170,7 @@ export function timingDetectorOptionFromResolved(resolved = {}) {
 
 export function timingDetectorLabel(optionId = DEFAULT_TIMING_DETECTOR_ID, { short = false } = {}) {
   const option = getTimingDetectorOption(optionId);
-  return short ? option.shortName : option.name;
+  return t(short ? option.shortName : option.name);
 }
 
 function booleanSetting(value, fallback = false) {
@@ -479,42 +480,42 @@ function generationDisplayParts(generation, { compact = false } = {}) {
   const difficulty = controls.difficulty || resolved.difficulty;
   const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
   const parts = [];
-  if (difficulty) parts.push(getGenerationDifficulty(difficulty).name);
+  if (difficulty) parts.push(t(getGenerationDifficulty(difficulty).name));
   if (generation.presetName !== "Standard" || preset.id !== "standard") {
-    parts.push(generation.presetName || preset.name);
+    parts.push(t(generation.presetName || preset.name));
   }
   if (timingDetector !== DEFAULT_TIMING_DETECTOR_ID) {
     parts.push(timingDetectorLabel(timingDetector, { short: compact }));
   }
   if (timingDetector !== SOURCE_CHART_TIMING_DETECTOR_ID && !timingSmoothingEnabledFromGeneration(generation)) {
-    parts.push(compact ? "RawGrid" : "Raw timing");
+    parts.push(compact ? "RawGrid" : t("Raw timing"));
   }
   const temperature = resolved.temperature ?? controls.temperature;
   const topP = resolved.topP ?? controls.topP;
   const fixedSeed = controls.seedMode === "fixed" && controls.seed != null ? controls.seed : null;
   if (changedFromPreset(temperature, preset.temperature)) {
-    parts.push(`${compact ? "T" : "Temp "}${formatSettingNumber(temperature)}`);
+    parts.push(compact ? `T${formatSettingNumber(temperature)}` : t("Temp {value}", { value: formatSettingNumber(temperature) }));
   }
   if (changedFromPreset(topP, preset.topP)) {
-    parts.push(`${compact ? "P" : "Top-p "}${formatSettingNumber(topP)}`);
+    parts.push(compact ? `P${formatSettingNumber(topP)}` : t("Top-p {value}", { value: formatSettingNumber(topP) }));
   }
   const knobValues = controls.knobs ?? resolved.knobs ?? {};
   for (const knob of ALL_DESCRIPTOR_KNOBS) {
     const value = knobValues[knob.id];
     if (value == null) continue;
-    parts.push(compact ? `${knob.compact}${value}` : `${knob.name} ${value}`);
+    parts.push(compact ? `${knob.compact}${value}` : `${t(knob.name)} ${value}`);
   }
   const knobsActiveHere = ALL_DESCRIPTOR_KNOBS.some((knob) => knobValues[knob.id] != null);
   const knobGuidance =
     resolved.guidanceScale != null ? Number(resolved.guidanceScale) : Number(controls.guidanceScale);
   if (knobsActiveHere && Number.isFinite(knobGuidance) && knobGuidance > 1) {
-    parts.push(compact ? `CFG${formatSettingNumber(knobGuidance)}` : `Guidance ${formatSettingNumber(knobGuidance)}`);
+    parts.push(compact ? `CFG${formatSettingNumber(knobGuidance)}` : t("Guidance {value}", { value: formatSettingNumber(knobGuidance) }));
   }
   if (controls.stripSustains ?? resolved.stripSustains) {
-    parts.push(compact ? "NoSus" : "No sustains");
+    parts.push(compact ? "NoSus" : t("No sustains"));
   }
   if (fixedSeed != null) {
-    parts.push(`${compact ? "S" : "Seed "}${fixedSeed}`);
+    parts.push(compact ? `S${fixedSeed}` : t("Seed {seed}", { seed: fixedSeed }));
   }
   return parts.filter(Boolean);
 }
@@ -533,7 +534,7 @@ export function generationSummary(settings, generatorLabel = TRANSCRIBER_MODEL.s
     controls.seedMode === "fixed" && controls.seed != null
       ? null
       : resolvedSeed != null
-        ? `Seed ${resolvedSeed}`
-        : "Seed random";
+        ? t("Seed {seed}", { seed: resolvedSeed })
+        : t("Seed random");
   return [generatorLabel, ...parts, seed].filter(Boolean).join(" · ");
 }

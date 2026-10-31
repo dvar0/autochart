@@ -8,6 +8,8 @@ import {
 
 import { parseChart } from "../lib/chart/parseChart.js";
 import { buildPlayableTrack } from "../lib/chart/tempoMap.js";
+import { DIFF } from "../data/difficultyMetadata.js";
+import { t } from "../i18n/index.js";
 import { isVideoMedia, readMediaFileMetadata } from "./mediaMetadata.js";
 import { buildSourceReplacementRecord } from "../pages/generate/sourceReplacement.js";
 import { seedSeparation } from "./generation.js";
@@ -84,13 +86,11 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
 
   if (!chartFile) {
     if (midFile) {
-      throw new Error(
-        "This song only ships notes.mid. MIDI import isn't wired up yet. .chart only for now."
-      );
+      throw new Error(t("This song only has a notes.mid. For now, songs need a notes.chart."));
     }
-    throw new Error("No notes.chart found in the selected folder.");
+    throw new Error(t("No notes.chart found in the selected folder."));
   }
-  if (!audioFile) throw new Error("No audio file found in the selected folder.");
+  if (!audioFile) throw new Error(t("No audio file found in the selected folder."));
 
   const ini = iniFile ? parseSongIni(await iniFile.text()) : {};
   const chartText = await chartFile.text();
@@ -103,14 +103,14 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
     const order = ["expert", "hard", "medium", "easy"];
     chosen = order.find((d) => chart.tracks[d]) || available[0];
     if (chosen) {
-      warnings.push(`Difficulty "${difficulty}" missing; using "${chosen}".`);
+      warnings.push(t("No {missing} chart, so {used} is shown.", { missing: DIFF[difficulty]?.name || difficulty, used: DIFF[chosen]?.name || chosen }));
     }
   }
   const track = buildPlayableTrack(chart, chosen);
 
   const mediaInfo = await readMediaFileMetadata(audioFile);
   const albumBlob = artFile || mediaInfo.albumBlob || null;
-  if (!albumBlob) warnings.push("No album art found.");
+  if (!albumBlob) warnings.push(t("No album art found."));
 
   let background = null;
   if (bgVideoFile) {

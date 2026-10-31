@@ -4,6 +4,7 @@ import StyleFader, { KNOB_COLORS } from "../StyleFader.jsx";
 import WorkTabs from "../WorkTabs.jsx";
 import { barNumberLabel, inpaintRuns, redoLabel, regionsCover, tryName } from "./editRegions.js";
 import { TRIES_OPTIONS } from "./useEditWorkspace.js";
+import { formatDate, msg, t, tn } from "../../../i18n/index.js";
 
 // The right rail on the Inpaint (pick bars, make new takes of them) and
 // Edit (change single notes) tabs. The tab also sets what the piano roll
@@ -12,26 +13,26 @@ import { TRIES_OPTIONS } from "./useEditWorkspace.js";
 // act on shakes the selection box instead. A running regenerate shows its
 // progress in place of its button.
 
-const TRIES_INFO = "Each area gets this many tries. Inpaint keeps the one that fits best, and you can flip through the rest. More tries take longer.";
+const triesInfo = () => t("Each area gets this many tries. Inpaint keeps the one that fits best, and you can flip through the rest. More tries take longer.");
 
 const NOTE_ACTIONS = [
-  { id: "tap", label: "Tap", key: "T", icon: I.bolt, tone: "tap" },
-  { id: "force", label: "HOPO", key: "H", icon: I.chevsRight, tone: "force" },
-  { id: "starPower", label: "Star power", key: "S", icon: I.starOutline, tone: "sp" },
-  { id: "solo", label: "Solo", icon: I.spark, tone: "solo" },
-  { id: "quantize", label: "Snap to grid", key: "Q", icon: I.grid },
-  { id: "split", label: "Split chord", icon: I.cut, needsChord: true },
+  { id: "tap", label: msg("Tap"), key: "T", icon: I.bolt, tone: "tap" },
+  { id: "force", label: msg("HOPO"), key: "H", icon: I.chevsRight, tone: "force" },
+  { id: "starPower", label: msg("Star power"), key: "S", icon: I.starOutline, tone: "sp" },
+  { id: "solo", label: msg("Solo"), icon: I.spark, tone: "solo" },
+  { id: "quantize", label: msg("Snap to grid"), key: "Q", icon: I.grid },
+  { id: "split", label: msg("Split chord"), icon: I.cut, needsChord: true },
 ];
 
 const SNAP_OPTIONS = ["off", "1/4", "1/8", "1/12", "1/16", "1/24", "1/32"];
 
 // When a press of Inpaint ran: the time today, else the date and time.
 function runTime(at) {
-  if (!at) return "Earlier";
+  if (!at) return t("Earlier");
   const date = new Date(at);
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const time = formatDate(date, { hour: "numeric", minute: "2-digit" });
   if (date.toDateString() === new Date().toDateString()) return time;
-  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+  return `${formatDate(date, { month: "short", day: "numeric" })}, ${time}`;
 }
 
 function fmtTime(seconds) {
@@ -104,12 +105,12 @@ function OverwriteConfirm({ confirm, bars, onConfirm, onCancel }) {
   const where = confirm.regions.map((region) => barNumberLabel(bars, region).toLowerCase()).join(", ");
   return (
     <div className="insp-confirm" role="alertdialog" aria-labelledby="insp-confirm-title" aria-describedby="insp-confirm-body">
-      <b id="insp-confirm-title">Replace your edits?</b>
-      <p id="insp-confirm-body">You changed notes in {where}.</p>
+      <b id="insp-confirm-title">{t("Replace your edits?")}</b>
+      <p id="insp-confirm-body">{t("You changed notes in {where}.", { where })}</p>
       <div className="insp-confirm-actions">
-        <button className="settings-secondary" onClick={onCancel} title="Esc">Cancel</button>
+        <button className="settings-secondary" onClick={onCancel} title="Esc">{t("Cancel")}</button>
         <button className="btn-primary" onClick={onConfirm} title="Enter" autoFocus>
-          {confirm.kind === "take" ? "Switch take" : <><I.spark /> Inpaint</>}
+          {confirm.kind === "take" ? t("Switch take") : <><I.spark /> Inpaint</>}
         </button>
       </div>
     </div>
@@ -129,7 +130,7 @@ function FillModelPlate({ models, value, onChange, disabled }) {
               value={value}
               onChange={(e) => onChange(e.target.value)}
               disabled={disabled}
-              aria-label="Inpaint model"
+              aria-label={t("Inpaint model")}
             >
               {models.map((model) => (
                 <option key={model.generatorId} value={model.generatorId}>{model.label}</option>
@@ -194,10 +195,10 @@ function RegenTab({
   const downloadShare = pending?.download?.total ? Math.min(1, pending.download.loaded / pending.download.total) : 0;
   const pendingShare = pending?.download ? downloadShare : pending?.total ? pending.done / pending.total : 0;
   const pendingText = !pending ? ""
-    : pending.download ? `Downloading Inpaint · ${Math.round(downloadShare * 100)}%`
-      : pending.separating ? "Separating stems"
-        : !pending.done ? "Loading the song"
-          : pending.tries > 1 ? `Try ${pending.try + 1} of ${pending.tries} · ${percent}%` : `${percent}%`;
+    : pending.download ? t("Downloading Inpaint · {percent}%", { percent: Math.round(downloadShare * 100) })
+      : pending.separating ? t("Separating stems")
+        : !pending.done ? t("Loading the song")
+          : pending.tries > 1 ? t("Try {number} of {total} · {percent}%", { number: pending.try + 1, total: pending.tries, percent }) : `${percent}%`;
 
   return (
     <>
@@ -205,7 +206,7 @@ function RegenTab({
         <div
           key={nudge}
           className={"insp-target" + (hasSelection ? "" : " empty") + (nudge ? " nudge" : "")}
-          title={hasSelection ? undefined : "Drag across the roll or click a section"}
+          title={hasSelection ? undefined : t("Drag across the roll or click a section")}
         >
           {/* Extra chips scroll sideways instead of wrapping, so the box
               keeps its size. */}
@@ -213,19 +214,19 @@ function RegenTab({
             <div className="insp-target-row insp-spots">
               {regions.map((region) => (
                 <span className="insp-spot" key={region.startTick}>
-                  <button onClick={() => onFocusRegion(region)} title={`Show it · ${timeSpan(region)}`}>
+                  <button onClick={() => onFocusRegion(region)} title={t("Show it · {time}", { time: timeSpan(region) })}>
                     {redoLabel(bars, [region], sections)}
                   </button>
-                  <button className="insp-spot-x" onClick={() => onRemoveArea(region)} title="Remove" aria-label="Remove">
+                  <button className="insp-spot-x" onClick={() => onRemoveArea(region)} title={t("Remove")} aria-label={t("Remove")}>
                     <I.close />
                   </button>
                 </span>
               ))}
             </div>
           ) : (
-            <div className="insp-target-row"><span>Nothing selected</span></div>
+            <div className="insp-target-row"><span>{t("Nothing selected")}</span></div>
           )}
-          <button className="insp-link" onClick={onClearAreas} disabled={!hasSelection}>Clear</button>
+          <button className="insp-link" onClick={onClearAreas} disabled={!hasSelection}>{t("Clear")}</button>
         </div>
       </section>
 
@@ -236,11 +237,11 @@ function RegenTab({
         <div className="variant-field generation-field">
           <div className="field-line">
             <label>
-              Tries
-              <i className="help-dot" title={TRIES_INFO} aria-label={TRIES_INFO} role="img">?</i>
+              {t("Tries")}
+              <i className="help-dot" title={triesInfo()} aria-label={triesInfo()} role="img">?</i>
             </label>
           </div>
-          <div className="preset-grid tries-grid" role="radiogroup" aria-label="Tries">
+          <div className="preset-grid tries-grid" role="radiogroup" aria-label={t("Tries")}>
             {TRIES_OPTIONS.map((n) => (
               <button
                 key={n}
@@ -257,9 +258,9 @@ function RegenTab({
         </div>
         <div className="variant-field generation-field style-field">
           <div className="field-line">
-            <label>Style</label>
+            <label>{t("Style")}</label>
             <button type="button" className="field-link" onClick={onAllAuto} disabled={busy || allAuto}>
-              All auto
+              {t("All auto")}
             </button>
           </div>
           <div className="style-faders" style={{ "--knob-count": styleKnobs.length }}>
@@ -283,7 +284,7 @@ function RegenTab({
               </div>
               <div className="insp-running-row">
                 <span>{pendingText}</span>
-                <button className="insp-link" onClick={onCancelRedo}>Cancel</button>
+                <button className="insp-link" onClick={onCancelRedo}>{t("Cancel")}</button>
               </div>
             </div>
           ) : (
@@ -292,7 +293,7 @@ function RegenTab({
                 className="gen-cta insp-redo"
                 onClick={needsSelection(hasSelection, onRedo)}
                 disabled={Boolean(blockedReason)}
-                title={blockedReason || "Inpaint (R)"}
+                title={blockedReason || t("Inpaint (R)")}
               >
                 <I.spark /> Inpaint
               </button>
@@ -303,15 +304,15 @@ function RegenTab({
 
       <section className="insp-card insp-history">
         <div className="insp-eyebrow">
-          Inpainted
+          {t("Inpainted")}
           <button
             type="button"
             className="field-link insp-alike"
             onClick={onPickMostAlike}
             disabled={!canPickMostAlike}
-            title="Switch repeated sections (Verse 1, Verse 2) to the tries that look most alike"
+            title={t("Switch repeated sections (Verse 1, Verse 2) to the tries that look most alike")}
           >
-            Pick the closest
+            {t("Pick the closest")}
           </button>
         </div>
         {redos.length ? (
@@ -327,7 +328,7 @@ function RegenTab({
                 <ul>
                   {rows.map(({ redo, indices }) => (
                     <li key={redo.id} className={regionsCover(regions, redo.region) ? "on" : ""}>
-                      <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title="Select it">
+                      <button className="insp-history-name" onClick={() => onFocusRedo(redo)} title={t("Select it")}>
                         <b>{redo.label}</b>
                         <span>{timeSpan(redo.region)}</span>
                       </button>
@@ -337,7 +338,7 @@ function RegenTab({
                         {[-1, ...indices].map((index, at) => {
                           const mark = `${redo.id}:${index}`;
                           const marked = compareMarks.includes(mark);
-                          const name = index < 0 ? "Original" : `Try ${at}`;
+                          const name = index < 0 ? t("Original") : t("Try {number}", { number: at });
                           const runPick = redo.runPicks?.[run.id];
                           const ourPick = index >= 0 && index === runPick?.index;
                           return (
@@ -348,17 +349,17 @@ function RegenTab({
                               <button
                                 onClick={(e) => (e.shiftKey ? onMark(redo, index) : onPickRedo(redo, index))}
                                 disabled={busy}
-                                title={ourPick ? (runPick.matchedWith ? `Our pick: most like ${runPick.matchedWith}` : "Our pick") : `Use ${name.toLowerCase()}`}
+                                title={ourPick ? (runPick.matchedWith ? t("Our pick: most like {section}", { section: runPick.matchedWith }) : t("Our pick")) : t("Use {try}", { try: name.toLowerCase() })}
                               >
-                                {index < 0 ? "Original" : at}
+                                {index < 0 ? t("Original") : at}
                                 {ourPick && <I.star />}
                               </button>
-                              <label className="take-check" title="Mark for compare">
+                              <label className="take-check" title={t("Mark for compare")}>
                                 <input
                                   type="checkbox"
                                   checked={marked}
                                   onChange={() => onMark(redo, index)}
-                                  aria-label={`Compare ${redo.label} ${tryName(doc, redo, index)}`}
+                                  aria-label={t("Compare {take}", { take: `${redo.label} ${tryName(doc, redo, index)}` })}
                                 />
                               </label>
                             </div>
@@ -372,7 +373,7 @@ function RegenTab({
             ))}
           </ol>
         ) : (
-          <p className="insp-sub">Nothing inpainted yet.</p>
+          <p className="insp-sub">{t("Nothing inpainted yet.")}</p>
         )}
       </section>
     </>
@@ -395,10 +396,10 @@ function NotesTab({ bars, selectedNotes, snap, onSnap, onNoteAction }) {
       <div
         key={nudge}
         className={"insp-target" + (count ? "" : " empty") + (nudge ? " nudge" : "")}
-        title={count ? undefined : "Click to add a note, drag to select"}
+        title={count ? undefined : t("Click to add a note, drag to select")}
       >
         <div className="insp-target-row">
-          <span>{count ? `${count} note${count === 1 ? "" : "s"}` : "Nothing selected"}</span>
+          <span>{count ? tn(count, "{count} note", "{count} notes") : t("Nothing selected")}</span>
           <span className="insp-target-meta">{count ? span : ""}</span>
         </div>
       </div>
@@ -410,9 +411,9 @@ function NotesTab({ bars, selectedNotes, snap, onSnap, onNoteAction }) {
               key={action.id}
               data-tone={action.tone}
               onClick={needsSelection(count && (!action.needsChord || hasChord), () => onNoteAction(action.id))}
-              title={action.key ? `${action.label} (${action.key})` : action.label}
+              title={action.key ? `${t(action.label)} (${action.key})` : t(action.label)}
             >
-              <Icon /> {action.label}
+              <Icon /> {t(action.label)}
             </button>
           );
         })}
@@ -420,18 +421,18 @@ function NotesTab({ bars, selectedNotes, snap, onSnap, onNoteAction }) {
           className="insp-note-delete"
           data-tone="danger"
           onClick={needsSelection(count, () => onNoteAction("delete"))}
-          title="Delete (Del)"
+          title={t("Delete (Del)")}
         >
-          <I.trash /> Delete
+          <I.trash /> {t("Delete")}
         </button>
       </div>
       <div className="insp-knob">
-        <span>Grid</span>
-        <label className="edit-snap" title="New and moved notes snap to this grid">
+        <span>{t("Grid")}</span>
+        <label className="edit-snap" title={t("New and moved notes snap to this grid")}>
           <I.grid />
-          <select value={snap} onChange={(e) => onSnap(e.target.value)} aria-label="Grid">
+          <select value={snap} onChange={(e) => onSnap(e.target.value)} aria-label={t("Grid")}>
             {SNAP_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option === "off" ? "Free" : option}</option>
+              <option key={option} value={option}>{option === "off" ? t("Free") : option}</option>
             ))}
           </select>
         </label>

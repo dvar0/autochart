@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { chooseCloneHeroLibraryFolder, getAppSettings } from "../services/appSettings.js";
+import { t } from "../i18n/index.js";
 
 // Matches the main process refusal when no Clone Hero / YARG folder is set.
 export function isMissingLibraryFolderError(err) {
@@ -52,7 +53,7 @@ export default function useLibraryFolderGate() {
     } catch (err) {
       // Electron prefixes IPC exceptions with the internal channel name.
       const message = String(err?.message || "").replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
-      setState({ open: true, error: message || "Could not set the songs folder." });
+      setState({ open: true, error: message || t("Could not set the songs folder.") });
       return;
     }
     if (result?.canceled || !result?.settings?.cloneHeroLibraryFolder) return;

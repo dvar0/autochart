@@ -14,6 +14,7 @@ import LibraryFolderPrompt from "../../components/LibraryFolderPrompt.jsx";
 
 import UnsupportedGenerationState from "./UnsupportedGenerationState.jsx";
 import { targetLabel } from "../../data/supportedTargets.js";
+import { t } from "../../i18n/index.js";
 // Generate screen v3 — "Studio Deck". DAW mental model: monitor (stage) in the
 // middle, channel strip (console) on the right, takes at the bottom. This file
 // owns only the grid skeleton and hands the project state hook to each region.
@@ -47,7 +48,7 @@ export default function GeneratePage({ importedSong, initialFile = null, onOpenS
   }, []);
 
   // The web rail names the open song.
-  const songTitle = project.hasMedia ? project.details?.title || "Untitled song" : "";
+  const songTitle = project.hasMedia ? project.details?.title || t("Untitled song") : "";
   useEffect(() => {
     onSongTitle?.(workspaceKey, songTitle);
   }, [workspaceKey, songTitle, onSongTitle]);
@@ -74,18 +75,18 @@ export default function GeneratePage({ importedSong, initialFile = null, onOpenS
       <div className="ac-body setup-cta-page">
         <main className="settings-main">
           <header className="page-head">
-            <h1 className="page-title">Autochart needs its model</h1>
+            <h1 className="page-title">{t("Autochart needs its model")}</h1>
             <p className="page-sub">
-              It writes your charts, so download it before making one.
+              {t("It writes your charts, so download it before making one.")}
             </p>
           </header>
           <section className="setup-cta-panel">
             <div>
-              <h2>The model isn't installed</h2>
-              <p>{project.setupMessage || "Open setup to download it."}</p>
+              <h2>{t("The model isn't installed")}</h2>
+              <p>{project.setupMessage || t("Open setup to download it.")}</p>
             </div>
             <button className="btn-primary" onClick={onSetup}>
-              Open setup
+              {t("Open setup")}
             </button>
           </section>
         </main>

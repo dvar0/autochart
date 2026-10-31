@@ -5,6 +5,7 @@
 // live in the origin private file system.
 
 import engineManifest from "../../engine/manifest.json";
+import { t } from "../i18n/index.js";
 import { decodeAudioFile } from "../../engine/web/audio.mjs";
 import {
   cachedModelSummary, clearModelCache, ensureModelFiles, fitsInRoom, loadModelManifest, modelFolderStatus,
@@ -164,7 +165,7 @@ function startWorker() {
     }
   };
   worker.onerror = (event) => {
-    if (active) finish(new Error(event.message || "The engine stopped unexpectedly."));
+    if (active) finish(new Error(event.message || t("The engine stopped unexpectedly.")));
   };
 }
 
@@ -222,7 +223,7 @@ async function cancelJob({ jobId } = {}) {
 // transferred to the worker, so each run decodes its own copy.
 async function prepareAudio(jobId, payload) {
   const blob = payload.audio?.blob;
-  if (!(blob instanceof Blob)) throw new Error("Choose a song file first.");
+  if (!(blob instanceof Blob)) throw new Error(t("Choose a song file first."));
   emit(jobId, { type: "stage", stage: "queued", status: "running" });
   const bytes = await blob.arrayBuffer();
   const audioSha256 = await sha256Hex(bytes);
@@ -230,7 +231,7 @@ async function prepareAudio(jobId, payload) {
   try {
     audio = await decodeAudioFile(bytes);
   } catch {
-    throw new Error("This browser can't decode that file. Try an MP3, OGG, FLAC or WAV.");
+    throw new Error(t("This browser can't decode that file. Try an MP3, OGG, FLAC or WAV."));
   }
   return { audio, audioSha256, sourceTransform: sourceTransformFrom(payload.sourceTransform || payload.generation?.controls) };
 }
@@ -483,13 +484,13 @@ async function prepareDemucs(payload = {}) {
 
 async function inpaintChart(payload = {}) {
   const jobId = payload.jobId || crypto.randomUUID();
-  if (!payload.inpaint) throw new Error("Inpaint needs bars to rewrite.");
+  if (!payload.inpaint) throw new Error(t("Inpaint needs bars to rewrite."));
   const startedAt = Date.now();
   const { model } = runFields(jobId, payload);
   runStarted({ kind: "inpaint", model });
   try {
     const { job, generator, transfer } = await baseJob(jobId, payload);
-    if (!generator.capabilities?.inpaint) throw new Error(`${generator.label} can't regenerate part of a chart.`);
+    if (!generator.capabilities?.inpaint) throw new Error(t("{model} can't redo part of a chart.", { model: generator.label }));
     job.inpaint = payload.inpaint;
     const firstDownload = keepModelsIfDownloading(generator);
     const result = await runJob("inpaint", jobId, job, transfer);
@@ -513,7 +514,7 @@ async function inpaintChart(payload = {}) {
 // tables: [{ stemSet, bytes }]. Tables already stored for the song stay.
 async function seedSeparation(payload = {}) {
   const blob = payload.audio?.blob;
-  if (!(blob instanceof Blob)) throw new Error("Choose a song file first.");
+  if (!(blob instanceof Blob)) throw new Error(t("Choose a song file first."));
   const audioSha256 = await sha256Hex(await blob.arrayBuffer());
   const transform = sourceTransformFrom({});
   const known = new Set(WEB_GENERATORS.map(stemSetOf));
@@ -530,7 +531,7 @@ async function seedSeparation(payload = {}) {
 async function readDemucsStem({ path } = {}) {
   if (String(path).startsWith(RUN_AUDIO_PREFIX)) {
     const blob = runAudio.get(String(path).slice(RUN_AUDIO_PREFIX.length));
-    if (!blob) throw new Error("This run's audio is no longer loaded.");
+    if (!blob) throw new Error(t("This run's audio is no longer loaded."));
     return blob.arrayBuffer();
   }
   return readStoredAudio(path);
@@ -572,7 +573,7 @@ async function generatorStatuses({ fresh = false } = {}) {
       manifest = null;
     }
     if (!manifest) {
-      return [generator.id, { ready: false, status: "unsupported", message: "Not available in the browser yet." }];
+      return [generator.id, { ready: false, status: "unsupported", message: t("Not available in the browser yet.") }];
     }
     const { files, cachedFiles } = await modelFolderStatus(manifest);
     const downloaded = cachedFiles === files;
@@ -582,7 +583,7 @@ async function generatorStatuses({ fresh = false } = {}) {
       status: downloaded ? "ready" : cachedFiles ? "partial" : "missing",
       downloaded,
       bytes: folderBytes(sizes, modelUrl(generator)),
-      message: downloaded ? "Downloaded." : "Downloads the first time you use it.",
+      message: downloaded ? t("Downloaded.") : t("Downloads the first time you use it."),
     };
     // A model that won't fit says so before its download starts.
     const neededMb = !cachedFiles && MODEL_FAMILIES.find((family) => family.generatorId === generator.id)?.downloadMb;
@@ -590,7 +591,7 @@ async function generatorStatuses({ fresh = false } = {}) {
       status.spaceShort = { neededMb, freeMb: Math.floor(room.free / 1e6) };
     }
     if (generator.id === LITE_FAMILY.generatorId && !(await liteOffered(status))) {
-      return [generator.id, { ...status, ready: false, message: "Offered on slower devices." }];
+      return [generator.id, { ...status, ready: false, message: t("Offered on slower devices.") }];
     }
     return [generator.id, status];
   }));
@@ -616,7 +617,7 @@ async function getManifest() {
       setupComplete: true,
       standardReady: ready,
       status: ready ? "ready" : "missing",
-      message: ready ? "At least one generator is ready." : "No model is reachable right now.",
+      message: ready ? t("At least one model is ready.") : t("No model is reachable right now."),
     },
     preferences: {
       defaultGeneratorId: settings.defaultGeneratorId
@@ -658,7 +659,7 @@ async function scanModels({ fresh = false } = {}) {
     supportedPlatform: true,
     cachedBytes: bytes,
     stemBytes,
-    message: "Models download into this browser the first time they're used.",
+    message: t("Models download into this browser the first time they're used."),
   };
 }
 
@@ -678,9 +679,9 @@ async function installModels(request = {}) {
   const family = named && statuses[named.generatorId] && statuses[named.generatorId].status !== "unsupported"
     ? named
     : downloadFamily(statuses);
-  if (!family) throw new Error("No model is reachable right now.");
+  if (!family) throw new Error(t("No model is reachable right now."));
   const ids = [inpaint ? family.inpaintGeneratorId : family.generatorId];
-  emitInstall({ phase: "starting", percent: 0, message: "Preparing download." });
+  emitInstall({ phase: "starting", percent: 0, message: t("Preparing download.") });
   keepModelsStored();
   for (const [index, id] of ids.entries()) {
     const manifest = await loadModelManifest(modelUrl(generatorById(id)));
@@ -690,12 +691,12 @@ async function installModels(request = {}) {
         emitInstall({
           phase: "downloading",
           percent: Math.floor(((index + part) / ids.length) * 100),
-          message: `Downloading ${family.label}.`,
+          message: t("Downloading {model}.", { model: family.label }),
         });
       },
     });
   }
-  emitInstall({ phase: "complete", percent: 100, message: "Downloaded." });
+  emitInstall({ phase: "complete", percent: 100, message: t("Downloaded.") });
   for (const id of ids) modelDownloaded(id);
   return { setup: await scanModels({ fresh: true }) };
 }
@@ -717,7 +718,7 @@ async function probeHardware() {
     platformLabel: "Browser",
     arch: "",
     supportedPlatform: true,
-    supportLabel: "Runs in this browser.",
+    supportLabel: t("Runs in this browser."),
     cpu: "",
     cpuCount: navigator.hardwareConcurrency || null,
     totalMemoryMb: navigator.deviceMemory ? navigator.deviceMemory * 1024 : null,
@@ -732,9 +733,9 @@ async function probeHardware() {
     effectiveHardwareMode: selectedMode,
     selectedModeLabel: selectedMode === "webgpu" ? "WebGPU" : "CPU mode",
     selectedRuntimePack: "onnxruntime-web",
-    fallbackReason: webgpu ? "" : "This browser has no usable WebGPU, so models run on the CPU.",
+    fallbackReason: webgpu ? "" : t("This browser has no usable WebGPU, so models run on the CPU."),
     crossOriginIsolated: Boolean(globalThis.crossOriginIsolated),
-    smokeTest: { status: "skipped", message: "Checked when a chart is generated." },
+    smokeTest: { status: "skipped", message: t("Checked when a chart is generated.") },
   };
 }
 
@@ -752,7 +753,7 @@ async function removeModels(request = {}) {
     await Promise.all([clearModelCache(), removeStoredStems()]);
   } else {
     const family = MODEL_FAMILIES.find((item) => item.packId === packId);
-    if (!family) throw new Error("Unknown model.");
+    if (!family) throw new Error(t("Unknown model."));
     const ids = [...new Set([family.generatorId, family.inpaintGeneratorId].filter(Boolean))];
     await Promise.all(ids.map((id) => removeModelFolder(modelUrl(generatorById(id)))));
   }

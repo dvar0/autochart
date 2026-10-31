@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { I } from "../icons.jsx";
 import { FretStrip } from "../components/index.jsx";
 import ProgressRing from "../components/ProgressRing.jsx";
+import LanguagePicker from "../components/LanguagePicker.jsx";
 import { FRET_COLORS } from "../data/notePalette.js";
 import { formatSize, generationDownloadSize } from "../data/generationCatalog.js";
 import { friendlyTarget } from "../data/hardwareModes.js";
 import { chooseModelsFolder, getAppSettings, markSetupComplete } from "../services/appSettings.js";
 import { installAssets, scanModelSetup, subscribeModelInstallEvents } from "../services/modelSetup.js";
 import { SongFeed, StartHighway } from "./Start.jsx";
+import { msg, t } from "../i18n/index.js";
 
 // The first thing a new install shows: what Autochart does, the one model it
 // needs, and a button to get it. The wait is when the rest gets introduced.
@@ -15,22 +17,22 @@ import { SongFeed, StartHighway } from "./Start.jsx";
 // (other models, other folders, hardware) is in Settings.
 
 const FEATURES = [
-  { icon: I.music, title: "Generate", text: "Drop in a song and get a full chart." },
-  { icon: I.spark, title: "Inpaint", text: "Pick some bars and generate just those again." },
-  { icon: I.pencil, title: "Edit and play", text: "Move notes by hand, then play it in Clone Hero or YARG." },
+  { icon: I.music, title: msg("Generate"), text: msg("Drop in a song and get a full chart.") },
+  { icon: I.spark, title: msg("Inpaint"), text: msg("Pick some bars and generate just those again.") },
+  { icon: I.pencil, title: msg("Edit and play"), text: msg("Move notes by hand, then play it in Clone Hero or YARG.") },
 ];
 
 function failureFrom(error) {
   const detail = String(error?.message || error || "").replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
   const text = /ENOSPC|no space left/i.test(detail)
-    ? "This drive ran out of space. Free some up or change the location, then try again."
-    : "The download stopped. Check your connection and try again. Finished files are kept.";
+    ? t("This drive ran out of space. Free some up or change the location, then try again.")
+    : t("The download stopped. Check your connection and try again. Finished files are kept.");
   return { text, detail };
 }
 
 function DownloadProgress({ progress, modelName, size }) {
   const percent = Number.isFinite(progress?.percent) ? progress.percent : null;
-  const label = percent == null ? "Getting ready" : percent >= 100 ? "Finishing up" : `Downloading ${modelName}`;
+  const label = percent == null ? t("Getting ready") : percent >= 100 ? t("Finishing up") : t("Downloading {model}", { model: modelName });
   return (
     <div
       className="setup-progress"
@@ -43,7 +45,7 @@ function DownloadProgress({ progress, modelName, size }) {
       <ProgressRing value={percent} />
       <div>
         <b>{label}</b>
-        <span>{percent == null ? " " : `${percent}% of ${size}`}</span>
+        <span>{percent == null ? " " : t("{percent}% of {size}", { percent, size })}</span>
       </div>
     </div>
   );
@@ -67,7 +69,7 @@ export default function Setup({ onDone }) {
       setSettings(nextSettings);
       setSetup(nextSetup);
     } catch (error) {
-      setFailure({ text: "Autochart couldn't check its files. Try again.", detail: String(error?.message || error) });
+      setFailure({ text: t("Autochart couldn't check its files. Try again."), detail: String(error?.message || error) });
     } finally {
       setChecking(false);
     }
@@ -86,7 +88,7 @@ export default function Setup({ onDone }) {
       await markSetupComplete();
       onDone?.();
     } catch (error) {
-      setFailure({ text: "Autochart couldn't finish setting up. Try again.", detail: String(error?.message || error) });
+      setFailure({ text: t("Autochart couldn't finish setting up. Try again."), detail: String(error?.message || error) });
     } finally {
       setBusy("");
     }
@@ -102,7 +104,7 @@ export default function Setup({ onDone }) {
       if (result?.settings) setSettings(result.settings);
       const nextSetup = result?.setup || await scanModelSetup();
       setSetup(nextSetup);
-      if (!nextSetup?.generationReady) throw new Error("The downloaded files didn't pass their check.");
+      if (!nextSetup?.generationReady) throw new Error(t("The downloaded files didn't pass their check."));
       await markSetupComplete();
       onDone?.();
     } catch (error) {
@@ -122,7 +124,7 @@ export default function Setup({ onDone }) {
       else if (result) setSettings(result);
       setSetup(await scanModelSetup());
     } catch (error) {
-      setFailure({ text: "That folder can't be used. Pick another one.", detail: String(error?.message || error) });
+      setFailure({ text: t("That folder can't be used. Pick another one."), detail: String(error?.message || error) });
     } finally {
       setBusy("");
     }
@@ -144,27 +146,27 @@ export default function Setup({ onDone }) {
   const outOfRoom = !ready && !damaged && Number.isFinite(freeBytes) && freeBytes < neededBytes;
   const facts = !setup || unsupported || browserOnly
     ? ""
-    : [`${size} download`, Number.isFinite(freeBytes) ? `${formatSize(freeBytes)} free` : ""].filter(Boolean).join(" · ");
+    : [t("{size} download", { size }), Number.isFinite(freeBytes) ? t("{size} free", { size: formatSize(freeBytes) }) : ""].filter(Boolean).join(" · ");
 
   const action = (() => {
-    if (!setup) return failure ? { label: "Try again", run: load } : { label: "Checking…", disabled: true };
-    if (browserOnly) return { label: "Open Browser Preview", run: finish };
-    if (unsupported) return { label: "Not available here", disabled: true };
-    if (ready) return { label: "Start charting", icon: I.music, run: finish };
-    if (outOfRoom) return { label: `Download ${modelName}`, icon: I.download, disabled: true };
-    if (failure) return { label: "Try again", run: download };
-    if (damaged) return { label: setup.combinedStatus === "corrupt" ? "Repair download" : "Finish download", icon: I.download, run: download };
-    return { label: `Download ${modelName}`, icon: I.download, run: download };
+    if (!setup) return failure ? { label: t("Try again"), run: load } : { label: t("Checking…"), disabled: true };
+    if (browserOnly) return { label: t("Open Browser Preview"), run: finish };
+    if (unsupported) return { label: t("Not available here"), disabled: true };
+    if (ready) return { label: t("Start charting"), icon: I.music, run: finish };
+    if (outOfRoom) return { label: t("Download {model}", { model: modelName }), icon: I.download, disabled: true };
+    if (failure) return { label: t("Try again"), run: download };
+    if (damaged) return { label: setup.combinedStatus === "corrupt" ? t("Repair download") : t("Finish download"), icon: I.download, run: download };
+    return { label: t("Download {model}", { model: modelName }), icon: I.download, run: download };
   })();
 
   const hint = (() => {
     if (failure || downloading) return null;
-    if (browserOnly) return "This preview can't download models or make charts.";
-    if (unsupported) return setup?.message || `${friendlyTarget(setup)} isn't supported.`;
-    if (outOfRoom) return `Needs ${formatSize(neededBytes)} free. This drive has ${formatSize(freeBytes)}.`;
+    if (browserOnly) return t("This preview can't download models or make charts.");
+    if (unsupported) return setup?.message || t("{target} isn't supported.", { target: friendlyTarget(setup) });
+    if (outOfRoom) return t("Needs {needed} free. This drive has {free}.", { needed: formatSize(neededBytes), free: formatSize(freeBytes) });
     if (damaged) return setup.combinedStatus === "corrupt"
-      ? "Some files are damaged. Only those get downloaded again."
-      : "Part of it is already here. Only the rest gets downloaded.";
+      ? t("Some files are damaged. Only those get downloaded again.")
+      : t("Part of it is already here. Only the rest gets downloaded.");
     return null;
   })();
   const warned = Boolean(failure) || unsupported || outOfRoom;
@@ -173,32 +175,33 @@ export default function Setup({ onDone }) {
 
   return (
     <div className="start-page setup-page">
+      <LanguagePicker className="setup-language" />
       <div className="start-head">
         <div className="setup-wordmark">
           <span className="logo-star"><I.star /></span>
           <span className="wordmark">AUTOCHART</span>
           <FretStrip className="setup-wordmark-strip" />
         </div>
-        <h1 className="start-title">Chart any song</h1>
-        <p className="start-sub">Get a five-fret guitar chart for Clone Hero and YARG, right on this computer.</p>
+        <h1 className="start-title">{t("Chart any song")}</h1>
+        <p className="start-sub">{t("Get a five-fret guitar chart for Clone Hero and YARG, right on this computer.")}</p>
         <div className="start-feed-wrap">
           <SongFeed startAt={clockStart} />
           <StartHighway startAt={clockStart} />
         </div>
 
-        <section className="setup-model" aria-label="Model">
+        <section className="setup-model" aria-label={t("Model")}>
           <div className="setup-model-head">
             <b>{modelName}</b>
             {ready
-              ? <span className="setup-model-ready"><I.check /> Ready</span>
+              ? <span className="setup-model-ready"><I.check /> {t("Ready")}</span>
               : <span className="setup-model-facts">{facts}</span>}
           </div>
-          <p>The model that writes your charts.</p>
+          <p>{t("The model that writes your charts.")}</p>
           {!browserOnly && (
             <div className="setup-model-where">
               <span title={settings?.modelsFolder || ""}>{settings?.modelsFolder || " "}</span>
               <button type="button" className="start-link" onClick={changeLocation} disabled={Boolean(busy) || checking || unsupported}>
-                <I.folder /> Change location
+                <I.folder /> {t("Change location")}
               </button>
             </div>
           )}
@@ -231,7 +234,7 @@ export default function Setup({ onDone }) {
         <div className="setup-failure-slot">
           {failure?.detail && (
             <details className="setup-failure">
-              <summary>Details</summary>
+              <summary>{t("Details")}</summary>
               <p>{failure.detail}</p>
             </details>
           )}
@@ -244,8 +247,8 @@ export default function Setup({ onDone }) {
               <li key={feature.title} className="release-feature">
                 <span className="release-feature-icon" style={{ "--gem": FRET_COLORS[index] }} aria-hidden="true"><Icon /></span>
                 <span className="release-feature-copy">
-                  <b>{feature.title}</b>
-                  <span>{feature.text}</span>
+                  <b>{t(feature.title)}</b>
+                  <span>{t(feature.text)}</span>
                 </span>
               </li>
             );

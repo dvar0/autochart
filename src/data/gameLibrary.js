@@ -1,4 +1,7 @@
+import { msg } from "../i18n/index.js";
+
 export const GAME_LIBRARY_NAME = "Clone Hero / YARG";
-export const GAME_LIBRARY_SAVE_LABEL = `Save to ${GAME_LIBRARY_NAME}`;
-export const GAME_LIBRARY_SAVING_LABEL = `Saving to ${GAME_LIBRARY_NAME}…`;
-export const GAME_LIBRARY_SAVED_LABEL = `Saved to ${GAME_LIBRARY_NAME}`;
+// Shown with t(label).
+export const GAME_LIBRARY_SAVE_LABEL = msg("Save to Clone Hero / YARG");
+export const GAME_LIBRARY_SAVING_LABEL = msg("Saving to Clone Hero / YARG…");
+export const GAME_LIBRARY_SAVED_LABEL = msg("Saved to Clone Hero / YARG");

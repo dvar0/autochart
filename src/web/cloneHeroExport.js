@@ -6,6 +6,7 @@
 // media is copied as-is instead of converted.
 
 import { exportChartMetadata } from "../../shared/chartProvenance.js";
+import { t } from "../i18n/index.js";
 import { decodeAudioFile } from "../../engine/web/audio.mjs";
 import { loadMelTables } from "../../engine/web/stemStore.mjs";
 import {
@@ -108,7 +109,7 @@ function withLeadIn({ left, right, sampleRate }, leadInMs) {
 
 async function songAudio(record, leadInMs) {
   const blob = record._blobs?.audio;
-  if (!blob) throw new Error("Add song audio before exporting to Clone Hero / YARG.");
+  if (!blob) throw new Error(t("Add song audio before exporting to Clone Hero / YARG."));
   const ext = extOf(record.assets?.audio || blob.name, blob.type);
   if (!leadInMs && GAME_AUDIO.has(ext)) return { name: `song.${ext}`, data: blob };
   const decoded = await decodeAudioFile(await blob.arrayBuffer());
@@ -118,13 +119,13 @@ async function songAudio(record, leadInMs) {
 // The files of a song's Clone Hero folder for one chart version.
 export async function cloneHeroFiles(songId, versionId = null) {
   const record = await getSongRecord(songId);
-  if (!record) throw new Error("Project not found in library.");
+  if (!record) throw new Error(t("This project is gone from the library."));
   const versions = Array.isArray(record.versions) ? record.versions : [];
   const requested = versionId ? versions.find((v) => v.id === versionId) : null;
   const active = versions.find((v) => v.id === record.settings?.activeVersionId);
   const version = requested || active || versions.find((v) => v.chart?.text) || null;
   const chartText = version?.chart?.text || record.chart?.text || "";
-  if (!chartText) throw new Error("Selected chart version has no notes.chart data.");
+  if (!chartText) throw new Error(t("This take has no chart data."));
   const exported = exportChartMetadata(version || { ...record, chart: { text: chartText } }, record.meta, versions);
   const versionMeta = version?.meta || {};
   // The audio holds the longest lead-in any take was charted with, so the
@@ -281,8 +282,8 @@ export async function downloadCloneHeroSong(songId, versionId = null) {
     songId,
     versionId: exportedId,
     message: zip
-      ? `Downloaded ${name}. Unzip it into your Clone Hero or YARG songs folder.`
-      : `Downloaded ${name}. Put it in your Clone Hero or YARG songs folder.`,
+      ? t("Downloaded {file}. Unzip it into your Clone Hero or YARG songs folder.", { file: name })
+      : t("Downloaded {file}. Put it in your Clone Hero or YARG songs folder.", { file: name }),
   };
 }
 
@@ -340,13 +341,13 @@ export async function chooseSongsFolder() {
 }
 
 export async function saveToSongsFolder(songId, versionId = null) {
-  if (!canSaveToFolder()) throw new Error("This browser can't save into folders. Use Export to download the song instead.");
+  if (!canSaveToFolder()) throw new Error(t("This browser can't save into folders. Use Export to download the song instead."));
   const { record, versionId: exportedId, files } = await cloneHeroFiles(songId, versionId);
   let root;
   try {
     root = await songsFolder();
   } catch (err) {
-    if (err?.name === "AbortError") return { canceled: true, message: "Save canceled." };
+    if (err?.name === "AbortError") return { canceled: true, message: t("Save canceled.") };
     throw err;
   }
   const folder = cloneHeroFolderName(record.meta, { copy: true });
@@ -363,6 +364,6 @@ export async function saveToSongsFolder(songId, versionId = null) {
     format: "clone-hero",
     songId,
     versionId: exportedId,
-    message: `Saved to ${root.name}/${folder}`,
+    message: t("Saved to {path}", { path: `${root.name}/${folder}` }),
   };
 }

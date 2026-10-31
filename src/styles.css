@@ -404,6 +404,7 @@ input:focus-visible, select:focus-visible { outline: none; }
   font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: .12em;
+  text-transform: uppercase;
   color: var(--text-faint);
   padding: 0 10px 8px;
 }
@@ -1304,6 +1305,19 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .settings-head { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
 .settings-head .settings-secondary { min-height: 34px; padding: 0 14px; gap: 7px; background: var(--surface); }
 .settings-head .settings-secondary svg { width: 14px; height: 14px; }
+.settings-head-actions { display: flex; align-items: center; gap: 8px; }
+/* A native select over a button-looking label, like the rail's theme picker. */
+.language-picker { position: relative; cursor: pointer; }
+.language-picker .language-picker-chevron { width: 12px; height: 12px; opacity: .6; }
+.language-picker select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.language-picker:focus-within { outline: 2px solid var(--purple-bri); outline-offset: 2px; }
 /* Models | Folders, then Performance | About; cards in a row stretch to the same
    height. About is quiet text beside Performance, not a card. */
 .settings-grid {
@@ -1954,6 +1968,8 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .setup-progress b { color: var(--text); font-size: var(--fs-base); font-weight: 700; }
 .setup-progress span { color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-xs); }
 .setup-page .start-hint { margin-top: 10px; }
+.setup-language { position: absolute; top: 18px; right: 20px; z-index: 2; min-height: 34px; padding: 0 12px; gap: 7px; font-size: var(--fs-sm); }
+.setup-language svg { width: 14px; height: 14px; }
 .setup-failure-slot { min-height: 20px; margin-top: 4px; }
 .setup-failure { max-width: 560px; color: var(--text-faint); font-size: var(--fs-xs); }
 .setup-failure summary { cursor: pointer; }
@@ -5744,8 +5760,10 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   white-space: nowrap;
   font-size: var(--fs-xs);
   font-weight: 600;
+  letter-spacing: -.01em;
   color: var(--text-dim);
 }
+.style-fader-name.is-long { font-size: calc(var(--fs-xs) * .92); }
 .style-field.is-off .style-faders { opacity: .5; }
 
 /* the doorway to the sheet, carrying a live summary of what's changed */

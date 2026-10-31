@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { GAME_LIBRARY_NAME } from "../data/gameLibrary.js";
 import { I } from "../icons.jsx";
+import { t } from "../i18n/index.js";
 
 const FOCUSABLE = "button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex='-1'])";
 
@@ -71,9 +72,9 @@ export default function LibraryFolderPrompt({ gate, onOpenSettings }) {
       {open && (
         <div className="lib-prompt-panel">
           <div className="lib-prompt-icon" aria-hidden="true"><I.folder /></div>
-          <h2 id="lib-prompt-title" className="lib-prompt-title">Set your songs folder</h2>
+          <h2 id="lib-prompt-title" className="lib-prompt-title">{t("Set your songs folder")}</h2>
           <p id="lib-prompt-body" className="lib-prompt-body">
-            Pick your {GAME_LIBRARY_NAME} songs folder to save this chart. You only need to do this once.
+            {t("Pick your {library} songs folder to save this chart. You only need to do this once.", { library: GAME_LIBRARY_NAME })}
           </p>
           {error && <p className="lib-prompt-error" role="alert">{error}</p>}
           <div className="lib-prompt-actions">
@@ -86,14 +87,14 @@ export default function LibraryFolderPrompt({ gate, onOpenSettings }) {
                   onOpenSettings();
                 }}
               >
-                <I.gear /> Open Settings
+                <I.gear /> {t("Open Settings")}
               </button>
             )}
             <button type="button" className="btn-quiet" onClick={dismiss}>
-              Cancel
+              {t("Cancel")}
             </button>
             <button type="button" ref={primaryRef} className="btn-primary" onClick={chooseFolderAndSave}>
-              <I.folder /> Choose Folder &amp; Save
+              <I.folder /> {t("Choose Folder & Save")}
             </button>
           </div>
         </div>

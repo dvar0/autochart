@@ -12,6 +12,7 @@ import { SongArchiveError } from "../services/songArchives.js";
 import { importSongFolder, saveImportedSong } from "../services/songImport.js";
 import { getSongRecord, recordToImported } from "../services/songLibrary.js";
 import { electronHardware } from "../services/runtimeBridge.js";
+import { t } from "../i18n/index.js";
 
 // The browser version's home: where a project starts. There is no library on
 // the web, so this page is the way in: a new song, or a Clone Hero song folder
@@ -344,9 +345,9 @@ export function SongFeed({ hot, startAt }) {
 function DesktopNote() {
   return (
     <p className="start-desktop-note">
-      <I.monitor /> Faster on desktop, and saves straight to Clone Hero.
+      <I.monitor /> {t("Faster on desktop, and saves straight to Clone Hero.")}
       <a className="start-link" href={DESKTOP_APP_URL} target="_blank" rel="noreferrer">
-        Get the app <I.open />
+        {t("Get the app")} <I.open />
       </a>
     </p>
   );
@@ -391,7 +392,7 @@ function DeviceFact({ device, onOpenSettings }) {
         aria-expanded={open}
       >
         <span className="start-fact-dot" />
-        <span className="start-fact-label">This device</span>
+        <span className="start-fact-label">{t("This device")}</span>
         <span className="start-fact-value">{fact.label}</span>
         <I.chev className="chev" />
       </button>
@@ -399,7 +400,7 @@ function DeviceFact({ device, onOpenSettings }) {
         <div className="start-fact-pop" ref={popRef}>
           <DeviceReadout device={device} />
           <button className="start-link start-fact-settings" onClick={onOpenSettings}>
-            <I.gear /> Change in Settings
+            <I.gear /> {t("Change in Settings")}
           </button>
         </div>
       )}
@@ -425,7 +426,7 @@ function useDeviceState() {
 
 // ---------- page ----------
 
-const NO_SONG = "No Clone Hero song there. It needs a notes.chart and the song's audio.";
+const noSong = () => t("No Clone Hero song there. It needs a notes.chart and the song's audio.");
 
 export default function Start({ onSong, onOpenChart, onOpenSettings, confirmCloseSong = async () => true }) {
   const [hot, setHot] = useState(false);
@@ -460,7 +461,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
       const saved = await saveImportedSong(await importSongFolder(files));
       onOpenChart(await recordToImported((await getSongRecord(saved.id)) || saved));
     } catch (error) {
-      setOpenError(error?.message || "That folder couldn't be opened.");
+      setOpenError(error?.message || t("That folder couldn't be opened."));
     } finally {
       setOpening(false);
     }
@@ -468,7 +469,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
 
   const openSongFolders = (folders, fallback) => {
     if (folders.length > 1) {
-      setOpenError("That's more than one song. Open one at a time here; the desktop app can import many at once.");
+      setOpenError(t("That's more than one song. Open one at a time here; the desktop app can import many at once."));
       return;
     }
     if (!folders.length) {
@@ -484,7 +485,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     if (opening) return;
     readDrop(event.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
       if (folders.length || directories || archives || songs.length > 1) {
-        openSongFolders(songs.length > 1 ? songs : folders, NO_SONG);
+        openSongFolders(songs.length > 1 ? songs : folders, noSong());
       } else if (file) {
         return confirmCloseSong().then((ok) => {
           if (!ok) return;
@@ -493,7 +494,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
         });
       }
       return undefined;
-    }).catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : "That drop couldn't be read. Try Open a Clone Hero song instead."));
+    }).catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : t("That drop couldn't be read. Try Open a Clone Hero song instead.")));
   };
 
   const handleSongPick = (event) => {
@@ -502,15 +503,15 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     input.value = "";
     if (!picked.length) return;
     songFoldersFromPickedFiles(picked)
-      .then((folders) => openSongFolders(folders, NO_SONG))
-      .catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : "Those files couldn't be read."));
+      .then((folders) => openSongFolders(folders, noSong()))
+      .catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : t("Those files couldn't be read.")));
   };
 
   const actions = (
     <>
       <div className="start-actions">
         <button type="button" className="btn-primary start-cta" onClick={() => songRef.current?.click()}>
-          <I.upload /> Choose a song
+          <I.upload /> {t("Choose a song")}
         </button>
         <button
           type="button"
@@ -518,7 +519,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
           onClick={() => folderRef.current?.click()}
           disabled={opening}
         >
-          <I.folder /> {opening ? "Opening…" : "Open a Clone Hero song"}
+          <I.folder /> {opening ? t("Opening…") : t("Open a Clone Hero song")}
         </button>
         <input
           ref={songRef}
@@ -534,7 +535,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
         <input ref={folderRef} type="file" accept={SONG_ACCEPT} multiple hidden onChange={handleSongPick} />
       </div>
       <p className={"start-hint" + (openError ? " is-error" : "")}>
-        {openError || <><I.shield /> Or drop a song or song folder anywhere. It never leaves this device.</>}
+        {openError || <><I.shield /> {t("Or drop a song or song folder anywhere. It never leaves this device.")}</>}
       </p>
     </>
   );
@@ -547,8 +548,8 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
       onDrop={handleDrop}
     >
       <div className="start-head">
-        <h1 className="start-title">Chart any song</h1>
-        <p className="start-sub">Get a five-fret guitar chart for Clone Hero and YARG, right in your browser.</p>
+        <h1 className="start-title">{t("Chart any song")}</h1>
+        <p className="start-sub">{t("Get a five-fret guitar chart for Clone Hero and YARG, right in your browser.")}</p>
         <div className="start-feed-wrap">
           <SongFeed hot={hot} startAt={clockStart} />
           <StartHighway hot={hot} startAt={clockStart} />
@@ -559,7 +560,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
           <DesktopNote />
         </div>
       </div>
-      <div className="start-drop-veil" aria-hidden="true"><span>{hotFolder ? "Let go to open this song" : "Let go to start"}</span></div>
+      <div className="start-drop-veil" aria-hidden="true"><span>{hotFolder ? t("Let go to open this song") : t("Let go to start")}</span></div>
     </div>
   );
 }

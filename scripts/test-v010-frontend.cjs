@@ -247,7 +247,7 @@ function assert(condition, message) {
     assert(JSON.stringify(targets.map((target) => target.key).sort()) === JSON.stringify(["darwin-arm64", "linux-x64", "win32-x64"]), "shared target matrix is incomplete");
     assert(appSource.includes("mainRef.current?.focus"), "page navigation does not restore focus");
     assert(railSource.includes('aria-current={page === it.id ? "page" : undefined}'), "navigation lacks current-page semantics");
-    assert(progressSource.includes('aria-label="Chart generation completion"') && progressSource.includes("aria-valuetext"), "progress bar lacks accessible value text");
+    assert(progressSource.includes('aria-label={t("Chart generation completion")}') && progressSource.includes("aria-valuetext"), "progress bar lacks accessible value text");
     assert(progressSource.includes('aria-controls="generation-pipeline-details"'), "pipeline toggle does not expose its controlled region");
     assert(settingsSource.includes("settings-install-reason") && setupSource.includes("setup-action-reason"), "disabled setup controls lack reasons");
     assert(consoleSource.includes("generate-cta-reason"), "Generate CTA lacks a disabled reason");

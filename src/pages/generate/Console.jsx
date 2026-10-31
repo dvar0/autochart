@@ -10,6 +10,7 @@ import StyleFader, { KNOB_COLORS } from "./StyleFader.jsx";
 import { changedSettingsSummary } from "./MoreSettings.jsx";
 import WorkTabs from "./WorkTabs.jsx";
 import { BETA_MODELS, MODEL_FAMILIES, isBetaGenerator } from "../../data/modelFamilies.js";
+import { t } from "../../i18n/index.js";
 
 // The right rail: what to make (model, difficulty), how loose (sampling, style,
 // seed), lead-in, then a one-line summary of everything else, which lives in
@@ -76,20 +77,20 @@ export default function Console({ project }) {
   const spaceShort = selectedGeneratorSetup?.spaceShort || null;
   const generateDisabledReason = runActive
     ? stopping
-      ? "Stopping the current generation."
-      : "Stop the current generation."
+      ? t("Stopping the current generation.")
+      : t("Stop the current generation.")
     : busy
-      ? "Wait for the current generation operation to finish."
+      ? t("Wait for the current generation operation to finish.")
       : modelDownload
-        ? modelDownload.waiting ? "Another model is downloading." : ""
+        ? modelDownload.waiting ? t("Another model is downloading.") : ""
       : !sourceAudioFile
-        ? "Choose a media file first."
+        ? t("Choose a media file first.")
         : !generatorId
-          ? "The chart generation engine is unavailable."
+          ? t("The chart generation engine is unavailable.")
           : selectedGeneratorSetup?.ready === false
-            ? selectedGeneratorSetup.message || "Download the model in Settings."
+            ? selectedGeneratorSetup.message || t("Download the model in Settings.")
             : spaceShort
-              ? `Not enough space on this device: the model needs ${spaceShort.neededMb} MB, about ${spaceShort.freeMb} MB is free.`
+              ? t("Not enough space on this device: the model needs {needed} MB, about {free} MB is free.", { needed: spaceShort.neededMb, free: spaceShort.freeMb })
               : "";
 
   return (
@@ -101,22 +102,22 @@ export default function Console({ project }) {
             <li className="console-step">
               <span className="step-num">1</span>
               <div>
-                <b>Add media</b>
-                <small>Drop a song, video or song folder on the stage.</small>
+                <b>{t("Add media")}</b>
+                <small>{t("Drop a song, video or song folder on the stage.")}</small>
               </div>
             </li>
             <li className="console-step">
               <span className="step-num">2</span>
               <div>
-                <b>Pick settings</b>
-                <small>Model, difficulty, and style.</small>
+                <b>{t("Pick settings")}</b>
+                <small>{t("Model, difficulty, and style.")}</small>
               </div>
             </li>
             <li className="console-step">
               <span className="step-num">3</span>
               <div>
-                <b>Generate</b>
-                <small>Takes appear below.</small>
+                <b>{t("Generate")}</b>
+                <small>{t("Takes appear below.")}</small>
               </div>
             </li>
           </ol>
@@ -131,11 +132,11 @@ export default function Console({ project }) {
                       value={selectedGenerator?.id || ""}
                       onChange={(e) => selectGenerator(e.target.value)}
                       disabled={busy}
-                      aria-label="Chart model"
+                      aria-label={t("Chart model")}
                     >
                       {generatorChoices.map((generator) => (
                         <option key={generator.id} value={generator.id}>
-                          {generator.label}{isBetaGenerator(generator.id) ? " · Beta" : ""}
+                          {generator.label}{isBetaGenerator(generator.id) ? ` · ${t("Beta")}` : ""}
                         </option>
                       ))}
                     </select>
@@ -152,10 +153,10 @@ export default function Console({ project }) {
 
             <div className="variant-field generation-field">
               <div className="field-line">
-                <label>Difficulty</label>
-                {visibleDifficulties.length === 1 && <small>Set by this model</small>}
+                <label>{t("Difficulty")}</label>
+                {visibleDifficulties.length === 1 && <small>{t("Set by this model")}</small>}
               </div>
-              <div className="difficulty-segments" role="radiogroup" aria-label="Chart difficulty">
+              <div className="difficulty-segments" role="radiogroup" aria-label={t("Chart difficulty")}>
                 {visibleDifficulties.map((option) => (
                   <button
                     key={option.id}
@@ -168,7 +169,7 @@ export default function Console({ project }) {
                     role="radio"
                     aria-checked={generationControls.difficulty === option.id}
                   >
-                    {option.name}
+                    {t(option.name)}
                   </button>
                 ))}
               </div>
@@ -176,8 +177,8 @@ export default function Console({ project }) {
 
             <div className="variant-field generation-field">
               <div className="field-line">
-                <label>Sampling</label>
-                <small>{selectedPreset.summary}</small>
+                <label>{t("Sampling")}</label>
+                <small>{t(selectedPreset.summary)}</small>
               </div>
               <div className="preset-grid">
                 {GENERATION_PRESETS.map((preset) => (
@@ -187,7 +188,7 @@ export default function Console({ project }) {
                     onClick={() => applyGenerationPreset(preset.id)}
                     disabled={busy}
                   >
-                    <b>{preset.name}</b>
+                    <b>{t(preset.name)}</b>
                   </button>
                 ))}
               </div>
@@ -195,7 +196,7 @@ export default function Console({ project }) {
 
             <div className={"variant-field generation-field style-field" + (hasKnobs ? "" : " is-off")}>
               <div className="field-line">
-                <label>Style</label>
+                <label>{t("Style")}</label>
                 {hasKnobs ? (
                   <button
                     type="button"
@@ -208,10 +209,10 @@ export default function Console({ project }) {
                     }
                     disabled={busy || allKnobsAuto}
                   >
-                    All auto
+                    {t("All auto")}
                   </button>
                 ) : (
-                  <small>Not on this model</small>
+                  <small>{t("Not on this model")}</small>
                 )}
               </div>
               <div className="style-faders" style={{ "--knob-count": styleKnobs.length }}>
@@ -230,7 +231,7 @@ export default function Console({ project }) {
 
             <div className="variant-field generation-field">
               <div className="field-line">
-                <label>Seed</label>
+                <label>{t("Seed")}</label>
               </div>
               <div className="seed-row">
                 <div className="seed-mode">
@@ -239,7 +240,7 @@ export default function Console({ project }) {
                     onClick={() => setGenerationControls((current) => ({ ...current, seedMode: "random", seed: "" }))}
                     disabled={busy}
                   >
-                    Random
+                    {t("Random")}
                   </button>
                   <button
                     className={generationControls.seedMode === "fixed" ? "active" : ""}
@@ -252,16 +253,16 @@ export default function Console({ project }) {
                     }
                     disabled={busy}
                   >
-                    Fixed
+                    {t("Fixed")}
                   </button>
                 </div>
                 <input
                   inputMode="numeric"
                   value={generationControls.seed}
-                  placeholder={generationControls.seedMode === "random" ? "random" : "Seed"}
+                  placeholder={generationControls.seedMode === "random" ? t("random") : t("Seed")}
                   disabled={busy || generationControls.seedMode === "random"}
                   onChange={(e) => updateGenerationControl("seed", e.target.value.replace(/[^\d-]/g, ""))}
-                  aria-label="Variation seed"
+                  aria-label={t("Variation seed")}
                 />
                 <button
                   className="seed-spark"
@@ -273,8 +274,8 @@ export default function Console({ project }) {
                     }))
                   }
                   disabled={busy}
-                  title="Pick fixed seed"
-                  aria-label="Pick fixed seed"
+                  title={t("Pick fixed seed")}
+                  aria-label={t("Pick fixed seed")}
                 >
                   <I.spark />
                 </button>
@@ -283,8 +284,8 @@ export default function Console({ project }) {
 
             <div className="variant-field generation-field lead-in-field">
               <div className="lead-in-label">
-                <label>Lead-in silence</label>
-                <small>{usesSourceChartSync ? "Set by the imported chart" : "Added before the song"}</small>
+                <label>{t("Lead-in silence")}</label>
+                <small>{usesSourceChartSync ? t("Set by the imported chart") : t("Added before the song")}</small>
               </div>
               <div className="lead-in-row">
                 <input
@@ -297,7 +298,7 @@ export default function Console({ project }) {
                   placeholder="0"
                   disabled={busy || usesSourceChartSync}
                   onChange={(e) => updateAdvancedNumberControl("leadInSilenceSeconds", e.target.value)}
-                  aria-label="Lead-in silence seconds"
+                  aria-label={t("Lead-in silence seconds")}
                 />
                 <span>s</span>
               </div>
@@ -311,8 +312,8 @@ export default function Console({ project }) {
             >
               <I.gear />
               <span className="more-settings-text">
-                <b>More settings</b>
-                <small title={changed.join(" · ")}>{changed.length ? changed.join(" · ") : "Separation, timing, solos, sampling"}</small>
+                <b>{t("More settings")}</b>
+                <small title={changed.join(" · ")}>{changed.length ? changed.join(" · ") : t("Separation, timing, solos, sampling")}</small>
               </span>
               <I.chevRight />
             </button>
@@ -333,35 +334,35 @@ export default function Console({ project }) {
                       : busy || !sourceAudioFile || !generatorId || selectedGeneratorSetup?.ready === false || Boolean(spaceShort)
                 }
                 aria-describedby="generate-cta-reason"
-                title={generateDisabledReason || (modelDownload ? modelDownload.action : "Generate a chart")}
+                title={generateDisabledReason || (modelDownload ? modelDownload.action : t("Generate a chart"))}
               >
                 {!generatorId && !runActive ? (
-                  "Engine unavailable"
+                  t("Engine unavailable")
                 ) : modelDownload?.installing && !runActive ? (
                   <>
-                    <ProgressRing value={modelDownload.percent} /> Downloading{modelDownload.percent != null ? ` ${modelDownload.percent}%` : "…"}
+                    <ProgressRing value={modelDownload.percent} /> {modelDownload.percent != null ? t("Downloading {percent}%", { percent: modelDownload.percent }) : t("Downloading…")}
                   </>
                 ) : modelDownload && !runActive ? (
                   <>
                     <I.download /> {modelDownload.action}{modelDownload.size ? ` · ${modelDownload.size}` : ""}
                   </>
                 ) : selectedGeneratorSetup?.ready === false && !runActive ? (
-                  "Setup required"
+                  t("Setup required")
                 ) : stopping ? (
                   <>
-                    <span className="cta-spinner" aria-hidden="true" /> Stopping…
+                    <span className="cta-spinner" aria-hidden="true" /> {t("Stopping…")}
                   </>
                 ) : runActive ? (
                   <>
-                    <I.close /> Stop
+                    <I.close /> {t("Stop")}
                   </>
                 ) : pendingDownloadMb != null ? (
                   <>
-                    <I.boltFill /> Download and generate{pendingDownloadMb ? ` · ${pendingDownloadMb} MB` : ""}
+                    <I.boltFill /> {t("Download and generate")}{pendingDownloadMb ? ` · ${pendingDownloadMb} MB` : ""}
                   </>
                 ) : (
                   <>
-                    <I.boltFill /> Generate chart
+                    <I.boltFill /> {t("Generate chart")}
                   </>
                 )}
               </button>
@@ -369,15 +370,16 @@ export default function Console({ project }) {
               <div className={"reused-line" + (reusedFrom || spaceShort ? "" : " is-empty")} aria-live="polite">
                 {!reusedFrom && spaceShort && !runActive && (
                   <span className="reused-name is-warn" title={generateDisabledReason}>
-                    <I.download /> Needs {spaceShort.neededMb} MB, about {spaceShort.freeMb} MB free. Remove models in Settings.
+                    <I.download /> {t("Needs {needed} MB, about {free} MB free. Remove models in Settings.", { needed: spaceShort.neededMb, free: spaceShort.freeMb })}
                   </span>
                 )}
                 {reusedFrom && (
                   <>
                     <span className="version-badge">{reusedFrom.badge}</span>
                     <span className="reused-name" title={reusedFrom.name}>
-                      {reusedSettingsMatch ? "Same settings as " : "Based on "}
-                      {reusedFrom.name}
+                      {reusedSettingsMatch
+                        ? t("Same settings as {take}", { take: reusedFrom.name })
+                        : t("Based on {take}", { take: reusedFrom.name })}
                     </span>
                   </>
                 )}
@@ -398,8 +400,8 @@ export default function Console({ project }) {
           />
           {project.canRetryUsingCpu && (
             <div className="rail-toast" role="alert">
-              <p>Hardware acceleration failed. Try the same song and options using CPU.</p>
-              <button type="button" className="btn" onClick={project.handleRetryUsingCpu}>Retry using CPU</button>
+              <p>{t("Hardware acceleration failed. Try the same song and options using CPU.")}</p>
+              <button type="button" className="btn" onClick={project.handleRetryUsingCpu}>{t("Retry using CPU")}</button>
             </div>
           )}
         </section>

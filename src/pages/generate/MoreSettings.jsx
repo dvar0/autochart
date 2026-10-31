@@ -7,11 +7,12 @@ import {
   timingDetectorLabel,
 } from "../../data/generationSettings.js";
 import { I } from "../../icons.jsx";
+import { t } from "../../i18n/index.js";
+import { separationName } from "./separationNames.js";
 
-const FORCE_SOLO_INFO =
-  "Only acts when the model places no solo on its own. It then starts one where it came closest to " +
-  "starting one and charts the rest of the song again from there, so generation takes longer for those " +
-  "songs. A forced solo can be less convincing than one the model found itself.";
+const forceSoloInfo = () => t(
+  "Only acts when the model places no solo on its own. It then starts one where it came closest to starting one and charts the rest of the song again from there, so generation takes longer for those songs. A forced solo can be less convincing than one the model found itself.",
+);
 
 function sameNumber(value, target) {
   const number = Number(value);
@@ -21,12 +22,12 @@ function sameNumber(value, target) {
 function separationLabel(artifact) {
   const name = String(artifact?.name || "Default separation").replace(/\s*\([^)]*lead-in[^)]*\)\s*$/i, "").trim();
   const regenerated = name.match(/^regenerated separation\s*(.*)$/i);
-  if (regenerated) return `Remake${regenerated[1] ? ` ${regenerated[1].trim()}` : ""}`;
-  return /^default separation$/i.test(name) ? "Default" : name;
+  if (regenerated) return regenerated[1] ? t("Remake {number}", { number: regenerated[1].trim() }) : t("Remake");
+  return /^default separation$/i.test(name) ? t("Default") : name;
 }
 
 function isDefaultSeparation(artifact) {
-  return !artifact || separationLabel(artifact) === "Default";
+  return !artifact || separationLabel(artifact) === t("Default");
 }
 
 // Short labels for every More-settings value that differs from its default,
@@ -41,21 +42,21 @@ export function changedSettingsSummary(project) {
     activeDemucsArtifact,
   } = project;
   const items = [];
-  if (!isDefaultSeparation(activeDemucsArtifact)) items.push(`${separationLabel(activeDemucsArtifact)} separation`);
+  if (!isDefaultSeparation(activeDemucsArtifact)) items.push(t("{name} separation", { name: separationLabel(activeDemucsArtifact) }));
   if (projectDefaultTimingDetector && c.timingDetector !== projectDefaultTimingDetector) {
     items.push(timingDetectorLabel(c.timingDetector, { short: true }));
   }
-  if (!usesSourceChartSync && c.timingSmoothing === false) items.push("Raw beats");
+  if (!usesSourceChartSync && c.timingSmoothing === false) items.push(t("Raw beats"));
   if (generatorMarksSolos(selectedGenerator)) {
-    if (c.solos === false) items.push("No solos");
-    else if (c.forceSolo) items.push("Forced solo");
+    if (c.solos === false) items.push(t("No solos"));
+    else if (c.forceSolo) items.push(t("Forced solo"));
   }
-  if (!sameNumber(c.temperature, selectedPreset.temperature)) items.push(`Temp ${c.temperature}`);
-  if (!sameNumber(c.topP, selectedPreset.topP)) items.push(`Top-p ${c.topP}`);
+  if (!sameNumber(c.temperature, selectedPreset.temperature)) items.push(t("Temp {value}", { value: c.temperature }));
+  if (!sameNumber(c.topP, selectedPreset.topP)) items.push(t("Top-p {value}", { value: c.topP }));
   const knobsSet = selectedGenerator?.capabilities?.descriptorKnobs
     && descriptorKnobsForGenerator(selectedGenerator).some((knob) => (c[knob.key] ?? "auto") !== "auto");
   if (knobsSet && !sameNumber(c.guidanceScale, Number(DEFAULT_GENERATION_CONTROLS.guidanceScale))) {
-    items.push(`Guidance ${c.guidanceScale}`);
+    items.push(t("Strength {value}", { value: c.guidanceScale }));
   }
   return items;
 }
@@ -154,24 +155,24 @@ export default function MoreSettings({ project }) {
   };
 
   return (
-    <section ref={panelRef} className="more-settings" role="dialog" aria-label="More settings">
+    <section ref={panelRef} className="more-settings" role="dialog" aria-label={t("More settings")}>
       <header className="ms-head">
-        <h2>More settings</h2>
+        <h2>{t("More settings")}</h2>
         <button type="button" className="ms-reset" onClick={resetAll} disabled={busy || !changed.length}>
-          Reset
+          {t("Reset")}
         </button>
-        <button type="button" className="ms-close" onClick={close} aria-label="Close more settings" title="Close (Esc)">
+        <button type="button" className="ms-close" onClick={close} aria-label={t("Close more settings")} title={t("Close (Esc)")}>
           <I.plus />
         </button>
       </header>
 
       <div className="ms-body">
         <div className="ms-group">
-          <h3>Audio separation</h3>
+          <h3>{t("Audio separation")}</h3>
           <p className="ms-group-note">
-            Splits the song so the model hears the guitar on its own. If a chart misses parts, try another one.
+            {t("Splits the song so the model hears the guitar on its own. If a chart misses parts, try another one.")}
           </p>
-          <Row label="New takes use" hint={activeDemucsArtifact?.name || "Default separation"}>
+          <Row label={t("New takes use")} hint={separationName(activeDemucsArtifact?.name)}>
             <button
               type="button"
               className="ms-link-btn"
@@ -187,21 +188,21 @@ export default function MoreSettings({ project }) {
         </div>
 
         <div className="ms-group">
-          <h3>Timing</h3>
-          <Row label="Beat map" hint={usesSourceChartSync ? "Taken from the imported chart" : "Found from the audio"}>
+          <h3>{t("Timing")}</h3>
+          <Row label={t("Beat map")} hint={usesSourceChartSync ? t("Taken from the imported chart") : t("Found from the audio")}>
             <select
               value={c.timingDetector}
               onChange={(e) => updateGenerationControl("timingDetector", e.target.value)}
               disabled={busy || timingOptions.length < 2}
             >
               {timingOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.name}</option>
+                <option key={option.id} value={option.id}>{t(option.name)}</option>
               ))}
             </select>
           </Row>
           <Row
-            label="Smoothing"
-            hint={usesSourceChartSync ? "The imported chart is already steady" : "Steadies the beat spacing"}
+            label={t("Smoothing")}
+            hint={usesSourceChartSync ? t("The imported chart is already steady") : t("Steadies the beat spacing")}
             disabled={usesSourceChartSync}
           >
             <Toggle
@@ -213,10 +214,10 @@ export default function MoreSettings({ project }) {
         </div>
 
         <div className="ms-group">
-          <h3>Solos</h3>
+          <h3>{t("Solos")}</h3>
           <Row
-            label="Mark solos"
-            hint={marksSolos ? "Where the model hears one" : "This model doesn't mark solos"}
+            label={t("Mark solos")}
+            hint={marksSolos ? t("Where the model hears one") : t("This model doesn't mark solos")}
             disabled={!marksSolos}
           >
             <Toggle
@@ -226,9 +227,9 @@ export default function MoreSettings({ project }) {
             />
           </Row>
           <Row
-            label="Force a solo"
-            hint="Adds one if the model found none"
-            info={FORCE_SOLO_INFO}
+            label={t("Force a solo")}
+            hint={t("Adds one if the model found none")}
+            info={forceSoloInfo()}
             disabled={!marksSolos || c.solos === false}
           >
             <Toggle
@@ -240,17 +241,17 @@ export default function MoreSettings({ project }) {
         </div>
 
         <div className="ms-group">
-          <h3>Sampling</h3>
-          <Row label="Temperature" hint="Higher is more varied">
+          <h3>{t("Sampling")}</h3>
+          <Row label={t("Temperature")} hint={t("Higher is more varied")}>
             <input
               inputMode="decimal"
               value={c.temperature}
               disabled={busy}
               onChange={(e) => updateAdvancedNumberControl("temperature", e.target.value)}
-              aria-label="Temperature"
+              aria-label={t("Temperature")}
             />
           </Row>
-          <Row label="Top-p" hint="Lower is safer">
+          <Row label="Top-p" hint={t("Lower is safer")}>
             <input
               inputMode="decimal"
               value={c.topP}
@@ -260,8 +261,8 @@ export default function MoreSettings({ project }) {
             />
           </Row>
           <Row
-            label="Style strength"
-            hint={!hasKnobs ? "This model has no style" : knobsSet ? "How hard style is pushed" : "Set a style first"}
+            label={t("Style strength")}
+            hint={!hasKnobs ? t("This model has no style") : knobsSet ? t("How hard style is pushed") : t("Set a style first")}
             disabled={!knobsSet}
           >
             <input
@@ -269,7 +270,7 @@ export default function MoreSettings({ project }) {
               value={c.guidanceScale}
               disabled={busy || !knobsSet}
               onChange={(e) => updateAdvancedNumberControl("guidanceScale", e.target.value)}
-              aria-label="Style strength"
+              aria-label={t("Style strength")}
             />
           </Row>
         </div>

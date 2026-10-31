@@ -28,19 +28,21 @@ import {
 } from "../services/generationQueue.js";
 import { activeModelInstalls, installAssets, subscribeModelInstallEvents, subscribeModelInstalls } from "../services/modelSetup.js";
 import { generatorDifficultyIds } from "../services/projectRun.js";
+import { t, tn } from "../i18n/index.js";
 
 function charts(count) {
-  return `${count} ${count === 1 ? "chart" : "charts"}`;
+  return tn(count, "{count} chart", "{count} charts");
 }
 
 function rowDetail(item) {
   const running = item.runs.find((run) => run.status === "running");
   if (running) {
-    const several = item.runs.length > 1 ? ` ${DIFF[running.difficulty]?.name || running.difficulty}` : "";
-    const stage = item.stage === "Charting" ? `Charting${several}` : item.stage;
-    return item.onCpu ? `${stage} on CPU` : stage;
+    const stage = item.stage === "Charting" && item.runs.length > 1
+      ? t("Charting {difficulty}", { difficulty: DIFF[running.difficulty]?.name || running.difficulty })
+      : t(item.stage);
+    return item.onCpu ? t("{step} on CPU", { step: stage }) : stage;
   }
-  if (item.saved) return "Saved";
+  if (item.saved) return t("Saved");
   return item.artist;
 }
 
@@ -54,7 +56,7 @@ function QueueRow({ item, song, locked, onOpen }) {
   return (
     <li className={"queue-row" + (running ? " is-running" : "") + (error ? " has-error" : "")}>
       <div className="queue-row-main">
-        <button type="button" className="queue-row-open" onClick={() => onOpen(item.songId)} title={`Open ${item.title}`}>
+        <button type="button" className="queue-row-open" onClick={() => onOpen(item.songId)} title={t("Open {title}", { title: item.title })}>
           <span className="queue-thumb">
             {song ? <SongCover song={song} /> : <AlbumArt seed={item.title} label={item.artist} />}
           </span>
@@ -75,8 +77,8 @@ function QueueRow({ item, song, locked, onOpen }) {
           className="queue-row-remove"
           onClick={() => removeFromQueue([item.songId])}
           disabled={running || locked}
-          aria-label={`Remove ${item.title} from the queue`}
-          title="Remove from the queue"
+          aria-label={t("Remove {title} from the queue", { title: item.title })}
+          title={t("Remove from the queue")}
         >
           <I.close />
         </button>
@@ -86,9 +88,9 @@ function QueueRow({ item, song, locked, onOpen }) {
           <span role="alert" title={error}>{error}</span>
           {failed.length > 0 && (
             <span className="queue-row-retry">
-              <button type="button" className="field-link" onClick={() => retryQueueItem(item.songId)}>Retry</button>
+              <button type="button" className="field-link" onClick={() => retryQueueItem(item.songId)}>{t("Retry")}</button>
               {failed.some((run) => run.canUseCpu) && (
-                <button type="button" className="field-link" onClick={() => retryQueueItem(item.songId, { cpu: true })}>Retry using CPU</button>
+                <button type="button" className="field-link" onClick={() => retryQueueItem(item.songId, { cpu: true })}>{t("Retry using CPU")}</button>
               )}
             </span>
           )}
@@ -112,7 +114,7 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
     const refresh = () => listGenerators().then((next) => {
       if (alive) setManifest(next);
     }).catch((error) => {
-      if (alive) setProblem(error?.message || "The engine didn't respond.");
+      if (alive) setProblem(error?.message || t("The engine didn't respond."));
     });
     refresh();
     const stopInstalls = subscribeModelInstalls(() => {
@@ -149,10 +151,10 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
   const familyInstalling = Boolean(family && installing.includes(family.packId));
   const pack = family && manifest?.setup?.scan?.packs?.find((item) => item.id === family.packId);
   const downloadLabel = family && (setup.status === "corrupt"
-    ? `Repair ${family.label}`
+    ? t("Repair {model}", { model: family.label })
     : setup.status === "partial"
-      ? `Finish downloading ${family.label}`
-      : `Download ${family.label}`);
+      ? t("Finish downloading {model}", { model: family.label })
+      : t("Download {model}", { model: family.label }));
 
   const supported = generator ? generatorDifficultyIds(generator) : [];
   const difficulties = GENERATION_DIFFICULTIES.filter((option) => supported.includes(option.id));
@@ -168,7 +170,7 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
     try {
       await installAssets(family.packId);
     } catch (error) {
-      setProblem(error?.message || "The download didn't finish.");
+      setProblem(error?.message || t("The download didn't finish."));
     }
   };
 
@@ -177,14 +179,14 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
     setProblem("");
     const save = () => saveQueueToGame().catch((error) => {
       if (isMissingLibraryFolderError(error)) folderGate.request(save);
-      else setProblem(error?.message || `Could not save to ${GAME_LIBRARY_NAME}.`);
+      else setProblem(error?.message || t("Could not save to {library}.", { library: GAME_LIBRARY_NAME }));
     });
     return folderGate.run(save, trigger);
   };
 
   const exportFinished = () => {
     setProblem("");
-    exportQueue().catch((error) => setProblem(error?.message || "The export didn't finish."));
+    exportQueue().catch((error) => setProblem(error?.message || t("The export didn't finish.")));
   };
 
   const toggleSaveWhenDone = (trigger) => {
@@ -196,18 +198,21 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
   const clearAll = () => (running ? removeFromQueue(items.map((item) => item.songId)) : clearQueue());
 
   const anyDone = summary.done > 0;
-  const savingLabel = saving ? `${saving.kind === "save" ? "Saving" : "Exporting"} ${Math.min(saving.done + 1, saving.total)} of ${saving.total}…` : "";
+  const savingCounts = saving ? { number: Math.min(saving.done + 1, saving.total), total: saving.total } : null;
+  const savingLabel = !saving ? "" : saving.kind === "save"
+    ? t("Saving {number} of {total}…", savingCounts)
+    : t("Exporting {number} of {total}…", savingCounts);
   const partDone = summary.waiting > 0 || summary.running > 0;
 
   let cta;
   if (running) {
     cta = stopping
-      ? { label: <><span className="cta-spinner" aria-hidden="true" /> Stopping…</>, busy: true, disabled: true }
-      : { label: "Stop", onClick: stopQueue };
+      ? { label: <><span className="cta-spinner" aria-hidden="true" /> {t("Stopping…")}</>, busy: true, disabled: true }
+      : { label: t("Stop"), onClick: stopQueue };
   } else if (saving?.kind === "save" && !summary.waiting) {
     cta = { label: <><span className="cta-spinner" aria-hidden="true" /> {savingLabel}</>, busy: true, disabled: true };
   } else if (familyInstalling) {
-    cta = { label: <><ProgressRing value={downloadPercent} /> Downloading{downloadPercent != null ? ` ${downloadPercent}%` : "…"}</>, disabled: true };
+    cta = { label: <><ProgressRing value={downloadPercent} /> {downloadPercent != null ? t("Downloading {percent}%", { percent: downloadPercent }) : t("Downloading…")}</>, disabled: true };
   } else if (family && (summary.waiting > 0 || !anyDone)) {
     cta = {
       label: <><I.download /> {downloadLabel}{setup.status === "missing" && pack ? ` · ${generationDownloadSize(pack)}` : ""}</>,
@@ -215,43 +220,43 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
       disabled: installing.length > 0,
     };
   } else if (summary.waiting > 0) {
-    cta = { label: <><I.boltFill /> Generate {charts(summary.waiting)}</>, onClick: startQueue, disabled: !generator || setup?.ready === false };
+    cta = { label: <><I.boltFill /> {t("Generate {charts}", { charts: charts(summary.waiting) })}</>, onClick: startQueue, disabled: !generator || setup?.ready === false };
   } else if (summary.toSave > 0) {
-    cta = { label: GAME_LIBRARY_SAVE_LABEL, onClick: (event) => saveFinished(event.currentTarget), disabled: Boolean(saving) };
+    cta = { label: t(GAME_LIBRARY_SAVE_LABEL), onClick: (event) => saveFinished(event.currentTarget), disabled: Boolean(saving) };
   } else if (anyDone) {
-    cta = { label: GAME_LIBRARY_SAVED_LABEL, disabled: true };
+    cta = { label: t(GAME_LIBRARY_SAVED_LABEL), disabled: true };
   } else {
-    cta = { label: "Pick songs to start", disabled: true, quiet: true };
+    cta = { label: t("Pick songs to start"), disabled: true, quiet: true };
   }
 
-  const note = problem || queue.note || (family && !familyInstalling ? `${family.label} isn't ready yet.` : "");
+  const note = problem || queue.note || (family && !familyInstalling ? t("{model} isn't ready yet.", { model: family.label }) : "");
   const showSaveFinished = anyDone && summary.toSave > 0 && partDone;
 
   return (
-    <div className="detail queue-panel" aria-label="Queue">
+    <div className="detail queue-panel" aria-label={t("Queue")}>
       <div className="queue-head">
         <div className="queue-title-line">
-          <h2 className="queue-title">Queue</h2>
+          <h2 className="queue-title">{t("Queue")}</h2>
           <button
             type="button"
             className="queue-close"
             onClick={() => setQueueOpen(false)}
-            aria-label="Close queue"
-            title="Back to the library. The queue keeps its songs and keeps running."
+            aria-label={t("Close queue")}
+            title={t("Back to the library. The queue keeps its songs and keeps running.")}
           >
             <I.close />
           </button>
         </div>
         <div className="queue-head-line">
-          <div className="queue-count">{summary.charts ? `${summary.done} of ${charts(summary.charts)}` : "No songs yet"}</div>
-          <div className="queue-percent" role="status" aria-label={`${summary.percent} percent`}>{summary.percent}%</div>
+          <div className="queue-count">{summary.charts ? t("{count} of {total}", { count: summary.done, total: charts(summary.charts) }) : t("No songs yet")}</div>
+          <div className="queue-percent" role="status" aria-label={t("{percent} percent", { percent: summary.percent })}>{summary.percent}%</div>
         </div>
         <div className="gen-progressbar queue-bar">
           <i style={{ width: `${summary.percent}%` }} />
         </div>
         <div className="queue-action-row">
           <button type="button" className="act slim purple" onClick={onAddAll} disabled={!canAddAll}>
-            <I.plus /> <span>Add all</span>
+            <I.plus /> <span>{t("Add all")}</span>
           </button>
           <button
             type="button"
@@ -259,7 +264,7 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
             onClick={clearAll}
             disabled={!items.length || Boolean(saving) || (running && items.length === 1)}
           >
-            <I.close /> <span>Clear</span>
+            <I.close /> <span>{t("Clear")}</span>
           </button>
         </div>
       </div>
@@ -272,8 +277,8 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
         </ul>
       ) : (
         <div className="queue-list queue-empty">
-          <div className="queue-empty-title">Click songs to add them</div>
-          <div className="queue-empty-sub">Shift-click adds a range</div>
+          <div className="queue-empty-title">{t("Click songs to add them")}</div>
+          <div className="queue-empty-sub">{t("Shift-click adds a range")}</div>
         </div>
       )}
 
@@ -287,11 +292,11 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
                   value={generator?.id || ""}
                   onChange={(event) => setQueueGenerator(choices.find((choice) => choice.id === event.target.value))}
                   disabled={running}
-                  aria-label="Chart model"
+                  aria-label={t("Chart model")}
                 >
                   {choices.map((choice) => (
                     <option key={choice.id} value={choice.id}>
-                      {choice.label}{isBetaGenerator(choice.id) ? " · Beta" : ""}
+                      {choice.label}{isBetaGenerator(choice.id) ? ` · ${t("Beta")}` : ""}
                     </option>
                   ))}
                 </select>
@@ -302,7 +307,7 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
             )}
           </div>
         </div>
-        <div className="difficulty-segments" role="group" aria-label="Difficulties to chart">
+        <div className="difficulty-segments" role="group" aria-label={t("Difficulties to chart")}>
           {difficulties.map((option) => {
             const on = settings.difficulties.includes(option.id);
             return (
@@ -314,12 +319,12 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
                 disabled={running}
                 aria-pressed={on}
               >
-                {option.name}
+                {t(option.name)}
               </button>
             );
           })}
         </div>
-        <div className="preset-grid" role="group" aria-label="Sampling">
+        <div className="preset-grid" role="group" aria-label={t("Sampling")}>
           {GENERATION_PRESETS.map((preset) => (
             <button
               key={preset.id}
@@ -328,14 +333,14 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
               onClick={() => setQueueSettings({ presetId: preset.id })}
               disabled={running}
               aria-pressed={settings.presetId === preset.id}
-              title={preset.summary}
+              title={t(preset.summary)}
             >
-              <b>{preset.name}</b>
+              <b>{t(preset.name)}</b>
             </button>
           ))}
         </div>
         <div className="queue-toggle">
-          <span id="queue-save-when-done">Save each to {GAME_LIBRARY_NAME}</span>
+          <span id="queue-save-when-done">{t("Save each to {library}", { library: GAME_LIBRARY_NAME })}</span>
           <button
             type="button"
             role="switch"
@@ -361,7 +366,7 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
         <div className={"queue-action-row" + (showSaveFinished ? "" : " is-single")}>
           <button type="button" className="act slim ghost" onClick={exportFinished} disabled={!anyDone || Boolean(saving)}>
             <I.upload />
-            <span>{saving?.kind === "export" ? savingLabel : anyDone && partDone ? "Export finished" : "Export all"}</span>
+            <span>{saving?.kind === "export" ? savingLabel : anyDone && partDone ? t("Export finished") : t("Export all")}</span>
           </button>
           {showSaveFinished && (
             <button
@@ -369,9 +374,9 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
               className="act slim ghost"
               onClick={(event) => saveFinished(event.currentTarget)}
               disabled={Boolean(saving)}
-              title={`Save the finished songs to ${GAME_LIBRARY_NAME}`}
+              title={t("Save the finished songs to {library}", { library: GAME_LIBRARY_NAME })}
             >
-              <I.check /> <span>{saving?.kind === "save" ? savingLabel : "Save finished"}</span>
+              <I.check /> <span>{saving?.kind === "save" ? savingLabel : t("Save finished")}</span>
             </button>
           )}
         </div>

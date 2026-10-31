@@ -1,3 +1,5 @@
+import { t } from "../i18n/index.js";
+
 // How Settings and the model picker present the engine's generators. A family
 // is one download (its catalog pack): its generator drafts charts (Generate),
 // and its inpaint generator, when it has one, rewrites picked bars (Inpaint).
@@ -7,7 +9,7 @@ export const MODEL_FAMILIES = Object.freeze([
     label: "Fretformer 2",
     badge: "2",
     recommended: true,
-    about: "Writes charts. Comes with Inpaint.",
+    get about() { return t("Writes charts. Comes with Inpaint."); },
     shortLabel: "Fretformer 2",
     generatorId: "autochart.fretformer.v2-onnx",
     inpaintGeneratorId: "autochart.fretformer.v2-inpaint-onnx",
@@ -19,7 +21,7 @@ export const MODEL_FAMILIES = Object.freeze([
     id: "fretformer-1",
     label: "Fretformer 1",
     badge: "1",
-    about: "The first model. Writes charts.",
+    get about() { return t("The first model. Writes charts."); },
     shortLabel: "Fretformer 1",
     generatorId: "autochart.fretformer.v1-onnx",
     packId: "standard-onnx",
@@ -31,7 +33,7 @@ export const MODEL_FAMILIES = Object.freeze([
     label: "Fretformer 2 Lite",
     badge: "L",
     experimental: true,
-    about: "Skips stem separation, so it's faster but less accurate.",
+    get about() { return t("Skips stem separation, so it's faster but less accurate."); },
     shortLabel: "Lite",
     generatorId: "autochart.fretformer.v2-lite-onnx",
     inpaintGeneratorId: "autochart.fretformer.v2-lite-onnx",
@@ -49,7 +51,7 @@ export const BETA_MODELS = Object.freeze([
     label: "Inpaint",
     badge: "I",
     familyId: "fretformer-2",
-    about: "Redoes the parts you pick.",
+    get about() { return t("Redoes the parts you pick."); },
     shortLabel: "Inpaint",
     generatorId: "autochart.fretformer.v2-inpaint-onnx",
   }),

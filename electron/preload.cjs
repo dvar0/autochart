@@ -64,7 +64,7 @@ contextBridge.exposeInMainWorld("autochart", {
     getAssetSource: (songId, fileName) =>
       ipcRenderer.invoke("library:getAssetSource", { songId, fileName }),
     exportSong: (payload) => ipcRenderer.invoke("library:exportSong", payload),
-    chooseExportFolder: () => ipcRenderer.invoke("library:chooseExportFolder"),
+    chooseExportFolder: (labels) => ipcRenderer.invoke("library:chooseExportFolder", labels),
     exportSongToChosenFolder: (payload) => ipcRenderer.invoke("library:exportSongToChosenFolder", payload),
     saveSongToCloneHeroLibrary: (payload) =>
       ipcRenderer.invoke("library:saveSongToCloneHeroLibrary", payload),
@@ -74,11 +74,11 @@ contextBridge.exposeInMainWorld("autochart", {
     get: () => ipcRenderer.invoke("settings:get"),
     dismissRecovery: () => ipcRenderer.invoke("settings:dismissRecovery"),
     update: (patch) => ipcRenderer.invoke("settings:update", patch),
-    chooseProjectsFolder: () => ipcRenderer.invoke("settings:chooseProjectsFolder"),
-    chooseModelsFolder: () => ipcRenderer.invoke("settings:chooseModelsFolder"),
-    chooseCacheFolder: () => ipcRenderer.invoke("settings:chooseCacheFolder"),
-    chooseCloneHeroLibraryFolder: () =>
-      ipcRenderer.invoke("settings:chooseCloneHeroLibraryFolder"),
+    chooseProjectsFolder: (labels) => ipcRenderer.invoke("settings:chooseProjectsFolder", labels),
+    chooseModelsFolder: (labels) => ipcRenderer.invoke("settings:chooseModelsFolder", labels),
+    chooseCacheFolder: (labels) => ipcRenderer.invoke("settings:chooseCacheFolder", labels),
+    chooseCloneHeroLibraryFolder: (labels) =>
+      ipcRenderer.invoke("settings:chooseCloneHeroLibraryFolder", labels),
     clearCloneHeroLibraryFolder: () =>
       ipcRenderer.invoke("settings:clearCloneHeroLibraryFolder"),
     resetPath: (key) => ipcRenderer.invoke("settings:resetPath", key),

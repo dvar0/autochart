@@ -98,6 +98,8 @@ import {
   separationStemSet,
   sourceChartPayloadFromVersions,
 } from "../../services/projectRun.js";
+import { msg, t } from "../../i18n/index.js";
+import { leadInText, separationName } from "./separationNames.js";
 
 export { generatorStemSetId, hasSeparation, separationStemSet };
 
@@ -328,20 +330,20 @@ function preferredGeneratorDifficulty(generator) {
 
 function stageStatusMessage(event) {
   const names = {
-    queued: "Queued generation job",
-    timing: "Detecting timing grid",
-    smoothing: "Smoothing timing grid",
-    demucs: "Preparing Demucs separation",
-    features: "Building stem features",
-    chart: "Generating chart",
-    done: "Finalizing chart",
-    saved: "Loading generated chart",
+    queued: msg("Queued generation job"),
+    timing: msg("Detecting timing grid"),
+    smoothing: msg("Smoothing timing grid"),
+    demucs: msg("Preparing Demucs separation"),
+    features: msg("Building stem features"),
+    chart: msg("Generating chart"),
+    done: msg("Finalizing chart"),
+    saved: msg("Loading generated chart"),
   };
-  const name = names[event.stage] || event.stage || "Generation";
-  if (event.cache === "hit") return `${name} cache hit.`;
-  if (event.status === "completed") return `${name} complete.`;
-  if (event.status === "failed") return `${name} failed.`;
-  return `${name}…`;
+  const name = names[event.stage] ? t(names[event.stage]) : event.stage || t("Generation");
+  if (event.cache === "hit") return t("{step}: reused.", { step: name });
+  if (event.status === "completed") return t("{step}: done.", { step: name });
+  if (event.status === "failed") return t("{step}: failed.", { step: name });
+  return t("{step}…", { step: name });
 }
 
 // Scrape a percentage out of an engine log line (tqdm bars, "45.2%", etc).
@@ -372,7 +374,7 @@ function generatorStateFromManifest(manifest) {
             status: manifest.status || manifest.setup?.status || "",
           }
         : null,
-    engineError: manifest?.available === false ? manifest.error || "Generator engine is unavailable." : "",
+    engineError: manifest?.available === false ? manifest.error || t("Generator engine is unavailable.") : "",
     preferences: manifest?.preferences || {},
   };
 }
@@ -575,15 +577,15 @@ function revokeObjectUrlRef(ref) {
 
 function stemDisplayName(stem, stemSetId = "htdemucs") {
   // htdemucs_6s splits guitar out, so its "other" is everything left over.
-  if (stemSetId !== "htdemucs" && stem === "other") return "Other stem";
+  if (stemSetId !== "htdemucs" && stem === "other") return t("Other stem");
   const names = {
-    guitar: "Guitar stem",
-    other: "Guitar / other stem",
-    drums: "Drums stem",
-    bass: "Bass stem",
-    vocals: "Vocals stem",
+    guitar: msg("Guitar stem"),
+    other: msg("Guitar / other stem"),
+    drums: msg("Drums stem"),
+    bass: msg("Bass stem"),
+    vocals: msg("Vocals stem"),
   };
-  return names[stem] || `${stem} stem`;
+  return names[stem] ? t(names[stem]) : t("{stem} stem", { stem });
 }
 
 function versionForSave(version) {
@@ -763,7 +765,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         if (!active) return;
         setGenerators([]);
         setSetupStatus(null);
-        setEngineError(err.message || "Generator engine is unavailable.");
+        setEngineError(err.message || t("Generator engine is unavailable."));
       });
     return () => {
       active = false;
@@ -799,13 +801,13 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           matched = true;
           return { ...run, finishedAt: Date.now(), ok: false, canceled: true, error: "", stopping: false };
         });
-        if (matched) setStatusMsg("Stopped.");
+        if (matched) setStatusMsg(t("Stopped."));
         return;
       }
       if (event.type === "error") {
-        setStatusMsg(event.message || "Generation failed.");
+        setStatusMsg(event.message || t("Generation failed."));
         setGenRun((run) =>
-          forActiveRun(run) ? { ...run, error: event.message || "Generation failed." } : run
+          forActiveRun(run) ? { ...run, error: event.message || t("Generation failed.") } : run
         );
         return;
       }
@@ -1081,7 +1083,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     const transaction = songId ? beginExclusiveMediaTransaction(mediaTransactionRef) : null;
     if (songId && !transaction) return;
     const request = beginMediaRequest(mediaRequestRef);
-    setStatusMsg("Reading media metadata…");
+    setStatusMsg(t("Reading media metadata…"));
     if (saveNow) setBusyAction("replacing-source");
     try {
       const [info, previewBuffer] = await Promise.all([
@@ -1159,11 +1161,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         charter: "Autochart",
       });
       setStatusMsg(info.albumBlob || isVideoMedia(f)
-        ? "Media metadata loaded."
-        : "Media loaded. No embedded cover found.");
+        ? t("Media metadata loaded.")
+        : t("Media loaded. No embedded cover found."));
     } catch (err) {
       if (!request.isCurrent()) return;
-      setStatusMsg(err.message || "Could not read or save source media.");
+      setStatusMsg(err.message || t("Could not read or save source media."));
     } finally {
       transaction?.release();
       if (request.isCurrent() && saveNow) setBusyAction("");
@@ -1215,9 +1217,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const sourceAudioFile = pendingAudioFile || importedSong?.audioFile || null;
   const sourceAudioName = pendingAudioFile?.name || importedSong?.audioName || "";
   const sourceAudioMeta = pendingAudioFile
-    ? `${formatBytes(pendingAudioFile.size)}${pendingBgFromAudio ? " · video background" : ""}`
+    ? `${formatBytes(pendingAudioFile.size)}${pendingBgFromAudio ? ` · ${t("video background")}` : ""}`
     : importedSong?.audioName
-      ? "Imported media"
+      ? t("Imported media")
       : "";
   const normalizedSourceArtifacts = normalizeSourceArtifactsState(sourceArtifacts);
   const currentSourceTransform = usesSourceChartSync ? sourceTransformFromKey() : sourceTransformFromControls(generationControls);
@@ -1272,10 +1274,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           availableDifficulties: FINAL_SLOT_ORDER.filter((difficulty) => slots[difficulty]),
         },
       });
-      if (!quiet) setStatusMsg("Final chart assignment saved.");
+      if (!quiet) setStatusMsg(t("Final chart saved."));
       onSaved?.();
     } catch (err) {
-      setStatusMsg(err.message || "Could not save final chart assignment.");
+      setStatusMsg(err.message || t("Could not save the final chart."));
     }
   };
 
@@ -1344,10 +1346,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         resetEditorSession();
         setWorkTab("generate");
       }
-      setStatusMsg(`Removed ${version.name}.`);
+      setStatusMsg(t("Removed {take}.", { take: version.name }));
       onSaved?.();
     } catch (err) {
-      setStatusMsg(err.message || "Could not remove take.");
+      setStatusMsg(err.message || t("Could not remove take."));
     } finally {
       setBusyAction("");
     }
@@ -1377,7 +1379,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
 
   const handleSave = async () => {
     if (!songId) {
-      setStatusMsg("Import a song from the Library before saving.");
+      setStatusMsg(t("Import a song from the Library before saving."));
       return;
     }
     const saveVersionId = activeVersionId || singleVersion;
@@ -1425,9 +1427,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setPendingBgFile(null);
       setPendingBgFromAudio(false);
       onSaved?.();
-      setStatusMsg("Project saved.");
+      setStatusMsg(t("Project saved."));
     } catch (err) {
-      setStatusMsg(err.message || "Save failed");
+      setStatusMsg(err.message || t("Save failed"));
     } finally {
       setBusyAction("");
     }
@@ -1437,10 +1439,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     if (!songId) return;
     try {
       await updateSongRecord(songId, { sourceArtifacts: nextArtifacts });
-      if (!quiet) setStatusMsg("Separation choice saved.");
+      if (!quiet) setStatusMsg(t("Separation choice saved."));
       onSaved?.();
     } catch (err) {
-      setStatusMsg(err.message || "Could not save separation choice.");
+      setStatusMsg(err.message || t("Could not save separation choice."));
     }
   };
   const ensurePathBackedAudioSource = (_audioFile, storedSource = null) => {
@@ -1472,7 +1474,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setSourceArtifacts(nextArtifacts);
     await persistSourceArtifacts(nextArtifacts);
     if (quiet) return;
-    setStatusMsg(`${artifact?.name || "Selected separation"} ${compactSourceVariantLabel(artifact?.sourceTransform || currentSourceTransform)} is active for matching charts.`);
+    setStatusMsg(t("{name} ({leadIn}) is in use for new charts.", { name: separationName(artifact?.name || "Selected separation"), leadIn: leadInText(compactSourceVariantLabel(artifact?.sourceTransform || currentSourceTransform)) }));
   };
 
   // `generator` picks the separation model (its stem set); the selected model by
@@ -1485,12 +1487,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       : generators.find((g) => readsStems(g) && generatorStemSetId(g) === generatorStemSetId(pickedGenerator)) || pickedGenerator;
     const runAudioFile = pendingAudioFile || importedSong?.audioFile || null;
     if (!runAudioFile) {
-      setStatusMsg("Choose a media file before preparing Demucs.");
+      setStatusMsg(t("Choose a media file before separating."));
       return null;
     }
     const generatorSetup = generator?.setup;
     if (generatorSetup && !generatorSetup.ready) {
-      setStatusMsg(generatorSetup.message || "Demucs preparation needs setup before this generator can run.");
+      setStatusMsg(generatorSetup.message || t("Separation needs setup before this model can run."));
       return null;
     }
 
@@ -1508,7 +1510,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         : `Regenerated separation ${generatedIndex}${runSourceTransform.leadInSilenceMs ? ` (${runSourceTransform.label})` : ""}`);
 
     setBusyAction("separating");
-    setStatusMsg("Preparing Demucs separation…");
+    setStatusMsg(t("Separating stems…"));
     try {
       const runAudioResolution = ensurePathBackedAudioSource(
         runAudioFile,
@@ -1539,10 +1541,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       );
       setSourceArtifacts(nextArtifacts);
       if (songId) await persistSourceArtifacts(nextArtifacts);
-      setStatusMsg(`${artifact.name} ${compactSourceVariantLabel(artifact.sourceTransform)} is ready${makeActive ? " and active for matching charts" : ""}.`);
+      setStatusMsg(makeActive
+        ? t("{name} ({leadIn}) is ready and in use for new charts.", { name: separationName(artifact.name), leadIn: leadInText(compactSourceVariantLabel(artifact.sourceTransform)) })
+        : t("{name} ({leadIn}) is ready.", { name: separationName(artifact.name), leadIn: leadInText(compactSourceVariantLabel(artifact.sourceTransform)) }));
       return artifact;
     } catch (err) {
-      setStatusMsg(err.message || "Demucs preparation failed.");
+      setStatusMsg(err.message || t("Separation failed."));
       throw err;
     } finally {
       setBusyAction("");
@@ -1570,7 +1574,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         });
       }
       const stemInfo = separationStemSet(readyArtifact, stemSetId)?.[stem];
-      if (!stemInfo?.path) throw new Error(`No ${stemDisplayName(stem, stemSetId).toLowerCase()} was found for ${readyArtifact?.name || "this separation"}.`);
+      if (!stemInfo?.path) throw new Error(t("{stem} wasn't found in {separation}.", { stem: stemDisplayName(stem, stemSetId).toLowerCase(), separation: readyArtifact?.name ? separationName(readyArtifact.name) : t("this separation") }));
       const data = await readDemucsStem(stemInfo.path);
       const mime = stemInfo.mime || (stemInfo.format === "wav" ? "audio/wav" : "audio/flac");
       const url = URL.createObjectURL(new Blob([data], { type: mime }));
@@ -1580,7 +1584,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         stem,
         stemSet: stemSetId,
         stemName: stemDisplayName(stem, stemSetId),
-        label: `${readyArtifact.name} · ${stemDisplayName(stem, stemSetId)}`,
+        label: `${separationName(readyArtifact.name)} · ${stemDisplayName(stem, stemSetId)}`,
         url,
         data,
         mime,
@@ -1592,7 +1596,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       }
       return nextAudition;
     } catch (err) {
-      setStatusMsg(err.message || "Could not audition separated audio.");
+      setStatusMsg(err.message || t("Could not play the separated audio."));
       throw err;
     } finally {
       setDemucsAuditionLoadingKey("");
@@ -1606,17 +1610,17 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     if (generationInFlightRef.current) return;
     const runAudioFile = pendingAudioFile || importedSong?.audioFile || null;
     if (!runAudioFile) {
-      setStatusMsg("Choose a media file before generating a chart.");
+      setStatusMsg(t("Choose a media file before generating a chart."));
       return;
     }
     const generatorSetup = selectedGenerator?.setup;
     if (generatorSetup && !generatorSetup.ready) {
-      setStatusMsg(generatorSetup.message || "Chart generation needs setup before this generator can run.");
+      setStatusMsg(generatorSetup.message || t("Chart generation needs setup before this model can run."));
       return;
     }
     if ((activeDemucsArtifact?.engineId || activeDemucsArtifact?.id) !== DEFAULT_DEMUCS_ID && !activeDemucsArtifact?.cache?.workspace) {
       setDeckTab("demucs");
-      setStatusMsg("Prepare or reselect the Demucs separation before generating a chart.");
+      setStatusMsg(t("Separate the song again, or pick another separation, before generating a chart."));
       return;
     }
     generationInFlightRef.current = true;
@@ -1635,7 +1639,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       runSettings = settingsSnapshot || buildRunSettings();
       const runUsesSourceChartSync = runSettings.generation.resolved.timingDetector === SOURCE_CHART_TIMING_DETECTOR_ID;
       if (runUsesSourceChartSync && !sourceChartPayload?.text) {
-        setStatusMsg("Imported chart sync needs a source notes.chart.");
+        setStatusMsg(t("Imported chart sync needs the song's notes.chart."));
         return;
       }
       const runSeed = runSettings.generation.resolved.seed;
@@ -1779,7 +1783,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         parentVersionId: selectedSingleVersion?.id || null,
       });
       if (result.status === "canceled") {
-        setStatusMsg("Stopped.");
+        setStatusMsg(t("Stopped."));
         setGenRun((run) =>
           run
             ? { ...run, finishedAt: Date.now(), ok: false, canceled: true, error: "", stopping: false }
@@ -1876,10 +1880,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         setJustGeneratedId(generated.id);
         if (justGeneratedTimer.current) clearTimeout(justGeneratedTimer.current);
         justGeneratedTimer.current = setTimeout(() => setJustGeneratedId(""), 1700);
-        setStatusMsg(`Generated ${generated.name} as a new take.`);
+        setStatusMsg(t("Generated {take} as a new take.", { take: generated.name }));
         onSaved?.();
       } else {
-        setStatusMsg(result.chartPath ? `Generated chart at ${result.chartPath}` : result.message || `Job ${result.jobId}: ${result.status}`);
+        setStatusMsg(result.chartPath ? t("Generated chart at {path}", { path: result.chartPath }) : result.message || `${result.jobId}: ${result.status}`);
       }
       setGenRun((run) => (run ? { ...run, finishedAt: Date.now(), ok: true } : run));
       // The browser downloads a model on its first run; re-read the list so
@@ -1891,10 +1895,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       if (runSettings && retrySource && hardwareMode !== "cpu" && err?.code !== "storage_full") {
         cpuRetryRef.current = () => handleGenerate({ hardwareMode: "cpu", settingsSnapshot: runSettings, sourceSnapshot: retrySource });
       }
-      setStatusMsg(err.message || "Generation failed");
+      setStatusMsg(err.message || t("Generation failed"));
       setGenRun((run) =>
         run
-          ? { ...run, finishedAt: Date.now(), ok: false, error: run.error || err.message || "Generation failed" }
+          ? { ...run, finishedAt: Date.now(), ok: false, error: run.error || err.message || t("Generation failed") }
           : run
       );
     } finally {
@@ -1926,7 +1930,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   };
 
   const ensureFinalVersionSaved = async () => {
-    if (!songId) throw new Error("Generate or open a saved song before building the final chart.");
+    if (!songId) throw new Error(t("Generate or open a saved song before building the final chart."));
     const previousFinalVersion = versionOptions.find((version) => version.id === FINAL_VERSION_ID) || null;
     const { slots: cleanSlots, finalVersion, versionsWithFinal } = buildFinalChartVersion({
       versions: versionOptions,
@@ -1957,7 +1961,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
 
   const handleExportFinal = async () => {
     if (!songId) {
-      setStatusMsg("Open or generate a saved song before exporting.");
+      setStatusMsg(t("Open or generate a saved song before exporting."));
       return;
     }
     if (finalTimingIssue) {
@@ -1970,13 +1974,13 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       const finalVersion = await ensureFinalVersionSaved();
       const result = await exportChart(songId, finalVersion.id);
       if (result.canceled) {
-        setStatusMsg(result.message || "Export canceled.");
+        setStatusMsg(result.message || t("Export canceled."));
         return;
       }
       markProjectExported(songId);
-      setStatusMsg(result.message || `Exported final chart to ${result.path}`);
+      setStatusMsg(result.message || t("Exported final chart to {path}", { path: result.path }));
     } catch (err) {
-      setStatusMsg(err.message || "Final chart export failed");
+      setStatusMsg(err.message || t("Final chart export failed"));
     } finally {
       setBusyAction("");
     }
@@ -1989,11 +1993,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       const finalVersion = await ensureFinalVersionSaved();
       const result = await saveChartToCloneHeroLibrary(songId, finalVersion.id);
       if (!result?.canceled) markProjectExported(songId);
-      setStatusMsg(result.message || `Saved final chart to ${GAME_LIBRARY_NAME}: ${result.path}`);
+      setStatusMsg(result.message || t("Saved final chart to {library}: {path}", { library: GAME_LIBRARY_NAME, path: result.path }));
       setLibrarySavedAt(Date.now());
     } catch (err) {
       if (isMissingLibraryFolderError(err)) libraryFolderGate.request(saveFinalToLibrary);
-      else setStatusMsg(err.message || `Could not save final chart to ${GAME_LIBRARY_NAME}.`);
+      else setStatusMsg(err.message || t("Could not save final chart to {library}.", { library: GAME_LIBRARY_NAME }));
     } finally {
       setBusyAction("");
     }
@@ -2001,7 +2005,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
 
   const handleSaveFinalToLibrary = async (event) => {
     if (!songId) {
-      setStatusMsg(`Open or generate a saved song before saving to ${GAME_LIBRARY_NAME}.`);
+      setStatusMsg(t("Open or generate a saved song before saving to {library}.", { library: GAME_LIBRARY_NAME }));
       return;
     }
     if (finalTimingIssue) {
@@ -2143,12 +2147,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         }
         lite = await refreshGenerators();
       }
-      if (!lite?.setup?.ready) throw new Error(lite?.setup?.message || "Fretformer 2 Lite isn't ready.");
+      if (!lite?.setup?.ready) throw new Error(lite?.setup?.message || t("{model} isn't ready.", { model: "Fretformer 2 Lite" }));
       generatorChosenRef.current = true;
       setGeneratorId(LITE_GENERATOR_ID);
       setLiteSwitch({ phase: "starting" });
     } catch (err) {
-      setLiteSwitch({ phase: "failed", error: err.message || "Couldn't switch to Lite." });
+      setLiteSwitch({ phase: "failed", error: err.message || t("Couldn't switch to Lite.") });
     }
   };
 
@@ -2167,7 +2171,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     const version = localVersions.find((v) => v.id === versionId);
     const generation = version?.settings?.generation;
     if (!generation) {
-      setStatusMsg("This take has no saved generation settings.");
+      setStatusMsg(t("This take has no saved generation settings."));
       return;
     }
     const controls = controlsFromSavedGeneration(
@@ -2199,7 +2203,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       controls: JSON.stringify(controls),
       generatorId: generatorAvailable ? takeGeneratorId : generatorId,
     });
-    setStatusMsg(generatorAvailable || !takeGeneratorId ? "" : "That take's model isn't installed. Its other settings are loaded.");
+    setStatusMsg(generatorAvailable || !takeGeneratorId ? "" : t("That take's model isn't installed. Its other settings are loaded."));
   };
   const reusedSettingsMatch = Boolean(
     reusedFrom
@@ -2220,17 +2224,17 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     ? {
         label: missingFamily.label,
         action: selectedGeneratorSetup.status === "corrupt"
-          ? `Repair ${missingFamily.label}`
+          ? t("Repair {model}", { model: missingFamily.label })
           : selectedGeneratorSetup.status === "partial"
-            ? `Finish downloading ${missingFamily.label}`
-            : `Download ${missingFamily.label}`,
+            ? t("Finish downloading {model}", { model: missingFamily.label })
+            : t("Download {model}", { model: missingFamily.label }),
         message: installingPacks.includes(missingFamily.packId)
-          ? `${missingFamily.label} is downloading. Generate turns on when it's done.`
+          ? t("{model} is downloading. Generate turns on when it's done.", { model: missingFamily.label })
           : modelDownloadError || (selectedGeneratorSetup.status === "corrupt"
-            ? `${missingFamily.label} has a damaged file.`
+            ? t("{model} has a damaged file.", { model: missingFamily.label })
             : selectedGeneratorSetup.status === "partial"
-              ? `${missingFamily.label}'s download didn't finish.`
-              : `${missingFamily.label} isn't downloaded yet.`),
+              ? t("{model}'s download didn't finish.", { model: missingFamily.label })
+              : t("{model} isn't downloaded yet.", { model: missingFamily.label })),
         size: selectedGeneratorSetup.status === "missing"
           ? (() => {
               const pack = setupStatus?.scan?.packs?.find((item) => item.id === missingFamily.packId);
@@ -2248,7 +2252,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     try {
       await installAssets(missingFamily.packId);
     } catch (err) {
-      setModelDownloadError(err?.message || "The download didn't finish.");
+      setModelDownloadError(err?.message || t("The download didn't finish."));
     }
   };
   const liveGeneration = useMemo(
@@ -2273,7 +2277,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   );
   const setupMessage =
     selectedGeneratorSetup?.status === "missing"
-      ? "Download it to start making charts."
+      ? t("Download it to start making charts.")
       : setupStatus?.message ||
         selectedGeneratorSetup?.message ||
         (engineError ? engineError : "");
@@ -2309,7 +2313,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         if (!cancelled) {
           setPreviewAudio(EMPTY_PREVIEW_AUDIO);
           setPreviewAudioError(
-            "This chart was generated with lead-in silence, but its padded audio cache is missing. Regenerate the chart before previewing."
+            t("This chart was generated with lead-in silence, but its padded audio cache is missing. Regenerate the chart before previewing.")
           );
         }
       });
@@ -2440,7 +2444,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const startEditingVersion = (versionId) => {
     const version = editorVersionOptions.find((v) => v.id === versionId);
     if (!version?.chart?.text) {
-      setStatusMsg("This take has no chart text to edit.");
+      setStatusMsg(t("This take has no chart to edit."));
       return;
     }
     const difficulty = version.settings?.difficulty || version.difficulty || "expert";
@@ -2450,7 +2454,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       doc = parseEditableChart(version.chart.text, difficulty);
       if (editingExistingDraft) doc = restoreEditHistory(doc, version.editHistory);
     } catch (err) {
-      setStatusMsg(err.message || "Could not open this take in the editor.");
+      setStatusMsg(err.message || t("Could not open this take in the editor."));
       return;
     }
     dispatchEditor({ type: "replaceDoc", doc });
@@ -2533,12 +2537,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       // Changes made while this save was in flight stay dirty for the next one.
       if (editorRevisionRef.current === savedRevision) setEditorDirty(false);
       setEditorSavedAt(Date.now());
-      if (!quiet) setStatusMsg("Edit saved as draft.");
+      if (!quiet) setStatusMsg(t("Edit saved as draft."));
       onSaved?.();
       return true;
     } catch (err) {
       // Keep dirty editor state in memory so nothing is lost on a failed save.
-      setStatusMsg(err.message || "Could not save edit.");
+      setStatusMsg(err.message || t("Could not save edit."));
       return false;
     } finally {
       editorSavingRef.current = false;
@@ -2562,11 +2566,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // takes without a chart.
   const editBlockedReason =
     !hasMedia || !selectedSingleVersion
-      ? "Generate a take first"
+      ? t("Generate a take first")
       : busyAction === "generating" || busyAction === "separating"
-        ? "Wait for the generation to finish"
+        ? t("Wait for the generation to finish")
         : !selectedSingleVersion.chart?.text
-          ? "This take has no chart to edit"
+          ? t("This take has no chart to edit")
           : "";
 
   // Switching tabs keeps the editor session: picks, selections, undo
@@ -2619,7 +2623,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       generatorId: family.inpaintGeneratorId,
       label: family.label,
       ready: Boolean(generator?.setup?.ready),
-      message: generator?.setup?.ready ? "" : `Download ${family.label} in Settings first`,
+      message: generator?.setup?.ready ? "" : t("Download {model} in Settings first", { model: family.label }),
     };
   });
   const inpaintModel = inpaintModels.find((model) => model.generatorId === inpaintGeneratorId) || null;
@@ -2628,9 +2632,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const inpaintBlockedReason = !canInpaint()
     ? ""
     : !inpaintGenerator || (inpaintGenerator.setup && !inpaintGenerator.setup.ready)
-      ? inpaintModel?.message || "Download Fretformer 2 in Settings first"
+      ? inpaintModel?.message || t("Download {model} in Settings first", { model: "Fretformer 2" })
       : !(requiresPathBackedAudio() ? importedSong?.audioSource : importedSong?.audioFile)
-        ? "Save the song first"
+        ? t("Save the song first")
         : "";
   const startInpaint = ({ regions, knobs, tries, seed, onProgress }) => {
     const doc = editorState.doc;
@@ -2678,14 +2682,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         areas: result.inpaint.regions.map((region) => ({
           startTick: region.startTick,
           endTick: region.endTick,
-          tries: region.tries.map((t) => notesFromNoteLines(t.noteLines)),
-          seams: region.tries.map((t) => t.seam),
+          tries: region.tries.map((item) => notesFromNoteLines(item.noteLines)),
+          seams: region.tries.map((item) => item.seam),
           chosen: region.chosen,
         })),
       };
     })()
       .catch((err) => {
-        if (err?.name !== "AbortError") setStatusMsg(err.message || "Inpaint failed.");
+        if (err?.name !== "AbortError") setStatusMsg(err.message || t("Inpaint failed."));
         throw err;
       })
       .finally(() => unsubscribe());

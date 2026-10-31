@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   hardwareMode: "auto",
   updateChannel: "stable",
   theme: "system",
+  // "system" follows the computer's language; or "en", "es", "pt-BR".
+  language: "system",
   // Generator new projects start on; empty follows the catalog default.
   defaultGeneratorId: "",
   // Lists beta generators (drafting with the Inpaint model) in the model picker.
@@ -93,6 +95,7 @@ function normalizeSettings(settings = {}, defaults = {}) {
     ? next.updateChannel
     : DEFAULT_SETTINGS.updateChannel;
   next.theme = ["system", "light", "dark"].includes(next.theme) ? next.theme : DEFAULT_SETTINGS.theme;
+  next.language = ["system", "en", "es", "pt-BR"].includes(next.language) ? next.language : DEFAULT_SETTINGS.language;
   // Older versions saved their model download source here, which would keep
   // them on that revision's files after an update.
   delete next.assetBaseUrl;

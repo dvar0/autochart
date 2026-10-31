@@ -16,6 +16,7 @@ import {
   snapSpanToBars,
   songEndBarTick,
 } from "./editRegions.js";
+import { t } from "../../../i18n/index.js";
 
 // Canvas-based piano roll. The editor doc (ticks) is the source of truth; this
 // component renders a virtualized horizontal timeline and translates pointer
@@ -948,8 +949,8 @@ export default function PianoRollEditor({
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (layoutRef.current.noteW / 2)));
     let changed = false;
     for (let i = 0; i <= steps; i += 1) {
-      const t = i / steps;
-      changed = markEraseHit(drag, fromX + dx * t, fromY + dy * t) || changed;
+      const step = i / steps;
+      changed = markEraseHit(drag, fromX + dx * step, fromY + dy * step) || changed;
     }
     drag.lastX = localX;
     drag.lastY = localY;
@@ -1301,7 +1302,7 @@ export default function PianoRollEditor({
   };
 
   if (!doc) {
-    return <div className="piano-roll-empty">Pick a take and press Edit to open it here.</div>;
+    return <div className="piano-roll-empty">{t("Pick a take and press Edit to open it here.")}</div>;
   }
 
   return (

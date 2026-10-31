@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.js";
 import targetMatrix from "../../config/supported-targets.json" with { type: "json" };
 
 export const SUPPORTED_TARGETS = Object.freeze(
@@ -25,9 +26,9 @@ export function isSupportedTarget(platform, arch) {
 }
 
 export function targetLabel(platform, arch) {
-  return supportedTarget(platform, arch)?.label || `${platform || "Unknown OS"} ${arch || "unknown architecture"}`;
+  return supportedTarget(platform, arch)?.label || `${platform || t("Unknown OS")} ${arch || t("unknown architecture")}`;
 }
 
 export function unsupportedTargetMessage(platform, arch) {
-  return `${targetLabel(platform, arch)} is not a supported generation target in this release.`;
+  return t("{target} is not a supported generation target in this release.", { target: targetLabel(platform, arch) });
 }

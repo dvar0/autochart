@@ -2,6 +2,7 @@ import { combinedProvenance, provenanceFields, updateChartMetadata } from "../..
 import { TRACK_BY_DIFFICULTY, parseChart } from "../lib/chart/parseChart.js";
 import { generationVersionName } from "../data/generationSettings.js";
 import { newVersionId } from "./songSchema.js";
+import { t } from "../i18n/index.js";
 import { buildGeneratedVersion } from "../../shared/generatedVersion.js";
 import { chartTimingKey } from "../../shared/timingSignature.js";
 
@@ -124,22 +125,18 @@ export function createFinalChartVersion({
   previousVersion = null,
 } = {}) {
   const assigned = Object.entries(slotVersions).filter(([, version]) => version?.chart?.text);
-  if (!assigned.length) throw new Error("Assign at least one difficulty before building the final chart.");
+  if (!assigned.length) throw new Error(t("Assign at least one difficulty before building the final chart."));
 
   const firstVersion = assigned[0][1];
   const firstSourceVariantKey = versionSourceVariantKey(firstVersion);
   const sourceMismatch = assigned.find(([, version]) => versionSourceVariantKey(version) !== firstSourceVariantKey);
   if (sourceMismatch) {
-    throw new Error(
-      "Final chart needs one shared source audio. Assign takes generated with the same lead-in silence before exporting."
-    );
+    throw new Error(t("Final chart needs one shared source audio. Assign takes generated with the same lead-in silence before exporting."));
   }
   const firstTimingSignature = chartTimingKey(firstVersion.chart.text);
   const mismatch = assigned.find(([, version]) => chartTimingKey(version.chart.text) !== firstTimingSignature);
   if (mismatch) {
-    throw new Error(
-      "Final chart needs one shared beatmap. Assign takes with the same timing grid before exporting."
-    );
+    throw new Error(t("Final chart needs one shared beatmap. Assign takes with the same timing grid before exporting."));
   }
 
   // Prefer an assigned imported chart as the base text: its [Song] metadata,
@@ -163,7 +160,7 @@ export function createFinalChartVersion({
   }
 
   if (!assignedDifficulties.length) {
-    throw new Error("Assigned candidates do not contain playable chart sections.");
+    throw new Error(t("The assigned takes have no playable chart sections."));
   }
 
   const difficulty = highestPreviewDifficulty(assignedDifficulties);

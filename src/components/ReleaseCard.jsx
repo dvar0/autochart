@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { I } from "../icons.jsx";
+import { t } from "../i18n/index.js";
 import { StartHighway } from "../pages/Start.jsx";
 import { FRET_COLORS } from "../data/notePalette.js";
 
@@ -21,7 +22,7 @@ export default function ReleaseCard({ label, kicker, title, sub, image = "", foo
     <div className="release-layer">
       <div className="release-scrim" onClick={onClose} aria-hidden="true" />
       <section className="release-card" role="dialog" aria-modal="true" aria-label={label}>
-        <button type="button" className="release-close" onClick={onClose} aria-label={`Close ${label.toLowerCase()}`} title="Close (Esc)">
+        <button type="button" className="release-close" onClick={onClose} aria-label={t("Close {window}", { window: label.toLocaleLowerCase() })} title={t("Close (Esc)")}>
           <I.plus />
         </button>
         <div className="release-scroll">
@@ -70,8 +71,8 @@ export function ReleaseContent({ features = [], fixes = [] }) {
                   <Icon />
                 </span>
                 <span className="release-feature-copy">
-                  <b>{feature.title}</b>
-                  {feature.text && <span>{feature.text}</span>}
+                  <b>{t(feature.title)}</b>
+                  {feature.text && <span>{t(feature.text)}</span>}
                 </span>
                 {feature.image && <img className="release-feature-image" src={feature.image} alt="" />}
               </li>
@@ -81,13 +82,13 @@ export function ReleaseContent({ features = [], fixes = [] }) {
       )}
       {fixes.length > 0 && (
         <div className="release-fixes">
-          <b>Smaller changes and fixes</b>
+          <b>{t("Smaller changes and fixes")}</b>
           <ul>
-            {shownFixes.map((fix) => <li key={fix}>{fix}</li>)}
+            {shownFixes.map((fix) => <li key={fix}>{t(fix)}</li>)}
           </ul>
           {fixes.length > FIXES_SHOWN && (
             <button type="button" className="release-link" onClick={() => setAllFixes((open) => !open)} aria-expanded={allFixes}>
-              {allFixes ? "Show fewer" : `Show all ${fixes.length}`}
+              {allFixes ? t("Show fewer") : t("Show all {count}", { count: fixes.length })}
             </button>
           )}
         </div>
@@ -101,7 +102,7 @@ export function ReleaseNotesLink({ url }) {
   if (!url) return null;
   return (
     <a className="release-link" href={url} target="_blank" rel="noreferrer">
-      Full release notes <I.open />
+      {t("Full release notes")} <I.open />
     </a>
   );
 }

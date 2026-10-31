@@ -21,7 +21,7 @@ import {
 import { I } from "../../icons.jsx";
 import { FINAL_SLOT_ORDER, getVersionDifficulty } from "../../services/finalChart.js";
 import { LiveGenerationTakeCard } from "./LiveGeneration.jsx";
-import { modelName } from "./takeNames.js";
+import { modelName, takeCardName } from "./takeNames.js";
 import { StageSignal } from "./StageAnimations.jsx";
 import {
   demucsAuditionKey,
@@ -30,17 +30,19 @@ import {
   MIN_COMPARE_CHARTS,
   separationStemSet,
 } from "./useGenerateProject.js";
+import { leadInText, separationName } from "./separationNames.js";
+import { formatDate, msg, t, tn } from "../../i18n/index.js";
 
 const STEM_OPTIONS = [
-  { id: "other", label: "Other" },
-  { id: "drums", label: "Drums" },
-  { id: "bass", label: "Bass" },
-  { id: "vocals", label: "Vocals" },
+  { id: "other", label: msg("Other") },
+  { id: "drums", label: msg("Drums") },
+  { id: "bass", label: msg("Bass") },
+  { id: "vocals", label: msg("Vocals") },
 ];
 
 // htdemucs_6s stems (piano is folded into other). The six-stem models use these.
 const SIX_STEM_OPTIONS = [
-  { id: "guitar", label: "Guitar" },
+  { id: "guitar", label: msg("Guitar") },
   ...STEM_OPTIONS,
 ];
 
@@ -73,7 +75,7 @@ function leadInTag(version) {
   if (!Number.isFinite(ms) || ms <= 0) return null;
   const seconds = ms / 1000;
   const label = Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(2).replace(/0+$/g, "").replace(/\.$/, "");
-  return { text: `+${label}s`, title: `Lead-in silence: ${label} seconds`, mod: true };
+  return { text: `+${label}s`, title: t("Lead-in silence: {seconds} seconds", { seconds: label }), mod: true };
 }
 
 function sourceVariantTag(artifact) {
@@ -90,23 +92,23 @@ function baseSeparationName(name = "") {
 function compactSeparationName(name = "", variant = "0s") {
   const base = baseSeparationName(name);
   const suffix = variant === "0s" ? "" : ` · ${variant}`;
-  if (/^default separation$/i.test(base)) return `Default${suffix}`;
+  if (/^default separation$/i.test(base)) return `${t("Default")}${suffix}`;
   const regenerated = base.match(/^regenerated separation\s*(.*)$/i);
-  if (regenerated) return `Regen${regenerated[1] ? ` ${regenerated[1].trim()}` : ""}${suffix}`;
+  if (regenerated) return `${regenerated[1] ? t("Remake {number}", { number: regenerated[1].trim() }) : t("Remake")}${suffix}`;
   return `${base.replace(/\s+separation$/i, " sep")}${suffix}`;
 }
 
 function separationKindTag(name = "") {
-  return /^regenerated separation/i.test(baseSeparationName(name)) ? "regen" : null;
+  return /^regenerated separation/i.test(baseSeparationName(name)) ? t("remade") : null;
 }
 
 function separationCardName(artifact) {
   const base = baseSeparationName(artifact?.name);
   const variant = sourceVariantTag(artifact);
   const suffix = variant === "0s" ? "" : ` · ${variant}`;
-  if (/^default separation$/i.test(base)) return `Default${suffix}`;
+  if (/^default separation$/i.test(base)) return `${t("Default")}${suffix}`;
   const regenerated = base.match(/^regenerated separation\s*(.*)$/i);
-  if (regenerated) return `Regen${regenerated[1] ? ` ${regenerated[1].trim()}` : ""}${suffix}`;
+  if (regenerated) return `${regenerated[1] ? t("Remake {number}", { number: regenerated[1].trim() }) : t("Remake")}${suffix}`;
   return `${base}${suffix}`;
 }
 
@@ -152,14 +154,14 @@ function takeRecipe(version, generators = []) {
   const sampling = !preset
     ? {
       value: `T ${formatSetting(temperature)} · P ${formatSetting(topP)}`,
-      chips: [{ text: "Custom", tone: "purple" }],
-      title: `Temperature ${temperature} · Top-p ${topP}`,
+      chips: [{ text: t("Custom"), tone: "purple" }],
+      title: t("Temperature {temperature} · Top-p {topP}", { temperature, topP }),
       mod: true,
     }
     : {
       value: "",
-      chips: [{ text: presetName, tone: PRESET_TONES[preset.id] || "neutral" }],
-      title: `${presetName}: temperature ${temperature} · top-p ${topP}`,
+      chips: [{ text: t(presetName), tone: PRESET_TONES[preset.id] || "neutral" }],
+      title: t("{preset}: temperature {temperature} · top-p {topP}", { preset: t(presetName), temperature, topP }),
     };
 
   const timingDetector = controls.timingDetector || timingDetectorOptionFromResolved(resolved);
@@ -168,17 +170,17 @@ function takeRecipe(version, generators = []) {
     timing = { value: timingDetectorLabel(timingDetector, { short: true }), title: timingDetectorLabel(timingDetector) };
   } else if (timingSmoothingEnabledFromGeneration(generation)) {
     timing = usesOlderTimingSmoother(generation)
-      ? { value: "old smooth", title: "Beat map from the previous smoother", tone: "amber" }
-      : { value: "smooth", title: "Smoothed beat map" };
+      ? { value: t("old smooth"), title: t("Beat map from the previous smoother"), tone: "amber" }
+      : { value: t("smooth"), title: t("Smoothed beat map") };
   } else {
-    timing = { value: "raw", title: "Beat map without smoothing", mod: true };
+    timing = { value: t("raw"), title: t("Beat map without smoothing"), mod: true };
   }
 
   const knobValues = controls.knobs ?? resolved.knobs ?? {};
   const knobs = Object.keys(knobValues).map((id, index) => {
     const knob = ALL_DESCRIPTOR_KNOBS.find((item) => item.id === id);
     return {
-      name: knob?.name || id,
+      name: knob?.name ? t(knob.name) : id,
       compact: knob?.compact || id.slice(0, 2),
       value: knobValues[id],
       color: KNOB_COLORS[index % KNOB_COLORS.length],
@@ -187,8 +189,8 @@ function takeRecipe(version, generators = []) {
   const setKnobs = knobs.filter((knob) => knob.value != null);
   const guidance = settingNumber(resolved.guidanceScale ?? controls.guidanceScale);
   const styleTitle = knobs.length
-    ? knobs.map((knob) => `${knob.name} ${knob.value ?? "auto"}`).join(" · ") + (setKnobs.length && guidance != null ? ` · strength ${guidance}` : "")
-    : "This model has no style controls";
+    ? knobs.map((knob) => `${knob.name} ${knob.value ?? t("auto")}`).join(" · ") + (setKnobs.length && guidance != null ? ` · ${t("strength {value}", { value: guidance })}` : "")
+    : t("This model has no style controls");
 
   const demucsName = version.meta?.demucsName || version.provenance?.sourceSeparation?.name || "";
   // Models that read only the full mix (Lite) never used a separation.
@@ -196,19 +198,19 @@ function takeRecipe(version, generators = []) {
   const fullMix = generators.find((item) => item.id === generatorId)?.capabilities?.usesStemCache === false;
 
   return [
-    { key: "seed", label: "Seed", value: seed != null ? String(seed) : "random" },
-    { key: "lead", label: "Lead-in", value: leadIn, title: `Lead-in silence: ${leadIn}`, faint: leadIn === "0s" },
-    { key: "timing", label: "Timing", ...timing },
+    { key: "seed", label: t("Seed"), value: seed != null ? String(seed) : t("random") },
+    { key: "lead", label: t("Lead-in"), value: leadIn, title: t("Lead-in silence: {seconds}", { seconds: leadIn }), faint: leadIn === "0s" },
+    { key: "timing", label: t("Timing"), ...timing },
     fullMix
-      ? { key: "audio", label: "Audio", value: "Full mix", title: "Reads the full mix, no separation" }
+      ? { key: "audio", label: t("Audio"), value: t("Full mix"), title: t("Reads the full mix, no separation") }
       : {
-        key: "audio", label: "Audio", value: demucsName ? compactSeparationName(demucsName) : "Default",
-        title: `Separation: ${demucsName || "Default separation"}`,
+        key: "audio", label: t("Audio"), value: demucsName ? compactSeparationName(demucsName) : t("Default"),
+        title: t("Separation: {name}", { name: separationName(demucsName) }),
       },
-    { key: "sampling", label: "Sampling", full: true, compare: `${presetName}|${temperature}|${topP}`, ...sampling },
+    { key: "sampling", label: t("Sampling"), full: true, compare: `${presetName}|${temperature}|${topP}`, ...sampling },
     {
-      key: "style", label: "Style", full: true, title: styleTitle, compare: styleTitle,
-      value: setKnobs.length ? "" : knobs.length ? "auto" : "none",
+      key: "style", label: t("Style"), full: true, title: styleTitle, compare: styleTitle,
+      value: setKnobs.length ? "" : knobs.length ? t("auto") : t("none"),
       faint: !setKnobs.length,
       chips: setKnobs.map((knob) => ({ text: `${knob.compact} ${knob.value}`, color: knob.color })),
     },
@@ -242,8 +244,8 @@ function artifactReady(artifact) {
 }
 
 function fmtArtifactDate(value) {
-  if (!value) return "on demand";
-  return new Date(value).toLocaleString("en-US", {
+  if (!value) return t("on demand");
+  return formatDate(value, {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -279,7 +281,7 @@ function DemucsPanel({ project }) {
     try {
       await auditionDemucsStem(artifact, stem, stemSetId);
     } catch (err) {
-      setError(err.message || "Could not play that stem.");
+      setError(err.message || t("Could not play that stem."));
     }
   };
 
@@ -295,7 +297,7 @@ function DemucsPanel({ project }) {
         generator: generatorForStemSet?.(stemSetId) || selectedGenerator,
       });
     } catch (err) {
-      setError(err.message || "Separation failed.");
+      setError(err.message || t("Separation failed."));
     }
   };
 
@@ -304,7 +306,7 @@ function DemucsPanel({ project }) {
     try {
       await prepareDemucsSeparation({ makeActive: true });
     } catch (err) {
-      setError(err.message || "Separation failed.");
+      setError(err.message || t("Separation failed."));
     }
   };
 
@@ -319,7 +321,7 @@ function DemucsPanel({ project }) {
           <div className="take-card ghost live-take-card is-separating" aria-live="polite">
             <div className="take-card-top">
               <span className="live-dot" aria-hidden="true"><i /></span>
-              <span className="take-name">Separating stems…</span>
+              <span className="take-name">{t("Separating stems…")}</span>
             </div>
             <div className="live-take-viewport">
               <StageSignal size="strip" mode="split" />
@@ -327,7 +329,7 @@ function DemucsPanel({ project }) {
             <div className="gen-progressbar sm live-take-progress" aria-hidden="true">
               <i className="indeterminate" />
             </div>
-            <div className="take-meta">Vocals, guitar, bass, drums</div>
+            <div className="take-meta">{t("Vocals, guitar, bass, drums")}</div>
           </div>
         )}
 
@@ -359,21 +361,21 @@ function DemucsPanel({ project }) {
             >
               <div className="take-card-top">
                 <span className="version-badge">{badgeIndex + 1}</span>
-                <span className="take-name" title={artifact.name}>{displayName}</span>
+                <span className="take-name" title={separationName(artifact.name)}>{displayName}</span>
               </div>
               <div className="take-meta">
-                {artifact.profile || "Standard"} · {ready ? fmtArtifactDate(artifact.updatedAt || artifact.createdAt) : "runs on first play"}
+                {!artifact.profile || artifact.profile === "Standard Demucs" ? t("Standard Demucs") : artifact.profile} · {ready ? fmtArtifactDate(artifact.updatedAt || artifact.createdAt) : t("runs on first play")}
               </div>
               <div className="take-tags">
-                <span className="take-tag mod" title={`Lead-in silence: ${sourceVariantTag(artifact)}`}>{sourceVariantTag(artifact)}</span>
-                {kindTag && <span className="take-tag secondary" title={artifact.name}>{kindTag}</span>}
-                {usedByPreview && <span className="take-tag">in current chart</span>}
-                {!compatible && <span className="take-tag secondary">not current</span>}
+                <span className="take-tag mod" title={t("Lead-in silence: {seconds}", { seconds: sourceVariantTag(artifact) })}>{sourceVariantTag(artifact)}</span>
+                {kindTag && <span className="take-tag secondary" title={separationName(artifact.name)}>{kindTag}</span>}
+                {usedByPreview && <span className="take-tag">{t("in current chart")}</span>}
+                {!compatible && <span className="take-tag secondary">{t("not current")}</span>}
               </div>
               {stemSets.map((stemSet) => {
                 const label = stemSetLabel(stemSet.id);
                 const heading = labelStemSets && (
-                  <div className="demucs-set-label">{label} · {stemSet.stems.length} stems</div>
+                  <div className="demucs-set-label">{label} · {tn(stemSet.stems.length, "{count} stem", "{count} stems")}</div>
                 );
                 if (stemSet.id !== "htdemucs" && !hasSeparation(artifact, stemSet.id)) {
                   return (
@@ -381,17 +383,17 @@ function DemucsPanel({ project }) {
                       {heading}
                       <div
                         className="demucs-set-missing"
-                        title={`${label} separates this audio itself. Its first chart on this separation makes these stems, or separate now.`}
+                        title={t("{model} separates this audio itself. Its first chart on this separation makes these stems, or separate now.", { model: label })}
                       >
-                        <span>Not separated yet</span>
+                        <span>{t("Not separated yet")}</span>
                         <button
                           type="button"
                           className="take-pip wide"
                           onClick={() => separateFor(artifact, stemSet.id)}
                           disabled={busy || !sourceAudioFile}
-                          title={sourceAudioFile ? `Run the ${label} separation now` : "Choose media first"}
+                          title={sourceAudioFile ? t("Run the {model} separation now", { model: label }) : t("Choose media first")}
                         >
-                          Separate now
+                          {t("Separate now")}
                         </button>
                       </div>
                     </div>
@@ -417,14 +419,14 @@ function DemucsPanel({ project }) {
                             disabled={busy || loading || !sourceAudioFile}
                             title={
                               !sourceAudioFile
-                                ? "Choose media first"
+                                ? t("Choose media first")
                                 : separationStemSet(artifact, stemSet.id)[stem.id]?.path
-                                  ? `Audition ${stem.label.toLowerCase()} in the preview stage`
-                                  : `Separates this song again to play ${stem.label.toLowerCase()}`
+                                  ? t("Play the {stem} stem on the stage", { stem: t(stem.label).toLowerCase() })
+                                  : t("Separates this song again to play the {stem} stem", { stem: t(stem.label).toLowerCase() })
                             }
                           >
                             {loading ? <span className="cta-spinner" aria-hidden="true" /> : !labelStemSets && <I.play />}
-                            {stem.label}
+                            {t(stem.label)}
                           </button>
                         );
                       })}
@@ -439,13 +441,13 @@ function DemucsPanel({ project }) {
                   disabled={busy || active || !compatible}
                   title={
                     !compatible
-                      ? `Switch lead-in to ${sourceVariantTag(artifact)} to use this separation`
+                      ? t("Switch lead-in to {seconds} to use this separation", { seconds: sourceVariantTag(artifact) })
                       : active
-                        ? "New charts use this separation"
-                        : "Use this separation for new charts"
+                        ? t("New charts use this separation")
+                        : t("Use this separation for new charts")
                   }
                 >
-                  {active ? "In use" : "Use for charts"}
+                  {active ? t("In use") : t("Use for charts")}
                 </button>
               </div>
             </div>
@@ -456,15 +458,15 @@ function DemucsPanel({ project }) {
           className="take-card placeholder demucs-new-card"
           onClick={regenerate}
           disabled={busy || !sourceAudioFile}
-          title={sourceAudioFile ? "Separate the song again and keep both" : "Choose media first"}
+          title={sourceAudioFile ? t("Separate the song again and keep both") : t("Choose media first")}
         >
           <div className="take-card-top">
             <span className="version-badge">+</span>
-            <span className="take-name">New separation</span>
+            <span className="take-name">{t("New separation")}</span>
           </div>
           <div className="take-meta">
-            Separate again for {currentSourceVariantLabel}
-            {selectedStemSetId !== "htdemucs" ? ` (${stemSetLabel(selectedStemSetId)} stems)` : ""}
+            {t("Separate again for {leadIn}", { leadIn: leadInText(currentSourceVariantLabel) })}
+            {selectedStemSetId !== "htdemucs" ? ` ${t("({model} stems)", { model: stemSetLabel(selectedStemSetId) })}` : ""}
           </div>
         </button>
       </div>
@@ -552,14 +554,14 @@ export default function TakesDeck({ project }) {
   return (
     <section className="takes-deck">
       <div className="takes-deck-head">
-        <div className="segmented deck-tabs" role="tablist" aria-label="Generation deck">
+        <div className="segmented deck-tabs" role="tablist" aria-label={t("Generation deck")}>
           <button
             className={deckTab === "takes" ? "active" : ""}
             onClick={() => setDeckTab("takes")}
             role="tab"
             aria-selected={deckTab === "takes"}
           >
-            Takes <span>{candidateVersions.length}</span>
+            {t("Takes")} <span>{candidateVersions.length}</span>
           </button>
           <button
             className={showingDemucs ? "active" : ""}
@@ -567,14 +569,14 @@ export default function TakesDeck({ project }) {
             role="tab"
             aria-selected={showingDemucs}
           >
-            Separation <span>{demucsArtifacts.length}</span>
+            {t("Separation")} <span>{demucsArtifacts.length}</span>
           </button>
         </div>
 
         {!showingDemucs ? (
           <>
-            <div className="final-strip" title={`Final chart · ${finalReadyLabel} assigned`}>
-              <span className="final-strip-label">Final</span>
+            <div className="final-strip" title={t("Final chart · {count} assigned", { count: finalReadyLabel })}>
+              <span className="final-strip-label">{t("Final")}</span>
               {FINAL_SLOT_ORDER.map((difficulty) => {
                 const assigned = finalSlotVersions[difficulty];
                 const tone = slotTone(difficulty);
@@ -588,10 +590,12 @@ export default function TakesDeck({ project }) {
                     disabled={!assigned}
                     title={
                       assigned
-                        ? `${DIFF[difficulty]?.name || difficulty}: ${assigned.name} — click to preview`
-                        : `${DIFF[difficulty]?.name || difficulty}: empty`
+                        ? t("{difficulty}: {take} — click to preview", { difficulty: DIFF[difficulty]?.name || difficulty, take: assigned.name })
+                        : t("{difficulty}: empty", { difficulty: DIFF[difficulty]?.name || difficulty })
                     }
-                    aria-label={`Final ${difficulty} slot${assigned ? `, ${assigned.name}` : ", empty"}`}
+                    aria-label={assigned
+                      ? t("Final {difficulty} slot, {take}", { difficulty: DIFF[difficulty]?.name || difficulty, take: assigned.name })
+                      : t("Final {difficulty} slot, empty", { difficulty: DIFF[difficulty]?.name || difficulty })}
                   >
                     {SLOT_LETTERS[difficulty]}
                   </button>
@@ -599,7 +603,7 @@ export default function TakesDeck({ project }) {
               })}
             </div>
             {finalTimingIssue && (
-              <span className="final-timing-warning" title={finalTimingIssue}>Timing mismatch</span>
+              <span className="final-timing-warning" title={finalTimingIssue}>{t("Timing mismatch")}</span>
             )}
 
             <button
@@ -611,31 +615,31 @@ export default function TakesDeck({ project }) {
               onClick={handleSaveFinalToLibrary}
               aria-label={
                 savingLibrary
-                  ? `Saving final chart to ${GAME_LIBRARY_NAME}`
+                  ? t("Saving final chart to {library}", { library: GAME_LIBRARY_NAME })
                   : justSavedLibrary
-                    ? `Saved final chart to ${GAME_LIBRARY_NAME}`
-                    : `Save final chart to ${GAME_LIBRARY_NAME}`
+                    ? t("Saved final chart to {library}", { library: GAME_LIBRARY_NAME })
+                    : t("Save final chart to {library}", { library: GAME_LIBRARY_NAME })
               }
               disabled={busy || !songId || !finalFilledCount || Boolean(finalTimingIssue)}
               title={
                 !songId
-                  ? "Import and save a song first"
+                  ? t("Import and save a song first")
                   : !finalFilledCount
-                    ? "Assign at least one difficulty"
-                    : finalTimingIssue || `Save an Autochart copy to your ${GAME_LIBRARY_NAME} songs folder`
+                    ? t("Assign at least one difficulty")
+                    : finalTimingIssue || t("Save an Autochart copy to your {library} songs folder", { library: GAME_LIBRARY_NAME })
               }
             >
               {savingLibrary ? (
                 <>
-                  <span className="cta-spinner" aria-hidden="true" /> {GAME_LIBRARY_SAVING_LABEL}
+                  <span className="cta-spinner" aria-hidden="true" /> {t(GAME_LIBRARY_SAVING_LABEL)}
                 </>
               ) : justSavedLibrary ? (
                 <>
-                  <span className="save-check-pop" aria-hidden="true"><I.check /></span> {GAME_LIBRARY_SAVED_LABEL}
+                  <span className="save-check-pop" aria-hidden="true"><I.check /></span> {t(GAME_LIBRARY_SAVED_LABEL)}
                 </>
               ) : (
                 <>
-                  <I.check /> {GAME_LIBRARY_SAVE_LABEL}
+                  <I.check /> {t(GAME_LIBRARY_SAVE_LABEL)}
                 </>
               )}
             </button>
@@ -646,13 +650,13 @@ export default function TakesDeck({ project }) {
               disabled={busy || !songId || !finalFilledCount || Boolean(finalTimingIssue)}
               title={
                 !songId
-                  ? "Import and save a song first"
+                  ? t("Import and save a song first")
                   : !finalFilledCount
-                    ? "Assign at least one difficulty"
+                    ? t("Assign at least one difficulty")
                     : finalTimingIssue || undefined
               }
             >
-              <I.upload /> {busyAction === "exporting" ? "Exporting…" : "Export"}
+              <I.upload /> {busyAction === "exporting" ? t("Exporting…") : t("Export")}
             </button>
 
             <button
@@ -661,28 +665,28 @@ export default function TakesDeck({ project }) {
               disabled={previewMode !== "compare" && compareSelection.length < MIN_COMPARE_CHARTS}
               title={
                 previewMode === "compare"
-                  ? "Back to single preview"
+                  ? t("Back to single preview")
                   : compareSelection.length < MIN_COMPARE_CHARTS
-                    ? "Check at least two takes to compare"
+                    ? t("Check at least two takes to compare")
                     : undefined
               }
             >
-              {previewMode === "compare" ? <><I.close /> Comparing</> : `Compare (${compareSelection.length})`}
+              {previewMode === "compare" ? <><I.close /> {t("Comparing")}</> : t("Compare ({count})", { count: compareSelection.length })}
             </button>
           </>
         ) : (
           <>
             <div className="demucs-headline">
-              <span>In use</span>
-              <b>{activeDemucsArtifact?.name || "Default separation"}</b>
+              <span>{t("In use")}</span>
+              <b>{separationName(activeDemucsArtifact?.name)}</b>
             </div>
             <button
               className={"deck-compare-btn" + (demucsAuditionMode === "compare" ? " active" : "")}
               onClick={() => setDemucsAuditionMode(demucsAuditionMode === "compare" ? "single" : "compare")}
               disabled={busy}
-              title={demucsAuditionMode === "compare" ? "Back to single stem audition" : "Compare two separated stems"}
+              title={demucsAuditionMode === "compare" ? t("Back to playing one stem") : t("Compare two separated stems")}
             >
-              {demucsAuditionMode === "compare" ? <><I.close /> Comparing</> : "Compare"}
+              {demucsAuditionMode === "compare" ? <><I.close /> {t("Comparing")}</> : t("Compare")}
             </button>
           </>
         )}
@@ -740,7 +744,7 @@ export default function TakesDeck({ project }) {
                 >
                   <div className="take-card-top">
                     <span className="version-badge">{v.badge}</span>
-                    <span className="take-name" title={v.name}>{v.name}</span>
+                    <span className="take-name" title={takeCardName(v, project.generators || [])}>{takeCardName(v, project.generators || [])}</span>
                     <div className="take-card-actions">
                       {removable && (
                         <button
@@ -750,8 +754,8 @@ export default function TakesDeck({ project }) {
                             removeCandidate(v);
                           }}
                           disabled={busy}
-                          title="Remove take"
-                          aria-label={`Remove ${v.name}`}
+                          title={t("Remove take")}
+                          aria-label={t("Remove {take}", { take: v.name })}
                           tabIndex={showingDemucs ? -1 : 0}
                         >
                           <I.trash />
@@ -759,14 +763,14 @@ export default function TakesDeck({ project }) {
                       )}
                       <label
                         className="take-check"
-                        title="Mark for compare"
+                        title={t("Mark for compare")}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <input
                           type="checkbox"
                           checked={inCompare}
                           onChange={() => toggleCompareSelection(v.id)}
-                          aria-label={`Compare ${v.name}`}
+                          aria-label={t("Compare {take}", { take: v.name })}
                           tabIndex={showingDemucs ? -1 : 0}
                         />
                       </label>
@@ -784,7 +788,7 @@ export default function TakesDeck({ project }) {
                         {model.text}
                       </span>
                     )}
-                    <span className="take-notes">{v.noteCount || "--"} notes</span>
+                    <span className="take-notes">{v.noteCount ? tn(v.noteCount, "{count} note", "{count} notes") : t("-- notes")}</span>
                   </div>
                   {recipe ? (
                     <dl className="take-recipe">
@@ -809,7 +813,7 @@ export default function TakesDeck({ project }) {
                     </dl>
                   ) : (
                     <p className="take-recipe-none">
-                      {v.source === "imported-chart" ? "From the imported chart" : "Made outside Autochart"}
+                      {v.source === "imported-chart" ? t("From the imported chart") : t("Made outside Autochart")}
                     </p>
                   )}
                   <div className="take-foot">
@@ -819,10 +823,10 @@ export default function TakesDeck({ project }) {
                         className={"take-action" + (reusedFrom?.id === v.id ? " is-current" : "")}
                         onClick={() => reuseVersionSettings(v.id)}
                         disabled={busy || !reusable}
-                        title={reusable ? "Load this take's settings, seed included, into the console" : "This take wasn't generated here"}
+                        title={reusable ? t("Load this take's settings, seed included, into the console") : t("This take wasn't generated here")}
                         tabIndex={showingDemucs ? -1 : 0}
                       >
-                        <I.reuse /> Use settings
+                        <I.reuse /> {t("Use settings")}
                       </button>
                     </div>
                     <div className="take-pips" onClick={(e) => e.stopPropagation()}>
@@ -837,10 +841,10 @@ export default function TakesDeck({ project }) {
                             disabled={busy || !assignable}
                             title={
                               !assignable
-                                ? "This take has no exportable chart"
+                                ? t("This take has no exportable chart")
                                 : on
-                                  ? `Clear final ${DIFF[difficulty]?.name || difficulty}`
-                                  : `Use for final ${DIFF[difficulty]?.name || difficulty}`
+                                  ? t("Clear final {difficulty}", { difficulty: DIFF[difficulty]?.name || difficulty })
+                                  : t("Use for final {difficulty}", { difficulty: DIFF[difficulty]?.name || difficulty })
                             }
                             aria-pressed={on}
                             tabIndex={showingDemucs ? -1 : 0}
@@ -859,9 +863,9 @@ export default function TakesDeck({ project }) {
               <div className="take-card placeholder">
                 <div className="take-card-top">
                   <span className="version-badge">1</span>
-                  <span className="take-name">Next generation</span>
+                  <span className="take-name">{t("Next generation")}</span>
                 </div>
-                <div className="take-meta">{difficultyName} · {selectedPreset.name} · -- notes</div>
+                <div className="take-meta">{difficultyName} · {t(selectedPreset.name)} · {t("-- notes")}</div>
               </div>
             )}
           </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { I } from "../icons.jsx";
+import { t } from "../i18n/index.js";
 import ProgressRing from "./ProgressRing.jsx";
 import ReleaseCard, { ReleaseContent, ReleaseNotesLink } from "./ReleaseCard.jsx";
 import { MODEL_FAMILIES } from "../data/modelFamilies.js";
@@ -44,7 +45,7 @@ function ModelButton({ action }) {
       await installAssets(action.packId);
       update({ status: "done", percent: 100 });
     } catch (err) {
-      update({ status: "failed", error: err?.message || "The download didn't finish." });
+      update({ status: "failed", error: err?.message || t("The download didn't finish.") });
     }
   };
 
@@ -52,22 +53,22 @@ function ModelButton({ action }) {
   if (install.status === "done") {
     return (
       <button type="button" className="btn-primary release-done" disabled>
-        <I.check /> {family.label} is ready
+        <I.check /> {t("{model} is ready", { model: family.label })}
       </button>
     );
   }
   if (install.status === "installing") {
     return (
       <button type="button" className="btn-primary" disabled>
-        <ProgressRing value={install.percent || null} /> Downloading {install.percent}%
+        <ProgressRing value={install.percent || null} /> {t("Downloading {percent}%", { percent: install.percent || 0 })}
       </button>
     );
   }
   return (
     <>
-      {install.status === "failed" && <span className="release-error" role="alert">The download didn't finish.</span>}
+      {install.status === "failed" && <span className="release-error" role="alert">{t("The download didn't finish.")}</span>}
       <button type="button" className="btn-primary" onClick={start} disabled={!install.status}>
-        <I.download /> {install.status === "failed" ? "Try again" : `Download ${family.label}`}
+        <I.download /> {install.status === "failed" ? t("Try again") : t("Download {model}", { model: family.label })}
       </button>
     </>
   );
@@ -82,23 +83,23 @@ export default function WhatsNewSheet({ entries, onClose }) {
   const fixes = [
     ...(latest?.fixes || []),
     ...earlier.flatMap((entry) => [
-      ...entry.features.map((feature) => `${feature.title}: ${feature.text}`),
+      ...entry.features.map((feature) => t("{title}: {text}", { title: t(feature.title), text: t(feature.text) })),
       ...(entry.fixes || []),
     ]),
   ];
 
   if (!latest) {
     return (
-      <ReleaseCard label="What's new" title="Nothing new yet" sub="This version has no notes." onClose={onClose} />
+      <ReleaseCard label={t("What's new")} title={t("Nothing new yet")} sub={t("This version has no notes.")} onClose={onClose} />
     );
   }
 
   return (
     <ReleaseCard
-      label="What's new"
-      kicker={`New in ${latest.version}`}
-      title={latest.headline}
-      sub={latest.sub}
+      label={t("What's new")}
+      kicker={t("New in {version}", { version: latest.version })}
+      title={t(latest.headline)}
+      sub={t(latest.sub)}
       image={latest.image}
       onClose={onClose}
       footer={
@@ -107,7 +108,7 @@ export default function WhatsNewSheet({ entries, onClose }) {
             <ReleaseNotesLink url={latest.notesUrl} />
           </div>
           <button type="button" className="settings-secondary" onClick={onClose}>
-            Close
+            {t("Close")}
           </button>
           {latest.action?.kind === "install-model" && <ModelButton action={latest.action} />}
         </>
