@@ -5,6 +5,7 @@
 // play them. Works in the page and the engine worker.
 
 import { MEL_TABLES_FILE } from "../lib/onnx/melTables.mjs";
+import { MAP_FILE } from "../lib/onnx/songMap.mjs";
 
 const ROOT = "autochart-stems";
 const PREFIX = "opfs:";
@@ -120,6 +121,29 @@ export async function saveMelTables(key, bytes) {
   }
 }
 
+// A separation's song map (engine/lib/onnx/songMap.mjs), so a run that reuses
+// it can still show the stems. Null when none is stored.
+export async function loadSongMap(key) {
+  const dir = await folder(key);
+  if (!dir) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(await readFile(dir, MAP_FILE)));
+  } catch {
+    return null;
+  }
+}
+
+export async function saveSongMap(key, map) {
+  const dir = await folder(key, true);
+  if (!dir) return false;
+  try {
+    await writeFile(dir, MAP_FILE, JSON.stringify(map));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function hasMelTables(key) {
   const dir = await folder(key);
   if (!dir) return false;
@@ -228,11 +252,11 @@ export async function storedStemBytes() {
   }
 }
 
-// Deletes a separation folder's stems, keeping its mel tables.
+// Deletes a separation folder's stems, keeping its mel tables and song map.
 async function removeStemFiles(root, name) {
   const dir = await root.getDirectoryHandle(name);
   const files = [];
-  for await (const file of dir.keys()) if (file !== MEL_TABLES_FILE) files.push(file);
+  for await (const file of dir.keys()) if (file !== MEL_TABLES_FILE && file !== MAP_FILE) files.push(file);
   for (const file of files) await dir.removeEntry(file, { recursive: true });
 }
 

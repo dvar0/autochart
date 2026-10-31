@@ -23,8 +23,9 @@ import {
 } from "../lib/transcriberSettings.mjs";
 import { loadManifest, releaseSessions, transcriberDevice as pickTranscriberDevice } from "./host.mjs";
 import { checkStorageRoom, ensureModelFiles, missingModelFiles, separationFiles } from "./modelStore.mjs";
-import { stemKey, loadStems, saveStems, loadMelTables, saveMelTables } from "./stemStore.mjs";
+import { stemKey, loadStems, saveStems, loadMelTables, saveMelTables, loadSongMap, saveSongMap } from "./stemStore.mjs";
 import { stereoAt, ffmpegMonoAt, averageMonoAt } from "./audio.mjs";
+import { MAP_RATE, mixLevels, roundTimes } from "../lib/onnx/songMap.mjs";
 
 const TRANSCRIBER_RATE = 22050;
 const CHART_OUTPUT_RESOLUTION = 192;
@@ -168,6 +169,13 @@ function fullMonoOf(audio) {
 // separation were separated before, else Demucs, then the tables are made
 // and stored in place of the stems (kept too when job.needStems).
 async function separation(job, manifest, audio, emit) {
+  const songMap = {
+    rate: MAP_RATE,
+    seconds: audio.left.length / audio.sampleRate,
+    mix: mixLevels([audio.left, audio.right], audio.sampleRate),
+    stems: {},
+  };
+  emit({ type: "song_map", kind: "mix", rate: songMap.rate, seconds: songMap.seconds, levels: songMap.mix });
   if (!needsStems(manifest)) {
     emit({ type: "stage", stage: "demucs", status: "skipped", backend: BACKEND });
     return { melTables: null, key: null, cacheHit: false, device: null, skipped: true };
@@ -176,6 +184,8 @@ async function separation(job, manifest, audio, emit) {
   const key = separationKey(job);
   const stored = await storedSeparation(job, manifest);
   if (stored) {
+    const storedMap = await loadSongMap(key);
+    if (storedMap?.stems) emit({ type: "song_map", kind: "stems", from: 0, levels: storedMap.stems });
     emit({ type: "stage", stage: "demucs", status: "completed", cache: "hit", backend: BACKEND });
     emit({ type: "log", stage: "demucs", stream: "stdout", message: "reusing the stored separation" });
     return { melTables: stored.melTables, key, cacheHit: true, device: null };
@@ -191,8 +201,13 @@ async function separation(job, manifest, audio, emit) {
       type: "stage", stage: "demucs", status: "running", progress: total ? index / total : 0,
       audioSeconds: stereo.left.length / orch.sampleRate,
     }),
+    onStems: ({ from, levels }) => {
+      for (const [name, values] of Object.entries(levels)) (songMap.stems[name] ||= []).push(...values);
+      emit({ type: "song_map", kind: "stems", from, levels });
+    },
   });
   await releaseSessions();
+  await saveSongMap(key, songMap);
   // Stored tables stay as they were (separating again only to play the
   // stems), so later charts match earlier ones.
   let melTables = await storedMelTables(job, manifest);
@@ -240,6 +255,10 @@ async function timing(job, manifest, settings, audio, emit) {
     log: (message) => emit({ type: "log", stage: "timing", stream: "stdout", message }),
     onDevice: (device) => emit({ type: "stage", stage: "timing", status: "running", backend: BACKEND, device }),
     onSmoothingStart: () => emit({ type: "stage", stage: "smoothing", status: "running", backend: BACKEND }),
+    onChunk: ({ index, total, beats: found, downbeats }) => {
+      emit({ type: "song_map", kind: "beats", from: index, beats: roundTimes(found), downbeats: roundTimes(downbeats) });
+      emit({ type: "stage", stage: "timing", status: "running", backend: BACKEND, progress: total ? index / total : 0, audioSeconds: audioDuration });
+    },
   });
   await releaseSessions();
   const { beats } = out;
@@ -266,6 +285,7 @@ export async function runGenerate(job, emit, runtime) {
   await downloadRest(job, manifest, emit);
   const timed = await timing(job, manifest, settings, audio, emit);
   const { beats } = timed;
+  emit({ type: "song_map", kind: "beats", final: true, beats: roundTimes(beats.beatTimes), downbeats: roundTimes(beats.downbeatTimes || []) });
 
   const transcriberDevice = pickTranscriberDevice(job.transcriberDevice || job.device, runtime);
   emit({ type: "stage", stage: "transcription", status: "running", backend: BACKEND, requestedDevice: transcriberDevice });

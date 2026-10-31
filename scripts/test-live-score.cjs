@@ -113,4 +113,12 @@ assert.equal(mergeSongMap(null, stage("demucs", { downloading: true }), 0).phase
   assert.equal(mergeSongMap(map, { type: "log", message: "x" }, 2), map);
 }
 
+// The browser's real job path sends the board's data too, not only the desktop engine.
+{
+  const jobs = require("node:fs").readFileSync(require("node:path").join(__dirname, "../engine/web/jobs.mjs"), "utf8");
+  for (const kind of ["mix", "stems", "beats"]) {
+    assert.ok(jobs.includes(`type: "song_map", kind: "${kind}"`), `web jobs send the ${kind} map`);
+  }
+}
+
 console.log("Live score checks passed.");
