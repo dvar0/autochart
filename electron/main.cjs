@@ -476,7 +476,7 @@ async function installDownloadedUpdate() {
   if (mode === "replace") {
     const appImage = process.env.APPIMAGE;
     await appUpdatesModule.replaceAppImage(file, appImage);
-    app.relaunch({ execPath: appImage, args: process.argv.slice(1) });
+    appUpdatesModule.relaunchAppImage(appImage, process.argv.slice(1));
     app.exit(0);
     return { ok: true };
   }

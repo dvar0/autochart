@@ -9,7 +9,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const {
-  compareVersions, createAppUpdates, detectInstallMode, replaceAppImage, verifyFeed,
+  compareVersions, createAppUpdates, detectInstallMode, relaunchAppImage, replaceAppImage, verifyFeed,
 } = require("../electron/appUpdates.cjs");
 const { makeUpdateFeed } = require("./make-update-feed.cjs");
 
@@ -245,6 +245,50 @@ async function main() {
     assert.deepEqual(await fs.readFile(appImage), BYTES);
     assert.equal((await fs.stat(appImage)).mode & 0o777, 0o755);
     assert.deepEqual((await fs.readdir(dir)).sort(), ["Autochart.AppImage", "download.AppImage"]);
+  }
+
+  // The new AppImage opens after the old process exits, outside its mount,
+  // able to run setuid fusermount (app.relaunch blocked that), and without
+  // files the old process left open (they'd keep its mount alive).
+  if (process.platform === "linux") {
+    const dir = await tempDir();
+    const appImage = path.join(dir, "Autochart.AppImage");
+    const out = path.join(dir, "out.json");
+    const held = path.join(dir, "icudtl.dat");
+    await fs.writeFile(held, "");
+    await fs.writeFile(appImage, `#!/bin/sh\nexec "${process.execPath}" -e '
+      const fs = require("fs");
+      const fds = fs.readdirSync("/proc/self/fd").map((fd) => { try { return fs.readlinkSync("/proc/self/fd/" + fd); } catch { return ""; } });
+      fs.writeFileSync(${JSON.stringify(out)}, JSON.stringify({ args: process.argv.slice(1), env: process.env, fds,
+        privs: fs.readFileSync("/proc/self/status", "utf8").match(/NoNewPrivs:\\s*(\\d)/)[1], at: Date.now() }))' -- "$@"\n`, { mode: 0o755 });
+    const mount = "/tmp/.mount_autochTEST";
+    const env = {
+      HOME: process.env.HOME || "/tmp", APPDIR: mount, APPIMAGE: appImage, ARGV0: appImage, OWD: dir,
+      PATH: `${mount}:${mount}/usr/sbin:/usr/bin:/bin`, LD_LIBRARY_PATH: `${mount}/usr/lib`,
+    };
+    const { spawn } = require("node:child_process");
+    const old = spawn(process.execPath, ["-e", "setTimeout(() => {}, 600)"]);
+    const exited = new Promise((resolve) => old.on("exit", () => resolve(Date.now())));
+    // Electron passes some files to what it starts (Node doesn't), so the
+    // relaunch runs from a shell holding one open.
+    relaunchAppImage(appImage, ["--no-sandbox"], {
+      pid: old.pid,
+      env,
+      start: (command, args, options) => spawn("/bin/sh", ["-c", 'exec 7<"$0"; exec "$@"', held, command, ...args], options),
+    });
+    const exitedAt = await exited;
+    let ran = null;
+    for (let i = 0; i < 100 && !ran; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      ran = await fs.readFile(out, "utf8").then(JSON.parse, () => null);
+    }
+    assert(ran, "the new AppImage never opened");
+    assert(ran.at >= exitedAt, "the new AppImage opened before the old one exited");
+    assert.deepEqual(ran.args, ["--no-sandbox"]);
+    assert.equal(ran.privs, "0", "the new AppImage can't run setuid fusermount");
+    assert(!ran.fds.includes(held), "the new AppImage inherited a file the old one had open");
+    assert.equal(ran.env.PATH, "/usr/bin:/bin");
+    for (const name of ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "LD_LIBRARY_PATH"]) assert.equal(ran.env[name], undefined, name);
   }
 
   // The release script signs a feed the app accepts.

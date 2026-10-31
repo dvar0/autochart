@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs/promises");
 const fsSync = require("fs");
 const path = require("path");
+const { spawn } = require("child_process");
 
 // Each GitHub release carries a signed update.json naming its version and
 // downloads. Only the signature is trusted, so the feed can move hosts without
@@ -432,11 +433,46 @@ async function replaceAppImage(downloadedPath, appImagePath) {
   }
 }
 
+// The running AppImage's environment without what it added for itself, so the
+// next one doesn't inherit paths into a mount that's about to go away.
+function freshAppImageEnv(env) {
+  const fresh = { ...env };
+  for (const name of ["APPDIR", "APPIMAGE", "ARGV0", "OWD"]) delete fresh[name];
+  if (!env.APPDIR) return fresh;
+  for (const name of ["PATH", "LD_LIBRARY_PATH", "XDG_DATA_DIRS", "GSETTINGS_SCHEMA_DIR"]) {
+    if (fresh[name] === undefined) continue;
+    const kept = fresh[name].split(":").filter((entry) => entry !== env.APPDIR && !entry.startsWith(`${env.APPDIR}/`));
+    if (kept.length) fresh[name] = kept.join(":");
+    else delete fresh[name];
+  }
+  return fresh;
+}
+
+// Opens the AppImage again once this process has exited and freed the
+// single-instance lock. app.relaunch can't do this: Electron starts it with
+// no_new_privs, and an AppImage needs setuid fusermount to mount itself.
+// Chromium leaves some files open across exec, so they're closed first;
+// otherwise the new app would hold the old mount (and old file) until it quits.
+function relaunchAppImage(appImagePath, args = [], { pid = process.pid, env = process.env, start = spawn } = {}) {
+  const waitThenOpen = [
+    'for fd in /proc/self/fd/*; do fd=${fd##*/}; [ "$fd" -gt 2 ] 2>/dev/null && eval "exec $fd>&-"; done',
+    'i=0; while [ "$i" -lt 100 ] && kill -0 "$0" 2>/dev/null; do i=$((i+1)); sleep 0.1; done',
+    'exec "$@"',
+  ].join("\n");
+  const child = start("/bin/sh", ["-c", waitThenOpen, String(pid), appImagePath, ...args], {
+    detached: true,
+    stdio: "ignore",
+    env: freshAppImageEnv(env),
+  });
+  child.unref();
+}
+
 module.exports = {
   FEED_URL,
   compareVersions,
   createAppUpdates,
   detectInstallMode,
+  relaunchAppImage,
   replaceAppImage,
   verifyFeed,
 };
