@@ -12,7 +12,7 @@ import { TRIES_OPTIONS } from "./useEditWorkspace.js";
 // act on shakes the selection box instead. A running regenerate shows its
 // progress in place of its button.
 
-const TRIES_INFO = "Versions written for each area. Inpaint keeps the one that fits best, and you can flip through the rest. More tries take longer.";
+const TRIES_INFO = "Each area gets this many tries. Inpaint keeps the one that fits best, and you can flip through the rest. More tries take longer.";
 
 const NOTE_ACTIONS = [
   { id: "tap", label: "Tap", key: "T", icon: I.bolt, tone: "tap" },

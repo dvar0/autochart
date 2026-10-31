@@ -88,7 +88,7 @@ export default function EditTimeline({ project, ws }) {
               ws.comparing
                 ? "Back to single preview"
                 : ws.compareMarks.length < MIN_COMPARE_CHARTS
-                  ? "Check at least two versions to compare"
+                  ? "Check at least two takes to compare"
                   : undefined
             }
           >
