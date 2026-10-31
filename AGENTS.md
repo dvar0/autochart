@@ -18,6 +18,7 @@
 - `npm run test:clone-hero-export` — real export/media compatibility checks using the bundled FFmpeg; see `docs/clone-hero-compatibility.md` for the audit and in-game checklist
 - `npm run test:yarg-export` — real YARG v0.15.0 scanner/chart-loader integration (requires .NET 10 and `AUTOCHART_YARG_CORE_PATH`); see `docs/yarg-compatibility.md`
 - `npm run test:generation-navigation` — Electron navigation, renderer-reload, and durable take-save regression harness
+- `npm run test:generation-queue` — Electron Library queue harness: picking, one job at a time, a project's run going first, stop, retry, replacing the final chart, save all, export all, and restoring after a restart
 - `npm run test:library-folder-prompt` — Electron songs-folder prompt harness: Save to Clone Hero / YARG from Library and Generate with no folder set, picker outcomes, and keyboard focus
 - `npm run test:release-smoke` — sender-bound Electron preload/release-smoke probe with hermetic path-boundary checks
 - `npm run artifact:check` / `runtime:verify` — packaged-file allowlist and bundled-runtime verification

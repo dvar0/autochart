@@ -37,6 +37,7 @@
     "test:v010:frontend": "node scripts/test-v010-frontend.cjs",
     "test:highway": "node scripts/test-highway.cjs",
     "test:highway-playback": "electron scripts/test-highway-playback-electron.cjs",
+    "test:generation-queue": "electron scripts/test-generation-queue.cjs",
     "test:generation-navigation": "electron scripts/test-generation-navigation.cjs",
     "test:library-folder-prompt": "electron scripts/test-library-folder-prompt-electron.cjs",
     "test:window-fit": "node scripts/test-window-fit.cjs",

@@ -559,6 +559,8 @@ async function main() {
     await runNode("Electron system theme and preference persistence", "scripts/test-theme.cjs", ["--no-sandbox"]);
     const navigationElectron = electronHarnessCommand("scripts/test-generation-navigation.cjs", ["--no-sandbox"]);
     await run("Electron navigation, durable takes, and CPU recovery", navigationElectron.command, navigationElectron.args);
+    const queueElectron = electronHarnessCommand("scripts/test-generation-queue.cjs", ["--no-sandbox"]);
+    await run("Electron Library queue", queueElectron.command, queueElectron.args);
     const folderPromptElectron = electronHarnessCommand("scripts/test-library-folder-prompt-electron.cjs", ["--no-sandbox"]);
     await run("Electron songs-folder prompt from Library and Generate", folderPromptElectron.command, folderPromptElectron.args);
     const playbackElectron = electronHarnessCommand("scripts/test-highway-playback-electron.cjs", ["--no-sandbox"]);

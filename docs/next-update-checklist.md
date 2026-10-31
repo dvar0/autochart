@@ -4,6 +4,20 @@ Checks for changes made since the last public release. Clear every item before
 publishing, then delete the section once the update ships. The general release
 gates are in [release-checklist.md](release-checklist.md).
 
+## Library queue
+
+- [ ] Queue ten songs of mixed length, some already separated, with two
+  difficulties, and let it finish: the percent climbs steadily and the songs that
+  have stems skip separating.
+- [ ] Drop more songs on the Library with the queue open while it runs.
+- [ ] Start a project's Generate during a queue run: it goes next and the queue
+  carries on afterwards.
+- [ ] Save all, then play the songs in Clone Hero and YARG. Check Export all too.
+- [ ] Open the song being charted from the queue: progress and notes catch up and keep coming, and Stop stops the queue.
+- [ ] Quit with songs waiting and reopen: the queue comes back and waits for Generate.
+- [ ] Leave a long queue running with the screen off on Windows, macOS and Linux:
+  the computer doesn't sleep until it finishes.
+
 ## Fretformer 2 download
 
 Fretformer 2 and its Fill-in model are in `engine/catalog.json` as the
