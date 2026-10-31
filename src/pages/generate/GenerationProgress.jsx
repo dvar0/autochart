@@ -326,7 +326,7 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
           {running ? <ProgressRing value={progressPct} /> : failed ? <I.close /> : canceled ? <i /> : <I.check />}
         </span>
         <span className="gen-progress-title" aria-live="polite">{headline}</span>
-        <span className="gen-progress-clock">{fmtElapsed(elapsed)}</span>
+        <span className="gen-progress-clock">{running && !failed ? `${progressPct}% · ` : ""}{fmtElapsed(elapsed)}</span>
         <I.chev />
       </button>
       <div
