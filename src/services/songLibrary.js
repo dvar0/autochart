@@ -355,13 +355,6 @@ export async function setSongFavorite(id, favorite) {
 
 // --- UI helpers ---
 
-function fmtDuration(sec) {
-  if (!sec || !isFinite(sec)) return "-";
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
 const assetUrlCache = new Map();
 
 function cacheKey(id, kind, fileName = "") {
@@ -416,7 +409,7 @@ export async function recordToCard(rec) {
     year: m.year || "",
     genre: m.genre || "",
     charter: m.charter || "Imported",
-    duration: fmtDuration(m.durationSec),
+    takes: (r.versions || []).length,
     added: ADDED_DATE.format(new Date(r.createdAt)),
     status: r.status || "charted",
     fav: Boolean(r.meta?.favorite),

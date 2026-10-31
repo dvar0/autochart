@@ -215,7 +215,7 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
       disabled: installing.length > 0,
     };
   } else if (summary.waiting > 0) {
-    cta = { label: <>Generate {charts(summary.waiting)} <I.boltFill /></>, onClick: startQueue, disabled: !generator || setup?.ready === false };
+    cta = { label: <><I.boltFill /> Generate {charts(summary.waiting)}</>, onClick: startQueue, disabled: !generator || setup?.ready === false };
   } else if (summary.toSave > 0) {
     cta = { label: GAME_LIBRARY_SAVE_LABEL, onClick: (event) => saveFinished(event.currentTarget), disabled: Boolean(saving) };
   } else if (anyDone) {
@@ -298,7 +298,7 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
                 <I.chev />
               </label>
             ) : (
-              <div className="model-plate-name">{generator?.label || "Fretformer"}</div>
+              <div className="model-plate-name">{generator?.label || "Fretformer 1"}</div>
             )}
           </div>
         </div>

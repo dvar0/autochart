@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { askConfirm } from "../components/ConfirmDialog.jsx";
 import LibraryFolderPrompt from "../components/LibraryFolderPrompt.jsx";
 import ProgressRing from "../components/ProgressRing.jsx";
-import RichText from "../components/RichText.jsx";
 import SongCover from "../components/SongCover.jsx";
 import { DIFF } from "../data/difficultyMetadata.js";
 import {
@@ -9,16 +9,10 @@ import {
   GAME_LIBRARY_SAVE_LABEL,
   GAME_LIBRARY_SAVING_LABEL,
 } from "../data/gameLibrary.js";
-import {
-  accentForTint,
-  cachedCoverColor,
-  extractCoverColor,
-  normalizeAccent,
-  tintIsDark,
-} from "../lib/coverColor.js";
 import { I } from "../icons.jsx";
+import { takeTitle } from "./generate/takeNames.js";
 import { plainText } from "../lib/richText.js";
-import useCoverArt from "../hooks/useCoverArt.js";
+import useCoverAccent from "../hooks/useCoverAccent.js";
 import useLibraryFolderGate, { isMissingLibraryFolderError } from "../hooks/useLibraryFolderGate.js";
 import {
   FINAL_SLOT_DISPLAY_ORDER,
@@ -54,45 +48,7 @@ import { DEFAULT_DEMUCS_ID } from "../services/songSchema.js";
 // revisit renders this immediately and refreshes it from disk underneath.
 let libraryCache = null;
 
-// Effective card surface per theme (mirrors --surface in styles.css). Used to
-// decide whether the accent-tinted card reads as dark, so text can flip ink.
-const CARD_SURFACE = { light: "#f7f7ff", dark: "#313a52" };
 const SLOT_LETTERS = { easy: "E", medium: "M", hard: "H", expert: "X" };
-
-// Resolve a song's accent color: a real cover image gives its sampled dominant
-// color once extracted (cached, so it's instant on later renders); a song
-// without one uses its generated cover's main ink once that has drawn.
-// Also reports whether the tinted card is dark, so text picks readable ink.
-function useAccent(song, theme = "light") {
-  const generated = useCoverArt(song.cover ? null : song.artSeed);
-  const fallback = generated?.accent || "#6860b5";
-  // Store the raw extracted/palette color; normalize per theme below so a theme
-  // toggle re-tames the accent without re-sampling the cover.
-  const [raw, setRaw] = useState(
-    () => (song.cover && cachedCoverColor(song.cover)) || fallback
-  );
-  useEffect(() => {
-    let alive = true;
-    if (song.cover) {
-      extractCoverColor(song.cover).then((c) => {
-        if (alive && c) setRaw(c);
-      });
-    } else {
-      setRaw(fallback);
-    }
-    return () => {
-      alive = false;
-    };
-  }, [song.cover, fallback]);
-  const accent = normalizeAccent(raw, theme);
-  const surface = CARD_SURFACE[theme] || CARD_SURFACE.light;
-  const dark = tintIsDark(accent, surface) ?? theme === "dark";
-  // A chroma-floored accent for tinting the detail rail's plane and tiles, so
-  // pale/pastel covers still read as color instead of muddy grey. Cards keep
-  // using the tamer `accent`.
-  const tint = accentForTint(raw, theme);
-  return { accent, dark, tint };
-}
 
 function fmtProjectDate(value) {
   if (!value) return "-";
@@ -104,16 +60,6 @@ function fmtProjectDate(value) {
     day: "numeric",
     ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
   });
-}
-
-function compactVersionName(version) {
-  if (!version) return "Empty";
-  if (version.source === "imported-chart") return "Source";
-  const label = String(version.settings?.model || version.name || "Take").trim();
-  const token = label.match(/\bV\d+[A-Z]?\b/i)?.[0];
-  const run = version.meta?.runNumber ? ` #${version.meta.runNumber}` : version.name?.match(/#\d+/)?.[0] || "";
-  if (token) return `${token.toUpperCase()}${run}`;
-  return version.name || label || "Take";
 }
 
 function versionDate(version) {
@@ -130,29 +76,6 @@ function isSeparated(artifact) {
   return Object.values(artifact?.stemSets || {}).some((set) =>
     set?.melTables || Object.values(set?.stems || {}).some((stem) => stem?.path)
   );
-}
-
-function demucsSnapshot(sourceArtifacts = {}) {
-  const demucs = sourceArtifacts?.demucs || {};
-  const items = Array.isArray(demucs.items) ? demucs.items.filter(Boolean) : [];
-  const storedDefault = items.find((item) => item.id === DEFAULT_DEMUCS_ID);
-  const artifacts = [
-    {
-      id: DEFAULT_DEMUCS_ID,
-      name: storedDefault?.name || "Default separation",
-      stems: storedDefault?.stems || {},
-      stemSets: storedDefault?.stemSets || {},
-      status: storedDefault?.status || "on-demand",
-    },
-    ...items.filter((item) => item.id !== DEFAULT_DEMUCS_ID),
-  ];
-  const activeId = demucs.activeId || DEFAULT_DEMUCS_ID;
-  const active = artifacts.find((item) => item.id === activeId) || artifacts[0];
-  return {
-    count: artifacts.length,
-    activeName: active?.name || "Default separation",
-    readyLabel: isSeparated(active) ? "Separated" : "On demand",
-  };
 }
 
 function countValidationWarnings(value) {
@@ -194,7 +117,6 @@ function buildProjectSummary(record) {
   const finalAssignedCount = Object.values(finalSlotVersions).filter(Boolean).length;
   const finalIssue = finalValidationMessage(finalSlotVersions, FINAL_SLOT_DISPLAY_ORDER);
   const latestGenerated = latestVersion(generatedVersions);
-  const separations = demucsSnapshot(record?.sourceArtifacts);
 
   return {
     updated: fmtProjectDate(record?.updatedAt || record?.createdAt),
@@ -202,9 +124,7 @@ function buildProjectSummary(record) {
     finalSlotVersions,
     finalAssignedCount,
     totalTakes: sourceVersions.length,
-    latestTakeDate: fmtProjectDate(versionDate(latestGenerated) || record?.updatedAt || record?.createdAt),
-    latestTakeName: latestGenerated?.name || "-",
-    separations,
+    latestTakeDate: latestGenerated ? fmtProjectDate(versionDate(latestGenerated)) : "",
     canExportFinal: finalAssignedCount > 0 && !finalIssue,
     finalBlocker: finalIssue || "Assign a difficulty first",
   };
@@ -278,7 +198,7 @@ const GridTile = memo(function GridTile({ song, selected, queueMark, onSelect, o
 });
 
 const ListRow = memo(function ListRow({ song, selected, queueMark, onSelect, onToggleFavorite, theme }) {
-  const { accent } = useAccent(song, theme);
+  const { accent } = useCoverAccent(song, theme);
   return (
     <div className={"row" + (selected ? " sel" : "") + queueClass(queueMark)} style={{ "--art-accent": accent, ...queueProgress(queueMark) }} data-song-id={song.id}>
       <button
@@ -299,9 +219,9 @@ const ListRow = memo(function ListRow({ song, selected, queueMark, onSelect, onT
             </div>
             <div className="rt-sub">{song.artist}</div>
           </div>
-          <div className="rcol"><RichText value={song.charter} /></div>
+          <div className="rcol">{song.album}</div>
           <div className="rcol num">{song.year}</div>
-          <div className="rcol num">{song.duration}</div>
+          <div className="rcol num">{song.takes}</div>
         </div>
       </button>
       {song.fav && <FavoriteButton song={song} onToggleFavorite={onToggleFavorite} className="row-fav" />}
@@ -332,7 +252,7 @@ function DetailPanel({
   actionBusy,
   theme,
 }) {
-  const { tint } = useAccent(song, theme);
+  const { tint } = useCoverAccent(song, theme);
   const summary = buildProjectSummary(record);
   const actionDisabled = Boolean(actionBusy) || !summary.canExportFinal;
 
@@ -348,7 +268,6 @@ function DetailPanel({
           <SongCover song={song} />
         </div>
         <div className="detail-head-copy">
-          <div className="detail-kicker">Project</div>
           <div className="detail-title-row">
             <div className="detail-title">{song.title}</div>
             {song.fav && <FavoriteButton song={song} onToggleFavorite={onToggleFavorite} />}
@@ -363,8 +282,8 @@ function DetailPanel({
         <section className="project-snapshot-final">
           <div className="snapshot-final-top">
             <div>
-              <span>Final Chart</span>
-              <b>{summary.finalAssignedCount}/{FINAL_SLOT_DISPLAY_ORDER.length}</b>
+              <span>Final chart</span>
+              <b>{summary.finalAssignedCount} of {FINAL_SLOT_DISPLAY_ORDER.length}</b>
             </div>
           </div>
           <div className="snapshot-diff-list">
@@ -381,7 +300,7 @@ function DetailPanel({
                   <span className="snapshot-diff-key">{SLOT_LETTERS[difficulty]}</span>
                   <span className="snapshot-diff-main">
                     <span className="snapshot-diff-name">{diff?.name || difficulty}</span>
-                    {assigned && <span className="snapshot-diff-version">{compactVersionName(assigned)}</span>}
+                    {assigned && <span className="snapshot-diff-version">{takeTitle(assigned)}</span>}
                   </span>
                   <span className="snapshot-diff-value">
                     {assigned ? (
@@ -399,31 +318,11 @@ function DetailPanel({
           </div>
         </section>
 
-        <section className="snapshot-section">
-          <div className="snapshot-section-title">Takes</div>
-          <div className="snapshot-stat-grid">
-            <div className="snapshot-stat primary">
-              <b>{summary.totalTakes || 0}</b>
-              <span>Total Takes</span>
-            </div>
-            <div className="snapshot-stat date">
-              <b title={summary.latestTakeName}>{summary.latestTakeDate}</b>
-              <span>Latest</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="snapshot-section">
-          <div className="snapshot-section-title">Separations</div>
-          <div className="snapshot-line strong">
-            <span>{summary.separations.count} saved</span>
-            <b>{summary.separations.readyLabel}</b>
-          </div>
-          <div className="snapshot-muted" title={summary.separations.activeName}>
-            {summary.separations.activeName}
-          </div>
-        </section>
-
+        <p className="snapshot-takes">
+          {summary.totalTakes
+            ? `${summary.totalTakes} take${summary.totalTakes === 1 ? "" : "s"}${summary.latestTakeDate ? ` · latest ${summary.latestTakeDate}` : ""}`
+            : "No takes yet"}
+        </p>
       </div>
 
       <div className="detail-actions">
@@ -457,7 +356,7 @@ function DetailPanel({
           </button>
         </div>
         <button
-          className="act ghost"
+          className="act quiet-danger"
           onClick={() => onDeleteProject(song.id)}
           title="Delete this project and move its directory to the operating system Trash"
         >
@@ -500,9 +399,7 @@ function ImportNotice({ bulk, onStop, onUndo, onDismiss }) {
           </button>
         )}
         {(phase === "done" || phase === "undone") && (
-          <button type="button" className="import-notice-close" onClick={onDismiss} aria-label="Dismiss">
-            <span aria-hidden="true">×</span>
-          </button>
+          <button type="button" className="import-notice-close" onClick={onDismiss} aria-label="Dismiss"><I.close /></button>
         )}
       </div>
       {problems.length > 0 && phase !== "running" && (
@@ -790,7 +687,7 @@ export default function Library({
     const item = queue.items.find(has("running")) || queue.items.find(has("waiting")) || queue.items.at(-1);
     return item ? songsById.get(item.songId) : null;
   }, [queue.items, songsById]);
-  const queueColor = useAccent(queueFocus || NO_SONG, theme);
+  const queueColor = useCoverAccent(queueFocus || NO_SONG, theme);
 
   // With the queue open a click adds or removes a song, and shift-click adds
   // every song shown between it and the last one clicked. Stable across renders
@@ -844,12 +741,15 @@ export default function Library({
     try {
       const details = await getProjectDeletionDetails(songId);
       const projectTitle = details.title || song.title || songId;
-      const consequence = details.disposition === "trash"
-        ? "The project directory will be moved to the operating system Trash."
-        : "The project will be permanently deleted from browser storage.";
-      const confirmed = window.confirm(
-        `Delete project "${projectTitle}"?\n\nProject path:\n${details.path}\n\n${consequence}`
-      );
+      const confirmed = await askConfirm({
+        title: `Delete “${projectTitle}”?`,
+        body: details.disposition === "trash"
+          ? "Its folder moves to the Trash."
+          : "It's deleted from this browser for good.",
+        detail: details.path,
+        confirmLabel: "Delete project",
+        danger: true,
+      });
       if (!confirmed) return;
 
       const result = await deleteProjectRecord(songId, details.path, details.title);
@@ -912,8 +812,6 @@ export default function Library({
     setStatusMsg("");
     return libraryFolderGate.run(() => saveFinalToLibrary(songId), trigger);
   };
-
-  const filterNames = { all: "projects", favorites: "favorites" };
 
   return (
     <div
@@ -1012,9 +910,9 @@ export default function Library({
                   <div className="list-cols" aria-hidden="true">
                     <span />
                     <span>Title</span>
-                    <span>Charter</span>
+                    <span>Album</span>
                     <span className="num">Year</span>
-                    <span className="num">Length</span>
+                    <span className="num">Takes</span>
                   </div>
                   {filtered.map((s) => (
                     <ListRow
@@ -1035,7 +933,7 @@ export default function Library({
 
         <div className="statusbar">
           <span className="status-chunk">
-            {filtered.length} project{filtered.length !== 1 ? "s" : ""} · {filterNames[filter] || filter}
+            {filtered.length} {filter === "favorites" ? "favorite" : "project"}{filtered.length !== 1 ? "s" : ""}
           </span>
           {query.trim() && <span className="status-chunk">match “{query.trim()}”</span>}
           <span className="statusbar-spacer" />

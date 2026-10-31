@@ -427,7 +427,7 @@ function useDeviceState() {
 
 const NO_SONG = "No Clone Hero song there. It needs a notes.chart and the song's audio.";
 
-export default function Start({ onSong, onOpenChart, onOpenSettings, confirmCloseSong = () => true }) {
+export default function Start({ onSong, onOpenChart, onOpenSettings, confirmCloseSong = async () => true }) {
   const [hot, setHot] = useState(false);
   const [hotFolder, setHotFolder] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -475,7 +475,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
       setOpenError(fallback);
       return;
     }
-    if (confirmCloseSong()) openFolder(folders[0].files);
+    void confirmCloseSong().then((ok) => { if (ok) openFolder(folders[0].files); });
   };
 
   const handleDrop = (event) => {
@@ -485,10 +485,14 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     readDrop(event.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
       if (folders.length || directories || archives || songs.length > 1) {
         openSongFolders(songs.length > 1 ? songs : folders, NO_SONG);
-      } else if (file && confirmCloseSong()) {
-        setOpenError("");
-        onSong(file);
+      } else if (file) {
+        return confirmCloseSong().then((ok) => {
+          if (!ok) return;
+          setOpenError("");
+          onSong(file);
+        });
       }
+      return undefined;
     }).catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : "That drop couldn't be read. Try Open a Clone Hero song instead."));
   };
 
@@ -524,7 +528,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
-            if (file && confirmCloseSong()) onSong(file);
+            if (file) void confirmCloseSong().then((ok) => { if (ok) onSong(file); });
           }}
         />
         <input ref={folderRef} type="file" accept={SONG_ACCEPT} multiple hidden onChange={handleSongPick} />
