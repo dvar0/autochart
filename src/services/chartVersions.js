@@ -3,6 +3,7 @@ import { TRACK_BY_DIFFICULTY, parseChart } from "../lib/chart/parseChart.js";
 import { generationVersionName } from "../data/generationSettings.js";
 import { newVersionId } from "./songSchema.js";
 import { buildGeneratedVersion } from "../../shared/generatedVersion.js";
+import { chartTimingKey } from "../../shared/timingSignature.js";
 
 function sectionNameForDifficulty(difficulty = "expert") {
   return TRACK_BY_DIFFICULTY[difficulty] || TRACK_BY_DIFFICULTY.expert;
@@ -35,37 +36,9 @@ function removeDifficultySections(chartText) {
   return sectionNames.reduce((text, sectionName) => removeSection(text, sectionName), chartText);
 }
 
-function songTimingValues(lines) {
-  const values = { resolution: 192, offset: 0 };
-  const section = findSection(lines, "Song");
-  if (!section) return values;
-  for (let i = section.bodyStart; i < section.bodyEnd; i++) {
-    const match = lines[i].trim().match(/^(Resolution|Offset)\s*=\s*(.+)$/i);
-    if (!match) continue;
-    const value = Number(match[2]);
-    const key = match[1].toLowerCase();
-    if (Number.isFinite(value) && (key !== "resolution" || value > 0)) values[key] = value;
-  }
-  return values;
-}
-
-export function chartTimingSignature(chartText = "") {
-  const lines = String(chartText || "").split(/\r?\n/);
-  const section = findSection(lines, "SyncTrack");
-  if (!section) return "";
-  const body = lines
-    .slice(section.bodyStart, section.bodyEnd)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join("\n");
-  if (!body) return "";
-  // Resolution and offset both affect playback, even when sync lines match.
-  const song = songTimingValues(lines);
-  return `res:${song.resolution};offset:${song.offset}\n${body}`;
-}
-
+// Library listings carry the key instead of the chart.
 export function versionTimingSignature(version = null) {
-  return chartTimingSignature(version?.chart?.text || "");
+  return version?.chart?.text ? chartTimingKey(version.chart.text) : version?.chart?.timingKey || "";
 }
 
 function versionSourceVariantKey(version = null) {
@@ -161,8 +134,8 @@ export function createFinalChartVersion({
       "Final chart needs one shared source audio. Assign takes generated with the same lead-in silence before exporting."
     );
   }
-  const firstTimingSignature = chartTimingSignature(firstVersion.chart.text);
-  const mismatch = assigned.find(([, version]) => chartTimingSignature(version.chart.text) !== firstTimingSignature);
+  const firstTimingSignature = chartTimingKey(firstVersion.chart.text);
+  const mismatch = assigned.find(([, version]) => chartTimingKey(version.chart.text) !== firstTimingSignature);
   if (mismatch) {
     throw new Error(
       "Final chart needs one shared beatmap. Assign takes with the same timing grid before exporting."

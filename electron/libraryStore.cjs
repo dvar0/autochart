@@ -798,13 +798,16 @@ async function listSongs(context) {
 // would otherwise cross IPC on every visit. Projects are read in full when
 // opened, exported or saved.
 async function listSongSummaries(context) {
+  const { chartTimingKey } = await import("../shared/timingSignature.js");
   return (await listSongs(context)).map((record) => ({
     ...record,
-    versions: Array.isArray(record.versions) ? record.versions.map(versionSummary) : record.versions,
+    versions: Array.isArray(record.versions)
+      ? record.versions.map((version) => versionSummary(version, chartTimingKey))
+      : record.versions,
   }));
 }
 
-function versionSummary({ chart, provenance, ...version }) {
+function versionSummary({ chart, provenance, ...version }, chartTimingKey) {
   // An imported chart keeps its text: the Library reads which difficulties it
   // ships to fill the final chart (shared/finalSlots.js importedFinalSlotSeed).
   if (version.source === "imported-chart") {
@@ -813,7 +816,8 @@ function versionSummary({ chart, provenance, ...version }) {
   const { text, ...chartRest } = chart || {};
   return {
     ...version,
-    chart: { ...chartRest, hasText: Boolean(text) },
+    // The timing key lets the Library tell when takes can't share a final chart.
+    chart: { ...chartRest, hasText: Boolean(text), timingKey: chartTimingKey(text || "") },
     ...(provenance?.sourceTransform ? { provenance: { sourceTransform: provenance.sourceTransform } } : {}),
   };
 }

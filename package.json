@@ -123,6 +123,7 @@
       "shared/finalSlots.js",
       "shared/projectFile.js",
       "shared/chartDelay.js",
+      "shared/timingSignature.js",
       "engine/licenses/**/*",
       "docs/third-party-notices.md",
       "docs/privacy.md",

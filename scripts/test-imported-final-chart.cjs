@@ -10,7 +10,7 @@ const library = require("../electron/libraryStore.cjs");
 const { persistGeneratedTake } = require("../electron/generatedTake.cjs");
 
 (async () => {
-  const { inferFinalSlots, buildFinalChartVersion } = await import("../src/services/finalChart.js");
+  const { inferFinalSlots, buildFinalChartVersion, finalTimingMismatchMessage } = await import("../src/services/finalChart.js");
   const { parseChart } = await import("../src/lib/chart/parseChart.js");
   const { playableVersionsFromRecord } = await import("../src/services/songLibrary.js");
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "autochart-imported-final-"));
@@ -50,6 +50,11 @@ const { persistGeneratedTake } = require("../electron/generatedTake.cjs");
       assert.throws(() => buildFinalChartVersion({ versions: [imported, {
         ...generated, chart: { text: generatedText.replace("Offset = -0.25", "Offset = 0") },
       }], slots }), /one shared beatmap/);
+      const smoothed = (method) => ({ generation: { resolved: { timingSmoothing: { enabled: true, ...(method ? { method } : {}) } } } });
+      assert.equal(finalTimingMismatchMessage({
+        expert: { ...generated, source: "generated", settings: smoothed("") },
+        easy: { ...generated, source: "generated", chart: { text: generatedText.replace("Offset = -0.25", "Offset = 0") }, settings: smoothed("line-fit") },
+      }), "Expert was made with older timing, so it can't share a final chart with Easy. Generate Expert again to use them together.");
 
       const id = `imported_${resolution}`;
       await library.saveSong(context, { record: { id, source: "imported-chart", meta: {}, settings: {},
@@ -86,6 +91,28 @@ const { persistGeneratedTake } = require("../electron/generatedTake.cjs");
       assert.equal((await library.getSong(context, id)).arrangements[0].slots.expert,
         explicit ? "original" : saved.savedVersion.id,
         "imported defaults must not hide a new take, and explicit assignments must survive");
+    }
+    // The Library's project list carries no chart text, but still sees that an
+    // older-timing take can't share a final chart with a new one.
+    {
+      const { migrateRecord } = await import("../src/services/songSchema.js");
+      const { finalSlotsFromRecord, buildFinalSlotVersions, finalValidationMessage } = await import("../src/services/finalChart.js");
+      const smoothed = (method) => ({ difficulty: "expert", generation: { resolved: { timingSmoothing: { enabled: true, ...(method ? { method } : {}) } } } });
+      const hard = writeChartText([[0, 1, 0]], { difficulty: "hard", syncLines: ["0 = B 121000"] }).text;
+      await library.saveSong(context, { record: { id: "mixed", source: "generated", meta: {}, settings: {}, chart: { text: expert },
+        versions: [
+          { id: "old", source: "generated", chart: { text: expert }, settings: smoothed("") },
+          { id: "new", source: "generated", chart: { text: hard }, settings: { ...smoothed("line-fit"), difficulty: "hard" } },
+        ],
+        arrangements: [{ id: "arr_final", slots: { expert: "old", hard: "new" } }],
+      } });
+      const listed = migrateRecord((await library.listSongSummaries(context)).find((record) => record.id === "mixed"));
+      assert(listed.versions.every((version) => !version.chart.text && version.chart.timingKey), "the list keeps timing keys, not charts");
+      const slotVersions = buildFinalSlotVersions(finalSlotsFromRecord(listed, listed.versions), listed.versions);
+      assert.equal(finalValidationMessage(slotVersions),
+        "Expert was made with older timing, so it can't share a final chart with Hard. Generate Expert again to use them together.");
+      const same = migrateRecord({ ...listed, versions: listed.versions.map((version) => ({ ...version, chart: { ...version.chart, timingKey: "k" } })) });
+      assert.equal(finalValidationMessage(buildFinalSlotVersions(finalSlotsFromRecord(same, same.versions), same.versions)), "");
     }
     console.log("imported final chart: native timing, difficulty sections, saved slots, and legacy records passed");
   } finally {

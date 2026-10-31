@@ -219,6 +219,7 @@
     "shared/generatedVersion.js",
     "shared/projectFile.js",
     "shared/sng.js",
+    "shared/timingSignature.js",
     "shared/usageEvents.js",
     "src/App.jsx",
     "src/assets/highway/note-cap.png",

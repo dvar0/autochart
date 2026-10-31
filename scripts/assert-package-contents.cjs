@@ -205,6 +205,7 @@ function isAllowedAppFile(relative, platform, arch, distAllowlist = new Set()) {
     "shared/finalSlots.js",
     "shared/projectFile.js",
     "shared/chartDelay.js",
+    "shared/timingSignature.js",
     "engine/lib/generationStages.cjs",
     "engine/lib/chartTiming.mjs",
     "engine/lib/transcriberSettings.mjs",
@@ -356,7 +357,7 @@ function assertPackageContents({
   }
 
   assertBundledLicenses(appDir);
-  for (const helper of ["shared/finalSlots.js", "shared/chartProvenance.js", "engine/lib/chartTiming.mjs"]) {
+  for (const helper of ["shared/finalSlots.js", "shared/chartProvenance.js", "shared/timingSignature.js", "engine/lib/chartTiming.mjs"]) {
     assertExactCopy(path.join(PROJECT_ROOT, helper), path.join(appDir, helper), `Packaged helper ${helper}`);
   }
 

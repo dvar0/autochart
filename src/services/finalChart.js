@@ -66,6 +66,12 @@ export function finalTimingMismatchMessage(slotVersions = {}, order = FINAL_SLOT
   const mismatch = assigned.find(([, version]) => versionTimingSignature(version) !== firstSignature);
   if (!mismatch) return "";
   const [otherDifficulty, otherVersion] = mismatch;
+  const olderTiming = (version) => version.source === "generated" && usesOlderTimingSmoother(version.settings?.generation || {});
+  if (firstVersion.source === "generated" && otherVersion.source === "generated" && olderTiming(firstVersion) !== olderTiming(otherVersion)) {
+    const [oldDifficulty, newDifficulty] = olderTiming(firstVersion) ? [firstDifficulty, otherDifficulty] : [otherDifficulty, firstDifficulty];
+    const oldName = DIFF[oldDifficulty]?.name || oldDifficulty;
+    return `${oldName} was made with older timing, so it can't share a final chart with ${DIFF[newDifficulty]?.name || newDifficulty}. Generate ${oldName} again to use them together.`;
+  }
   return `Final chart needs one shared beatmap. ${DIFF[firstDifficulty]?.name || firstDifficulty} uses ${versionTimingLabel(firstVersion)}; ${DIFF[otherDifficulty]?.name || otherDifficulty} uses ${versionTimingLabel(otherVersion)}.`;
 }
 

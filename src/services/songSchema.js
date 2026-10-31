@@ -38,8 +38,12 @@ function normalizeVersion(raw, fallback = {}) {
     },
     chart: { text: chartText },
   };
-  // Library listings say whether a take has a chart instead of carrying it.
-  if (!chartText && raw?.chart?.hasText) version.chart.hasText = true;
+  // Library listings say whether a take has a chart instead of carrying it,
+  // plus its beat grid's key.
+  if (!chartText && raw?.chart?.hasText) {
+    version.chart.hasText = true;
+    if (raw.chart.timingKey) version.chart.timingKey = raw.chart.timingKey;
+  }
   if (raw?.provenance || fallback.provenance) {
     version.provenance = raw?.provenance || fallback.provenance;
   }
