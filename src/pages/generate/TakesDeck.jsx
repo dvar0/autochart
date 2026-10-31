@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import DensityStrip from "../../highway/DensityStrip.jsx";
 import { DIFF } from "../../data/difficultyMetadata.js";
-import { GENERATOR_LABELS } from "../../data/humanLabels.js";
 import {
   GAME_LIBRARY_NAME,
   GAME_LIBRARY_SAVE_LABEL,
@@ -10,7 +9,6 @@ import {
 } from "../../data/gameLibrary.js";
 import {
   ALL_DESCRIPTOR_KNOBS,
-  DEFAULT_GENERATOR_ID,
   DEFAULT_TIMING_DETECTOR_ID,
   GENERATION_DIFFICULTIES,
   GENERATION_PRESETS,
@@ -23,6 +21,7 @@ import {
 import { I } from "../../icons.jsx";
 import { FINAL_SLOT_ORDER, getVersionDifficulty } from "../../services/finalChart.js";
 import { LiveGenerationTakeCard } from "./LiveGeneration.jsx";
+import { modelName } from "./takeNames.js";
 import { StageSignal } from "./StageAnimations.jsx";
 import {
   demucsAuditionKey,
@@ -112,19 +111,6 @@ function separationCardName(artifact) {
 }
 
 const KNOB_COLORS = ["var(--fret-g)", "var(--fret-r)", "var(--fret-y)", "var(--fret-b)", "var(--fret-o)"];
-
-// The model a take came from. Edited drafts carry "Edited" as their model
-// label, so they fall back to the generator they were made with.
-function modelName(version, generators = []) {
-  const label = String(version.settings?.model || "").trim();
-  if (label && label !== "Edited") return label;
-  const generatorId = version.meta?.generatorId || version.settings?.generation?.generatorId || "";
-  const generator = generators.find((item) => item.id === generatorId);
-  if (generator?.label) return generator.label;
-  if (GENERATOR_LABELS[generatorId]) return GENERATOR_LABELS[generatorId];
-  if (generatorId === DEFAULT_GENERATOR_ID) return "Fretformer";
-  return generatorId.split(".").pop()?.toUpperCase() || "";
-}
 
 // Sampling presets wear a temperature colour: safe is green, the default is
 // neutral, wild is peach. Values off any preset are purple, like every
@@ -286,7 +272,7 @@ function DemucsPanel({ project }) {
   const [error, setError] = useState("");
   const selectedStemSetId = generatorStemSetId(selectedGenerator);
   const stemSetLabel = (stemSetId) =>
-    generatorForStemSet?.(stemSetId)?.label || (stemSetId === "htdemucs" ? "Fretformer" : stemSetId);
+    generatorForStemSet?.(stemSetId)?.label || (stemSetId === "htdemucs" ? "Fretformer 1" : stemSetId);
 
   const playStem = async (artifact, stem, stemSetId) => {
     setError("");
@@ -332,7 +318,7 @@ function DemucsPanel({ project }) {
         {separating && (
           <div className="take-card ghost live-take-card is-separating" aria-live="polite">
             <div className="take-card-top">
-              <span className="live-rec-badge split"><i />SPLIT</span>
+              <span className="live-dot" aria-hidden="true"><i /></span>
               <span className="take-name">Separating stems…</span>
             </div>
             <div className="live-take-viewport">
@@ -372,11 +358,11 @@ function DemucsPanel({ project }) {
               }
             >
               <div className="take-card-top">
-                <span className="version-badge">{(artifact.engineId || artifact.id) === "demucs_default" ? "D" : badgeIndex}</span>
+                <span className="version-badge">{badgeIndex + 1}</span>
                 <span className="take-name" title={artifact.name}>{displayName}</span>
               </div>
               <div className="take-meta">
-                {artifact.profile || "Standard Demucs"} · {ready ? fmtArtifactDate(artifact.updatedAt || artifact.createdAt) : "runs on first play"}
+                {artifact.profile || "Standard"} · {ready ? fmtArtifactDate(artifact.updatedAt || artifact.createdAt) : "runs on first play"}
               </div>
               <div className="take-tags">
                 <span className="take-tag mod" title={`Lead-in silence: ${sourceVariantTag(artifact)}`}>{sourceVariantTag(artifact)}</span>
@@ -405,7 +391,7 @@ function DemucsPanel({ project }) {
                           disabled={busy || !sourceAudioFile}
                           title={sourceAudioFile ? `Run the ${label} separation now` : "Choose media first"}
                         >
-                          SEPARATE NOW
+                          Separate now
                         </button>
                       </div>
                     </div>
@@ -448,7 +434,7 @@ function DemucsPanel({ project }) {
               })}
               <div className="demucs-card-actions">
                 <button
-                  className="take-pip wide on tone-red"
+                  className={"take-pip wide use-pip" + (active ? " on" : "")}
                   onClick={() => selectDemucsSeparation(artifact.id)}
                   disabled={busy || active || !compatible}
                   title={
@@ -459,7 +445,7 @@ function DemucsPanel({ project }) {
                         : "Use this separation for new charts"
                   }
                 >
-                  {active ? "IN USE" : "USE FOR CHARTS"}
+                  {active ? "In use" : "Use for charts"}
                 </button>
               </div>
             </div>
@@ -470,14 +456,14 @@ function DemucsPanel({ project }) {
           className="take-card placeholder demucs-new-card"
           onClick={regenerate}
           disabled={busy || !sourceAudioFile}
-          title={sourceAudioFile ? "Run Demucs again and keep both versions" : "Choose media first"}
+          title={sourceAudioFile ? "Separate the song again and keep both" : "Choose media first"}
         >
           <div className="take-card-top">
             <span className="version-badge">+</span>
             <span className="take-name">New separation</span>
           </div>
           <div className="take-meta">
-            Run Demucs again for {currentSourceVariantLabel}
+            Separate again for {currentSourceVariantLabel}
             {selectedStemSetId !== "htdemucs" ? ` (${stemSetLabel(selectedStemSetId)} stems)` : ""}
           </div>
         </button>
@@ -566,14 +552,14 @@ export default function TakesDeck({ project }) {
   return (
     <section className="takes-deck">
       <div className="takes-deck-head">
-        <div className="deck-tabs" role="tablist" aria-label="Generation deck">
+        <div className="segmented deck-tabs" role="tablist" aria-label="Generation deck">
           <button
             className={deckTab === "takes" ? "active" : ""}
             onClick={() => setDeckTab("takes")}
             role="tab"
             aria-selected={deckTab === "takes"}
           >
-            TAKES <span>{candidateVersions.length}</span>
+            Takes <span>{candidateVersions.length}</span>
           </button>
           <button
             className={showingDemucs ? "active" : ""}
@@ -581,14 +567,14 @@ export default function TakesDeck({ project }) {
             role="tab"
             aria-selected={showingDemucs}
           >
-            SEPARATION <span>{demucsArtifacts.length}</span>
+            Separation <span>{demucsArtifacts.length}</span>
           </button>
         </div>
 
         {!showingDemucs ? (
           <>
             <div className="final-strip" title={`Final chart · ${finalReadyLabel} assigned`}>
-              <span className="final-strip-label">FINAL</span>
+              <span className="final-strip-label">Final</span>
               {FINAL_SLOT_ORDER.map((difficulty) => {
                 const assigned = finalSlotVersions[difficulty];
                 const tone = slotTone(difficulty);
@@ -645,11 +631,11 @@ export default function TakesDeck({ project }) {
                 </>
               ) : justSavedLibrary ? (
                 <>
-                  {GAME_LIBRARY_SAVED_LABEL} <span className="save-check-pop" aria-hidden="true"><I.check /></span>
+                  <span className="save-check-pop" aria-hidden="true"><I.check /></span> {GAME_LIBRARY_SAVED_LABEL}
                 </>
               ) : (
                 <>
-                  {GAME_LIBRARY_SAVE_LABEL} <I.check />
+                  <I.check /> {GAME_LIBRARY_SAVE_LABEL}
                 </>
               )}
             </button>
@@ -666,7 +652,7 @@ export default function TakesDeck({ project }) {
                     : finalTimingIssue || undefined
               }
             >
-              {busyAction === "exporting" ? "Exporting…" : "Export"} <I.upload />
+              <I.upload /> {busyAction === "exporting" ? "Exporting…" : "Export"}
             </button>
 
             <button
@@ -681,13 +667,13 @@ export default function TakesDeck({ project }) {
                     : undefined
               }
             >
-              {previewMode === "compare" ? "✕ Comparing" : `Compare (${compareSelection.length})`}
+              {previewMode === "compare" ? <><I.close /> Comparing</> : `Compare (${compareSelection.length})`}
             </button>
           </>
         ) : (
           <>
             <div className="demucs-headline">
-              <span>Active</span>
+              <span>In use</span>
               <b>{activeDemucsArtifact?.name || "Default separation"}</b>
             </div>
             <button
@@ -696,7 +682,7 @@ export default function TakesDeck({ project }) {
               disabled={busy}
               title={demucsAuditionMode === "compare" ? "Back to single stem audition" : "Compare two separated stems"}
             >
-              {demucsAuditionMode === "compare" ? "✕ Comparing" : "Compare"}
+              {demucsAuditionMode === "compare" ? <><I.close /> Comparing</> : "Compare"}
             </button>
           </>
         )}
