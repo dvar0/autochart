@@ -18,8 +18,14 @@ yet, so setup can't download them until this is done:
 - [ ] Clean install: setup downloads about 952 MB, and Fretformer 2 is the
   default for new projects.
 - [ ] Update from the last public release with only Fretformer v1 installed: new
-  projects stay on Fretformer v1 until Fretformer 2 is downloaded in Settings;
-  the download copies the shared files instead of fetching them again.
+  projects start on Fretformer 2, and Generate's button reads **Download
+  Fretformer 2** with its size. It downloads right there, then turns into
+  **Generate chart**. Projects from 0.1.0 open on Fretformer 2 too. Picking
+  Fretformer 1 in Settings, in a project's picker, or with **Use settings** on an
+  old take still works, and a project keeps that pick after it's reopened. The
+  download copies the shared files instead of fetching them again.
+- [ ] Start that download on Generate or in What's new, then open Settings: it shows
+  the same download's progress and doesn't offer a second one.
 - [ ] Release notes give the new download size and say that Fretformer v1 stays
   available in Settings.
 - [ ] Fretformer 2 Lite (`fretformer-2-lite` pack, experimental) downloads from
@@ -61,7 +67,9 @@ Copies of 0.1.0 can't, so they only hear about it from the release itself.
   signed by the real key and served from a test release or local HTTPS:
   `AUTOCHART_UPDATE_FEED_URL=https://… ` makes a dev build check it.
 - [ ] Per platform, a version older than the feed shows the rail notice, and
-  the update installs: AppImage swaps in place and restarts, the Windows
+  the update installs: AppImage swaps in place and reopens on the new version
+  (no "Cannot mount AppImage" message, which means it was started with
+  no_new_privs; don't use `app.relaunch` for it), the Windows
   installer updates and reopens, the macOS DMG opens and the app closes.
   Portable Windows (zip) only offers the download page.
 
@@ -78,7 +86,7 @@ How it stays compatible:
 - Cached beat maps are keyed `smoothgrid3`, so no old grid is reused.
 - New takes record `timingSmoothing.method: "line-fit"`. Takes without it were
   made with the old smoother: their take chip reads **old smooth**, and the
-  final-chart mismatch message says **old smoothing**.
+  final-chart message says the take was made with **older timing**.
 - An old take's chart keeps the tempo map it was made with. Nothing rewrites it.
 
 Check before publishing:
@@ -88,7 +96,7 @@ Check before publishing:
 - [ ] Generate a new take in one of them. It shows **smooth**, gets a new beat
   map, and old takes are untouched.
 - [ ] Put an old take and a new take in the final chart. It refuses with the
-  "needs one shared beatmap … old smoothing … smoothed" message, not a broken
+  "made with older timing … Generate it again" message, not a broken
   export. Decide whether that message should offer to regenerate the other
   difficulty.
 - [ ] Projects using imported chart sync are unaffected (no smoother runs).
