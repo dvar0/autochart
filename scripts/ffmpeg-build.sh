@@ -56,7 +56,18 @@ cd "$work/libvpx-1.16.0"
 # portable across CPUs; never use -march=native for distributed binaries.
 # Apple Silicon uses its ARM/NEON implementation, without an x86 assembler.
 # libvpx's unversioned arm64-darwin target selects iOS; darwin20 selects macOS.
-./configure --prefix="$prefix" --target="$vpx_target" --enable-runtime-cpu-detect --disable-shared \
+# It also asks xcrun for the newest macOS SDK, ignoring SDKROOT; when a build
+# picks an SDK, a wrapper answers with that one.
+vpx_path="$PATH"
+if [[ "$(uname -s)" == Darwin && -n "${SDKROOT:-}" ]]; then
+  mkdir -p "$work/sdk-xcrun"
+  printf '%s\n' '#!/bin/sh' \
+    '[ "$1" = --sdk ] && [ "$2" = macosx ] && { shift 2; exec /usr/bin/xcrun --sdk "$SDKROOT" "$@"; }' \
+    'exec /usr/bin/xcrun "$@"' > "$work/sdk-xcrun/xcrun"
+  chmod +x "$work/sdk-xcrun/xcrun"
+  vpx_path="$work/sdk-xcrun:$PATH"
+fi
+PATH="$vpx_path" ./configure --prefix="$prefix" --target="$vpx_target" --enable-runtime-cpu-detect --disable-shared \
   --enable-static --enable-pic --disable-examples --disable-tools \
   --disable-docs --disable-unit-tests --disable-vp9 --disable-vp8-decoder
 make -j"$jobs"
