@@ -1,10 +1,11 @@
-// Reads what was dropped or picked into song folders or a single media file.
+// Reads what was dropped or picked into song folders or media files.
 // A song folder is any folder holding notes.chart, notes.mid or song.ini; a
 // folder without one is searched for song folders inside it, so a whole
 // Clone Hero songs directory comes in as all of its songs. A .sng or .zip
 // opens as the song folders packed in it. Each song folder is a plain list of
 // its own files, the shape importSongFolder() reads.
 
+import { isSongMedia } from "./mediaMetadata.js";
 import { isSongArchive, songFoldersFromArchive } from "./songArchives.js";
 
 const SONG_FILES = new Set(["notes.chart", "notes.mid", "notes.midi", "song.ini"]);
@@ -26,6 +27,12 @@ export function dragHasFiles(event) {
 export function dragLooksLikeFolders(event) {
   const items = Array.from(event.dataTransfer?.items || []).filter((item) => item.kind === "file");
   return items.length > 0 && items.every((item) => !item.type);
+}
+
+/** Best guess, mid-drag, at whether several songs are coming: folders, or more than one file. */
+export function dragLooksLikeSongs(event) {
+  const items = Array.from(event.dataTransfer?.items || []).filter((item) => item.kind === "file");
+  return items.length > 1 || dragLooksLikeFolders(event);
 }
 
 function readEntries(reader) {
@@ -59,9 +66,10 @@ async function collectSongFolders(entry, depth, folders) {
 }
 
 /**
- * Reads a drop into { folders, directories, archives, file }. `folders` lists
- * every song folder found; `file` is the first loose file when no song folder
- * was dropped.
+ * Reads a drop into { folders, songs, directories, archives, file }.
+ * `folders` lists every song folder found; `songs` is those folders plus
+ * each loose audio or video file as { name, file }; `file` is the first loose
+ * file when no song folder was dropped.
  * The DataTransfer is only readable during the drop event, so call this
  * from the handler before awaiting anything else.
  */
@@ -78,9 +86,12 @@ export function readDrop(dataTransfer) {
     for (const archive of picked.filter(isSongArchive)) folders.push(...await songFoldersFromArchive(archive));
     const files = picked.filter((file) => !isSongArchive(file));
     // A song's files dropped without their folder still make one song.
-    if (isSongFolder(files)) folders.push({ name: "", files });
+    const looseSong = isSongFolder(files);
+    if (looseSong) folders.push({ name: "", files });
+    const media = looseSong ? [] : files.filter(isSongMedia).map((file) => ({ name: file.name, file }));
     return {
       folders,
+      songs: [...folders, ...media],
       directories: directories.length,
       archives: picked.length - files.length,
       file: folders.length ? null : files[0] || null,

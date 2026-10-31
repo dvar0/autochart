@@ -838,8 +838,8 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
       return;
     }
     if (folderBusy) return;
-    readDrop(e.dataTransfer).then(({ folders, directories, archives, file }) => {
-      if (folders.length) openSongFolders(folders);
+    readDrop(e.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
+      if (folders.length || songs.length > 1) openSongFolders(songs);
       else if (directories || archives) setFolderError("No Clone Hero song in there. It needs a notes.chart and the song's audio.");
       else if (file) {
         setFolderError("");
@@ -1029,10 +1029,11 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
           onDragLeave={handleMediaDragLeave}
           onDrop={handleMediaDrop}
         >
-          <input type="file" accept={MEDIA_ACCEPT} onChange={(e) => {
-            const f = e.target.files?.[0];
+          <input type="file" accept={MEDIA_ACCEPT} multiple={canOpenFolders} onChange={(e) => {
+            const picked = Array.from(e.target.files || []);
             e.target.value = "";
-            if (f) handleMediaFile(f);
+            if (picked.length > 1) openSongFolders(picked.map((file) => ({ name: file.name, file })));
+            else if (picked[0]) handleMediaFile(picked[0]);
           }} hidden />
           <div className="dz-illu">
             <svg viewBox="0 0 132 110" fill="none">

@@ -33,7 +33,7 @@ import { exportChart, saveChartToCloneHeroLibrary } from "../services/generation
 import {
   bulkImportBusy, dismissBulkImport, getBulkImport, startBulkImport, stopBulkImport, subscribeBulkImport, undoBulkImport,
 } from "../services/bulkImport.js";
-import { dragHasFiles, dragLooksLikeFolders, readDrop } from "../services/droppedItems.js";
+import { dragHasFiles, dragLooksLikeSongs, readDrop } from "../services/droppedItems.js";
 import { SongArchiveError } from "../services/songArchives.js";
 import {
   deleteProjectRecord,
@@ -487,7 +487,7 @@ function DetailPanel({
   );
 }
 
-// The folder import's progress, then its result with Undo.
+// The import's progress, then its result with Undo.
 function ImportNotice({ bulk, onStop, onUndo, onDismiss }) {
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const { phase, imported = [], failed = [] } = bulk;
@@ -529,7 +529,7 @@ function ImportNotice({ bulk, onStop, onUndo, onDismiss }) {
           <summary>
             {phase === "undone"
               ? `${plural(problems.length, "project")} couldn't be removed`
-              : `${plural(problems.length, "folder")} couldn't be imported`}
+              : `${plural(problems.length, "song")} couldn't be imported`}
           </summary>
           <ul>
             {problems.map((problem, index) => (
@@ -597,13 +597,14 @@ export default function Library({
     };
   }, [loadLibrary, refreshToken]);
 
-  // Song folders dropped anywhere on the Library import into it; a song file
-  // starts a new project with it. A folder of song folders imports them all.
+  // Song folders dropped anywhere on the Library import into it; one song file
+  // starts a new project with it, and several become projects to generate
+  // later. A folder of song folders imports them all.
   const handleDragOver = (event) => {
     if (!dragHasFiles(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    const next = dragLooksLikeFolders(event) ? "folders" : "file";
+    const next = dragLooksLikeSongs(event) ? "songs" : "file";
     if (dropHot !== next) setDropHot(next);
   };
 
@@ -617,10 +618,10 @@ export default function Library({
     setDropHot("");
     setImportError(null);
     setStatusMsg("");
-    readDrop(event.dataTransfer).then(({ folders, directories, archives, file }) => {
-      if (folders.length) {
+    readDrop(event.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
+      if (folders.length || songs.length > 1) {
         if (bulkImportBusy()) setImportError("Songs are still importing. Drop more once they're in.");
-        else startBulkImport(folders).catch((err) => setImportError(err.message || String(err)));
+        else startBulkImport(songs).catch((err) => setImportError(err.message || String(err)));
       } else if (directories || archives) {
         setImportError("No Clone Hero songs in there. Each song needs a notes.chart and its audio.");
       } else if (file) {
@@ -866,7 +867,7 @@ export default function Library({
                   ? `Nothing matches “${query.trim()}”.`
                   : filter === "favorites"
                     ? "You haven't starred any projects yet."
-                    : "Nothing here yet. Start a new project, or drop Clone Hero song folders here."}
+                    : "Nothing here yet. Start a new project, or drop songs or Clone Hero song folders here."}
               </div>
             </div>
           ) : (
@@ -942,7 +943,7 @@ export default function Library({
       <LibraryFolderPrompt gate={libraryFolderGate} onOpenSettings={() => setPage?.("settings")} />
       {bulk && <ImportNotice bulk={bulk} onStop={stopBulkImport} onUndo={handleUndoImport} onDismiss={dismissBulkImport} />}
       <div className="library-drop-veil" aria-hidden="true">
-        <span>{dropHot === "folders" ? "Drop to import these songs" : "Drop to start a project with this song"}</span>
+        <span>{dropHot === "songs" ? "Drop to import these songs" : "Drop to start a project with this song"}</span>
       </div>
     </div>
   );

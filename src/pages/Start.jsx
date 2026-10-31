@@ -468,7 +468,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
 
   const openSongFolders = (folders, fallback) => {
     if (folders.length > 1) {
-      setOpenError("That's more than one song. Open one at a time here; the desktop app can import a whole songs folder.");
+      setOpenError("That's more than one song. Open one at a time here; the desktop app can import many at once.");
       return;
     }
     if (!folders.length) {
@@ -482,9 +482,9 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     event.preventDefault();
     setHot(false);
     if (opening) return;
-    readDrop(event.dataTransfer).then(({ folders, directories, archives, file }) => {
-      if (folders.length || directories || archives) {
-        openSongFolders(folders, NO_SONG);
+    readDrop(event.dataTransfer).then(({ folders, songs, directories, archives, file }) => {
+      if (folders.length || directories || archives || songs.length > 1) {
+        openSongFolders(songs.length > 1 ? songs : folders, NO_SONG);
       } else if (file && confirmCloseSong()) {
         setOpenError("");
         onSong(file);

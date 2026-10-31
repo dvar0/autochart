@@ -1,10 +1,10 @@
 import { importSongFolders } from "./songImport.js";
 import { deleteProjectRecord, getProjectDeletionDetails, revokeCoverUrl } from "./songLibrary.js";
 
-// The desktop Library's folder import, kept outside the page so it carries on
-// (and can still be undone) if the Library is left mid-import. Undo removes
-// exactly the projects this import created; the song folders it read from
-// are never touched. One import runs at a time.
+// The desktop Library's song import (song folders and song files), kept
+// outside the page so it carries on (and can still be undone) if the Library
+// is left mid-import. Undo removes exactly the projects this import created;
+// the files it read from are never touched. One import runs at a time.
 //
 // State: null, or { phase, total, done, name, imported, failed, stopped,
 // stopping, removed, kept, undoFailed, disposition }, where phase is

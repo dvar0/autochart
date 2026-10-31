@@ -63,6 +63,11 @@ export function isVideoMedia(file) {
   return Boolean(file?.type?.startsWith("video/") || hasExt(file, VIDEO_EXTS));
 }
 
+/** Whether a file is a song's audio or video, the kind a project starts from. */
+export function isSongMedia(file) {
+  return Boolean(file?.type?.startsWith("audio/") || hasExt(file, AUDIO_EXTS) || isVideoMedia(file));
+}
+
 function imageExtForMime(mime = "") {
   const lower = mime.toLowerCase();
   if (lower.includes("jpeg") || lower.includes("jpg")) return ".jpg";

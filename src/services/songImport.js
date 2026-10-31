@@ -8,7 +8,8 @@ import {
 
 import { parseChart } from "../lib/chart/parseChart.js";
 import { buildPlayableTrack } from "../lib/chart/tempoMap.js";
-import { readMediaFileMetadata } from "./mediaMetadata.js";
+import { isVideoMedia, readMediaFileMetadata } from "./mediaMetadata.js";
+import { buildSourceReplacementRecord } from "../pages/generate/sourceReplacement.js";
 import { seedSeparation } from "./generation.js";
 import { getStoredAssetSource, recordFromImport, saveSongRecord, updateSongRecord } from "./songLibrary.js";
 
@@ -195,9 +196,21 @@ export async function saveImportedSong(result) {
   return saved;
 }
 
-// Imports song folders (from droppedItems.js) one at a time, saving each as
-// it lands, so a stopped or failed run keeps what it finished. Returns the
-// saved projects' ids and titles and why any folder failed.
+// Saves a song's audio or video as a project with no chart yet, ready to
+// generate from the Library.
+export async function saveMediaSong(file) {
+  const mediaInfo = await readMediaFileMetadata(file, { skipVideoThumbnail: true });
+  return saveSongRecord(buildSourceReplacementRecord({
+    file,
+    mediaInfo,
+    backgroundType: isVideoMedia(file) ? "video" : null,
+  }));
+}
+
+// Imports songs (from droppedItems.js: song folders, or { name, file } for a
+// loose audio or video file) one at a time, saving each as it lands, so a
+// stopped or failed run keeps what it finished. Returns the saved projects'
+// ids and titles and why any song failed.
 export async function importSongFolders(folders, { onProgress, onImported, shouldStop } = {}) {
   const imported = [];
   const failed = [];
@@ -205,7 +218,9 @@ export async function importSongFolders(folders, { onProgress, onImported, shoul
     if (shouldStop?.()) break;
     onProgress?.({ done: index, total: folders.length, name: folder.name });
     try {
-      const saved = await saveImportedSong(await importSongFolder(folder.files));
+      const saved = folder.file
+        ? await saveMediaSong(folder.file)
+        : await saveImportedSong(await importSongFolder(folder.files));
       const project = { id: saved.id, title: saved.meta?.title || folder.name };
       imported.push(project);
       onImported?.(project);

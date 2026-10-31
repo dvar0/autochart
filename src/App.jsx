@@ -195,12 +195,13 @@ export default function App() {
     setPage("generate");
   };
 
-  // Song folders brought into an empty project. One opens in that project's
-  // place; several import into the Library, where the import can be undone,
-  // and the empty project stays as it was.
+  // Song folders (or several song files) brought into an empty project. One
+  // folder opens in that project's place; several songs import into the
+  // Library, where the import can be undone, and the empty project stays as
+  // it was.
   const handleOpenSongFolders = async (key, folders) => {
     if (folders.length > 1) {
-      if (isWebApp()) throw new Error("That's a folder of songs. Open one song folder at a time here.");
+      if (isWebApp()) throw new Error("That's more than one song. Open one at a time here.");
       setPage("library");
       startBulkImport(folders).catch((error) => console.warn("[import] Folder import failed:", error));
       return;
