@@ -451,12 +451,22 @@ function chartTextFromPartial(live, difficulty = "expert", metadata = {}) {
 export function runAfterEvent(run, event) {
   if (event.type === "song_map") return { ...run, map: mergeSongMap(run.map, event) };
   if (event.type === "stage") {
+    // Engine time, and the queue keeps when a stage began (`since`), so a run
+    // opened partway through still shows real step times.
+    const at = Number(event.time) || Date.now();
+    const status = event.status || "running";
     const next = {
       ...run,
       map: mergeSongMap(run.map, event),
       stages: {
         ...run.stages,
-        [event.stage]: { status: event.status || "running", cache: event.cache === "hit", downloading: Boolean(event.downloading) },
+        [event.stage]: {
+          status,
+          cache: event.cache === "hit",
+          downloading: Boolean(event.downloading),
+          since: run.stages?.[event.stage]?.since || Number(event.since) || at,
+          until: status === "running" ? 0 : at,
+        },
       },
     };
     // The ONNX demucs stage emits a `progress` field as an index/total

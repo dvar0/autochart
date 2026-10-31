@@ -7,15 +7,15 @@ import { LITE_FAMILY, minutesText, separationSecondsLeft } from "./liteOffer.js"
 // smoothing → transcription → chart-writing finalization → done → saved.
 // Transcription and chart-writing are deliberately separate stages and ranges.
 export const GENERATION_STAGES = [
-  { id: "queued", label: "Queue job", detail: "Caching audio and writing the job file" },
-  { id: "audio", label: "Read audio", detail: "Preparing the source song" },
-  { id: "demucs", label: "Separate stems", detail: "Splitting vocals, guitar, bass and drums" },
-  { id: "timing", label: "Detect timing", detail: "Beat detector maps the tempo grid" },
-  { id: "smoothing", label: "Smooth tempo", detail: "Steadying the BPM curve between beats" },
-  { id: "transcription", label: "Transcribe notes", detail: "The model writes notes, chords and frets" },
-  { id: "chart", label: "Write chart", detail: "Converting the decoded sequence into notes.chart" },
-  { id: "done", label: "Finalize chart", detail: "Validating the generated chart package" },
-  { id: "saved", label: "Load result", detail: "Reading the chart back into the app" },
+  { id: "queued", label: "Queue job" },
+  { id: "audio", label: "Read audio" },
+  { id: "demucs", label: "Separate stems" },
+  { id: "timing", label: "Detect timing" },
+  { id: "smoothing", label: "Smooth tempo" },
+  { id: "transcription", label: "Transcribe notes" },
+  { id: "chart", label: "Write chart" },
+  { id: "done", label: "Finalize chart" },
+  { id: "saved", label: "Load result" },
 ];
 
 const PROGRESS_ORDER = GENERATION_STAGES.map((stage) => stage.id);
@@ -30,6 +30,20 @@ const STAGE_RANGES = {
   done: [95, 98],
   saved: [98, 100],
 };
+
+// The panel's steps: the stages someone watching would tell apart. Each one's
+// share of the track is its share of the run percent.
+const GENERATION_STEPS = [
+  { id: "read", label: "Read audio", stages: ["queued", "audio"] },
+  { id: "stems", label: "Separate stems", stages: ["demucs"] },
+  { id: "beats", label: "Detect timing", stages: ["timing", "smoothing"] },
+  { id: "notes", label: "Transcribe notes", stages: ["transcription"] },
+  { id: "chart", label: "Write chart", stages: ["chart", "done", "saved"] },
+].map((step) => ({
+  ...step,
+  start: STAGE_RANGES[step.stages[0]][0],
+  end: STAGE_RANGES[step.stages[step.stages.length - 1]][1],
+}));
 
 function stageInfoFor(run, id) {
   return run?.stages?.[id];
@@ -153,12 +167,57 @@ function stageDisplayInfo(run, index) {
   return { status: "pending" };
 }
 
-function stageStateText(info) {
-  if (info.status === "running") return "running…";
-  if (info.status === "completed") return info.cache ? "cached" : "done";
-  if (info.status === "failed") return "failed";
-  if (info.status === "skipped") return "skipped";
-  return "";
+function stepStatus(run, statuses) {
+  let status = "running";
+  if (statuses.includes("failed")) status = "failed";
+  else if (statuses.every((s) => s === "pending")) status = "pending";
+  else if (statuses.every((s) => s === "skipped")) status = "skipped";
+  else if (statuses.every((s) => s === "completed" || s === "skipped")) status = "completed";
+  // A run that ended early leaves its step "running"; that step is where it ended.
+  if (run.finishedAt && (status === "running" || status === "failed")) {
+    if (run.canceled) return "stopped";
+    if (run.error) return "failed";
+  }
+  return status;
+}
+
+function stepView(run, step, percent, now) {
+  const infos = step.stages.map((id) => stageDisplayInfo(run, PROGRESS_ORDER.indexOf(id)));
+  const status = stepStatus(run, infos.map((info) => info.status));
+  const timed = infos.filter((info) => info.since);
+  let seconds = 0;
+  if (timed.length && (status === "completed" || status === "running")) {
+    const since = Math.min(...timed.map((info) => info.since));
+    const until = status === "running" ? now : Math.max(...timed.map((info) => info.until || info.since));
+    seconds = Math.max(0, (until - since) / 1000);
+  }
+  const reused = status === "completed" && timed.length > 0 && timed.every((info) => info.cache);
+  let note = seconds >= 1 ? fmtElapsed(seconds) : "";
+  if (reused) note = "reused";
+  else if (status === "failed" || status === "stopped" || status === "skipped") note = status;
+  return {
+    ...step,
+    status,
+    note,
+    label: status === "running" && infos.some((info) => info.downloading) ? "Download model" : step.label,
+    fill: Math.max(0, Math.min(1, (percent - step.start) / (step.end - step.start))),
+  };
+}
+
+// Engine libraries color their output; healthy runs write warnings to stderr
+// too, so the log stays one color and failures speak through the error box.
+const ANSI_COLOR = /\u001b\[[0-9;]*m/g;
+const plainLogLine = (message) => String(message || "").replace(ANSI_COLOR, "");
+
+export function runSteps(run, percent = runProgressPercent(run), now = Date.now()) {
+  return GENERATION_STEPS.map((step) => stepView(run, step, percent, now));
+}
+
+function StepMark({ step }) {
+  if (step.status === "running") return <ProgressRing value={step.fill * 100} />;
+  if (step.status === "completed") return <I.check />;
+  if (step.status === "failed") return <I.close />;
+  return <i />;
 }
 
 // Offers Fretformer 2 Lite while a slow separation runs, then follows the
@@ -210,6 +269,7 @@ function fmtElapsed(seconds) {
 export default function GenerationProgress({ run, liteOffer = null, liteSwitch = null, onSwitchToLite, onKeepSeparating }) {
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
+  const detailsRef = useRef(null);
   const logRef = useRef(null);
   const running = !run.finishedAt;
   const canceled = Boolean(run.canceled);
@@ -220,6 +280,14 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, [running]);
+
+  // Something went wrong: that's what the details are for.
+  useEffect(() => setExpanded(failed), [failed]);
+
+  // The panel sits at the foot of the rail; opening it shouldn't land off-screen.
+  useEffect(() => {
+    if (expanded) detailsRef.current?.scrollIntoView({ block: "nearest" });
+  }, [expanded]);
 
   // Keep the log pinned to the latest line — including right after it opens.
   useEffect(() => {
@@ -243,56 +311,40 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
   const progressPct = runProgressPercent(run);
   const barPct = !running && !failed && !canceled ? 100 : progressPct;
   const stateClass = failed ? " is-failed" : canceled ? " is-stopped" : running ? " is-running" : " is-done";
-
-  const stageInfos = GENERATION_STAGES.map((_, index) => stageDisplayInfo(run, index));
-  const settled = stageInfos.filter(
-    (info) => info.status === "completed" || info.status === "skipped",
-  ).length;
-  const hasLogs = run.logs.length > 0;
-  // What the collapsed toggle advertises: progress through the pipeline, plus a
-  // hint that there's an engine log waiting behind it.
-  const detailMeta = `${settled}/${GENERATION_STAGES.length} steps${hasLogs ? ` · ${run.logs.length} log lines` : ""}`;
+  const steps = runSteps(run, barPct, now);
 
   return (
-    <div
-      className={"gen-progress" + stateClass}
-      role="region"
-      aria-label="Chart generation progress"
-      aria-live="polite"
-    >
-      <div className="gen-progress-head">
-        {running && !failed ? (
-          <ProgressRing value={progressPct} className="gen-progress-ring" />
-        ) : (
-          <span
-            className={"gen-progress-mark" + (failed ? " bad" : canceled ? "" : " ok")}
-            aria-hidden="true"
-          >
-            {failed ? "✕" : canceled ? "—" : "✓"}
-          </span>
-        )}
-        <div className="gen-progress-title">
-          <b>{headline}</b>
-          {run.summary && <small title={run.summary}>{run.summary}</small>}
-        </div>
-        <span className="gen-progress-clock">
-          {running && !failed ? `${progressPct}% · ` : ""}{fmtElapsed(elapsed)}
+    <div className={"gen-progress" + stateClass} role="region" aria-label="Chart generation progress">
+      <button
+        type="button"
+        className={"gen-progress-head" + (expanded ? " open" : "")}
+        onClick={() => setExpanded((open) => !open)}
+        aria-expanded={expanded}
+        aria-controls="generation-pipeline-details"
+      >
+        <span className="gen-progress-mark" aria-hidden="true">
+          {running ? <ProgressRing value={progressPct} /> : failed ? <I.close /> : canceled ? <i /> : <I.check />}
         </span>
+        <span className="gen-progress-title" aria-live="polite">{headline}</span>
+        <span className="gen-progress-clock">{fmtElapsed(elapsed)}</span>
+        <I.chev />
+      </button>
+      <div
+        className="gen-track"
+        role="progressbar"
+        aria-label="Chart generation completion"
+        aria-valuenow={barPct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={`${barPct}% complete — ${headline}`}
+        aria-busy={running}
+      >
+        {steps.map((step) => (
+          <span key={step.id} className={"st-" + step.status} style={{ flexGrow: step.end - step.start }}>
+            <i style={{ width: `${step.fill * 100}%` }} />
+          </span>
+        ))}
       </div>
-      {!failed && (
-        <div
-          className="gen-progressbar"
-          role="progressbar"
-          aria-label="Chart generation completion"
-          aria-valuenow={barPct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuetext={`${barPct}% complete — ${headline}`}
-          aria-busy={running}
-        >
-          <i style={{ width: `${barPct}%` }} />
-        </div>
-      )}
 
       {failed && <div className="gen-progress-error">{run.error}</div>}
 
@@ -308,58 +360,30 @@ export default function GenerationProgress({ run, liteOffer = null, liteSwitch =
       {run.runtimeFallback && (
         <div className="gen-progress-notice" role="status" aria-live="polite">
           {run.runtimeFallback.reason
-            ? `Accelerated provider unavailable — used CPU. ${run.runtimeFallback.reason}`
-            : "Accelerated provider unavailable — used CPU."}
+            ? `Ran on CPU, the GPU wasn't available. ${run.runtimeFallback.reason}`
+            : "Ran on CPU, the GPU wasn't available."}
         </div>
       )}
 
-      <button
-        type="button"
-        className={"gen-details-toggle" + (expanded ? " open" : "")}
-        onClick={() => setExpanded((open) => !open)}
-        aria-expanded={expanded}
-        aria-controls="generation-pipeline-details"
-      >
-        <I.list />
-        <span className="gen-details-label">PIPELINE</span>
-        {!expanded && <span className="gen-details-meta">{detailMeta}</span>}
-        <span className="gen-details-state">
-          {expanded ? "Hide" : "Show"}
-          <I.chev />
-        </span>
-      </button>
-
       {expanded && (
-        <div className="gen-details-body" id="generation-pipeline-details">
-          <ol className="gen-stage-list">
-            {GENERATION_STAGES.map((stage, index) => {
-              const info = stageInfos[index];
-              const splitting = stage.id === "demucs" && info.status === "running";
-              // The browser version's first run downloads the model while queued.
-              const downloading = info.status === "running" && info.downloading;
-              const label = downloading ? "Download model" : stage.label;
-              const detail = downloading ? "First run only, then it stays in this browser" : stage.detail;
-              return (
-                <li key={stage.id} className={"gen-stage st-" + info.status}>
-                  <span className="gen-stage-dot" aria-hidden="true" />
-                  <span className="gen-stage-label">{label}</span>
-                  <span className="gen-stage-state">{splitting ? "splitting…" : stageStateText(info)}</span>
-                  {info.status === "running" && <span className="gen-stage-detail">{detail}</span>}
-                </li>
-              );
-            })}
+        <div className="gen-details" id="generation-pipeline-details" ref={detailsRef}>
+          <ol className="gen-steps">
+            {steps.map((step) => (
+              <li key={step.id} className={"gen-step st-" + step.status}>
+                <span className="gen-step-mark" aria-hidden="true"><StepMark step={step} /></span>
+                <span>{step.label}</span>
+                <small>{step.note}</small>
+              </li>
+            ))}
           </ol>
 
-          {hasLogs && (
-            <div className="gen-log">
-              <div className="gen-log-head">ENGINE LOG</div>
-              <div className="gen-log-body" ref={logRef}>
-                {run.logs.map((line, i) => (
-                  <div key={i} className={"gen-log-line" + (line.stream === "stderr" ? " err" : "")}>
-                    {line.message}
-                  </div>
-                ))}
-              </div>
+          {run.summary && <p className="gen-run-summary">{run.summary}</p>}
+
+          {run.logs.length > 0 && (
+            <div className="gen-log-body" ref={logRef} tabIndex={0} aria-label="Engine log">
+              {run.logs.map((line, i) => (
+                <div key={i} className="gen-log-line">{plainLogLine(line.message)}</div>
+              ))}
             </div>
           )}
         </div>

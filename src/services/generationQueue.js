@@ -398,7 +398,8 @@ function handleEvent(event) {
     const key = event.type === "song_map"
       ? `song_map:${event.kind}:${event.final ? "final" : event.from || 0}`
       : `${event.type}:${event.stage || ""}`;
-    seen.set(key, { ...seen.get(key), ...event });
+    const earlier = seen.get(key);
+    seen.set(key, { ...earlier, ...event, ...(earlier?.time ? { since: earlier.since || earlier.time } : {}) });
   }
   const before = `${itemPercent(item)}:${item.stage}:${item.onCpu}`;
   if (event.type === "stage") {

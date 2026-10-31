@@ -154,6 +154,22 @@ function assert(condition, message) {
     const separating = { startedAt: 3, stages: { demucs: { status: "running" } } };
     assert(progress.runIsSeparating(separating), "running Demucs stage was not reported as separation");
 
+    // The step track: a run that ended early marks the step it ended in.
+    const trackOf = (run) => progress.runSteps(run).map((step) => step.status).join(",");
+    const reachedStems = { queued: { status: "completed" }, audio: { status: "completed" }, demucs: { status: "running" } };
+    assert(
+      trackOf({ startedAt: 4, finishedAt: 5, error: "boom", stages: reachedStems }) === "completed,failed,pending,pending,pending",
+      "a failed run does not mark the step it failed in"
+    );
+    assert(
+      trackOf({ startedAt: 6, finishedAt: 7, canceled: true, stages: reachedStems }) === "completed,stopped,pending,pending,pending",
+      "a stopped run does not mark the step it stopped in"
+    );
+    assert(
+      trackOf({ startedAt: 8, finishedAt: 9, ok: true, stages: {} }) === "completed,completed,completed,completed,completed",
+      "a finished run leaves steps unfinished"
+    );
+
     // A project that ships a human-charted notes.chart reuses its sync track by
     // default; a project built from bare audio detects timing instead.
     const settings = await bundle("src/data/generationSettings.js", temp);
