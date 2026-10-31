@@ -60,7 +60,7 @@ and [Apple's supported override instructions](https://support.apple.com/102445).
 
 ## First run
 
-1. Setup downloads Fretformer 2 (with its Fill-in model):
+1. Setup downloads Fretformer 2 (with its Inpaint model):
    **952,319,821 bytes (about 952 MB / 908 MiB)**, excluding the app download.
    It takes about 1.17 GB on disk. **Change location** picks another folder for
    it; the other folders are in **Settings**.

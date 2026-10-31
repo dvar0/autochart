@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS = {
   theme: "system",
   // Generator new projects start on; empty follows the catalog default.
   defaultGeneratorId: "",
-  // Lists beta generators (drafting with the fill-in model) in the model picker.
+  // Lists beta generators (drafting with the Inpaint model) in the model picker.
   fillInDrafts: false,
   // "Keep going" on the slow-separation offer: don't offer Fretformer 2 Lite again.
   liteOfferDeclined: false,

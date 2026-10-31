@@ -617,7 +617,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [reusedFrom, setReusedFrom] = useState(null);
   const [cachedGeneratorState] = useState(() => generatorStateFromManifest(lastGeneratorManifest));
   const [generators, setGenerators] = useState(cachedGeneratorState.generators);
-  // Model settings from Settings (default model, Fill-in drafting).
+  // Model settings from Settings (default model, Inpaint drafting).
   const [generatorPreferences, setGeneratorPreferences] = useState(cachedGeneratorState.preferences);
   const [generatorId, setGeneratorId] = useState(() => {
     const { generators: cached, preferences } = cachedGeneratorState;
@@ -691,7 +691,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [workTab, setWorkTab] = useState("generate");
   const [editorState, dispatchEditor] = useReducer(editorReducer, undefined, () => createEditorState(null));
   const [editorSourceVersionId, setEditorSourceVersionId] = useState("");
-  // The Fill-in model picked for the take open in the editor (sourceKey).
+  // The Inpaint model picked for the take open in the editor (sourceKey).
   const [inpaintPick, setInpaintPick] = useState({ sourceKey: "", generatorId: "" });
   const [editorDraftVersionId, setEditorDraftVersionId] = useState("");
   const [editorDirty, setEditorDirty] = useState(false);
@@ -2643,7 +2643,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       if (inpaintBlockedReason) throw new Error(inpaintBlockedReason);
       unsubscribe = subscribeGenerationEvents((event) => {
         if (event?.jobId !== jobId) return;
-        // Before notes come: the browser downloads Fill-in on its first use,
+        // Before notes come: the browser downloads Inpaint on its first use,
         // and a song without stored stems separates first.
         if (event.type === "stage" && event.status === "running") {
           if (event.downloading && Number(event.downloadBytes) > 0) {

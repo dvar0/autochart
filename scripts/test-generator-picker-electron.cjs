@@ -9,7 +9,7 @@
 //   them (three lead-in separations, only one separated for the six-stem set);
 // - a model that marks solos shows Mark solos and Force a solo in More
 //   settings, and the payload carries both;
-// - the fill-in model is listed as Beta only while "Write whole charts" is on;
+// - the Inpaint model is listed as Beta only while "Write whole charts" is on;
 // - Fretformer 2 Lite is listed but never the default while it isn't downloaded.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -259,14 +259,14 @@ async function main() {
     assert.deepEqual(
       await pickerOptions(),
       engineManifest.generators.filter((g) => g.id !== BETA_ID && g.id !== LITE_ID).map((g) => [g.id, g.label]),
-      "fill-in is not offered while Write whole charts is off",
+      "Inpaint is not offered while Write whole charts is off",
     );
 
-    // Write whole charts on: fill-in joins the picker as Beta.
+    // Write whole charts on: Inpaint joins the picker as Beta.
     fillInDrafts = true;
     await click("Library");
     await click("Open project");
-    await waitFor(async () => (await pickerOptions()).some(([id]) => id === BETA_ID), "fill-in in the picker");
+    await waitFor(async () => (await pickerOptions()).some(([id]) => id === BETA_ID), "Inpaint in the picker");
     assert.deepEqual(
       await pickerOptions(),
       engineManifest.generators.filter((g) => g.id !== LITE_ID).map((g) => [g.id, g.id === BETA_ID ? `${g.label} · Beta` : g.label]),

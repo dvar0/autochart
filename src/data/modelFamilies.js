@@ -7,7 +7,7 @@ export const MODEL_FAMILIES = Object.freeze([
     label: "Fretformer 2",
     badge: "2",
     recommended: true,
-    about: "Writes charts. Comes with Fill-in.",
+    about: "Writes charts. Comes with Inpaint.",
     shortLabel: "Fretformer 2",
     generatorId: "autochart.fretformer.v2-onnx",
     inpaintGeneratorId: "autochart.fretformer.v2-inpaint-onnx",
@@ -46,11 +46,11 @@ export const MODEL_FAMILIES = Object.freeze([
 export const BETA_MODELS = Object.freeze([
   Object.freeze({
     id: "fretformer-2-fill-in",
-    label: "Fill-in",
-    badge: "F",
+    label: "Inpaint",
+    badge: "I",
     familyId: "fretformer-2",
     about: "Redoes the parts you pick.",
-    shortLabel: "Fill-in",
+    shortLabel: "Inpaint",
     generatorId: "autochart.fretformer.v2-inpaint-onnx",
   }),
 ]);

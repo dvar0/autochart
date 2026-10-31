@@ -115,16 +115,16 @@ installed bytes at that location, and the engine receives it as
 `job.engine.modelsFolder`; both use the same folder before falling back to
 development symlinks.
 
-## Fretformer 2 and Fill-in
+## Fretformer 2 and Inpaint
 
 `autochart.fretformer.v2-onnx` ("Fretformer 2") and
 `autochart.fretformer.v2-inpaint-onnx` ("Fretformer 2 Inpaint", shown as
-Fill-in) download together as the `fretformer-2` pack into
+Inpaint) download together as the `fretformer-2` pack into
 `<settings.modelsFolder>/fretformer-v2/` and `fretformer-v2-inpaint/`. Both are
 listed on the Generate screen whether or not they are downloaded; new projects
 start on the user's default model, else Fretformer 2 when it is downloaded,
 else any downloaded model. Settings shows one Download per family
-(`src/data/modelFamilies.js` names each family's `packId`). Fill-in is offered
+(`src/data/modelFamilies.js` names each family's `packId`). Inpaint is offered
 for whole charts only while "Write whole charts" is on. Takes are named and
 tagged with their model's label, and a project reopens on the model it last
 generated with. Inpaint rewrites picked bars with Fretformer 2 Inpaint
@@ -197,11 +197,11 @@ Its transcriber reads only the full mix (`stages.transcriber.channelOrder` is
 `["full"]`), so the folder has no Demucs graphs and generation skips separation:
 `needsStems(manifest)` in `pipeline.mjs` is false, the engine emits the
 `demucs` stage as `skipped`, and the result leaves it out of `stages`. The same
-folder holds a fill-in decoder, so Lite fills in its own takes without stems.
+folder holds an inpaint decoder, so Lite inpaints its own takes without stems.
 
-On the Inpaint tab a take starts on its own family's Fill-in model (Lite takes
+On the Inpaint tab a take starts on its own family's Inpaint model (Lite takes
 on Lite, others on Fretformer 2's), and the model picker switches between them.
-Fretformer 2's Fill-in on a Lite take separates first, then keeps the
+Fretformer 2's Inpaint on a Lite take separates first, then keeps the
 separation as usual. Lite's generator lists the `htdemucs_6s` stem set
 (`capabilities.usesStemCache: false`), so the separation cards and Separate now
 use Fretformer 2's separation while Lite is selected.

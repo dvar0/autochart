@@ -63,7 +63,7 @@ const KEEP_STEMS_HELP =
   + "deleted afterwards. Turn this on to keep them. Playing stems separates the song again when they're gone.";
 
 const FILL_IN_DRAFTS_HELP =
-  "Fill-in normally redoes the bars you pick in Inpaint. Turn this on to also use it in Generate to write "
+  "Inpaint normally redoes the bars you pick. Turn this on to also use it in Generate to write "
   + "a whole chart, and to pick it for new projects. It's still experimental.";
 
 const NOTICE_BUTTONS = [

@@ -24,8 +24,8 @@ locally on the user's computer.
 | Folder | Model | Used for |
 | --- | --- | --- |
 | `fretformer-v2/` | Fretformer 2 | Writing charts (recommended) |
-| `fretformer-v2-inpaint/` | Fretformer 2 Fill-in | Redoing the bars you pick, comes with Fretformer 2 |
-| `fretformer-v2-lite/` | Fretformer 2 Lite | Experimental: faster, less accurate, with its own fill-in |
+| `fretformer-v2-inpaint/` | Fretformer 2 Inpaint | Redoing the bars you pick, comes with Fretformer 2 |
+| `fretformer-v2-lite/` | Fretformer 2 Lite | Experimental: faster, less accurate, with its own inpaint model |
 | `fretformer-v1/` | Fretformer v1 | The first model |
 
 Each folder is complete on its own. Folders share some graphs byte for byte
@@ -41,7 +41,7 @@ human review and may benefit from timing, note, or playability edits.
 Fretformer supports Easy, Medium, Hard, and Expert difficulty conditioning.
 Fretformer v1 has controls for speed, chords, technique, movement, and
 repetition; Fretformer 2 for speed, chords, HOPOs, taps, and movement, and it
-also places solo and section markers. Fill-in rewrites picked bars to fit the
+also places solo and section markers. Inpaint rewrites picked bars to fit the
 chart around them. These controls guide generation; they do not guarantee a
 particular result.
 
@@ -57,13 +57,13 @@ guitar, and other. Demucs' STFT runs in Autochart's code, so the Fretformer 2
 folders hold only Demucs' core network.
 
 `fretformer-v2/` holds 9 files (approximately 501 MB); `fretformer-v2-inpaint/`
-holds the same kinds of files plus `fim_decoder_fp32.onnx`, the fill-in
+holds the same kinds of files plus `fim_decoder_fp32.onnx`, the inpaint
 decoder (10 files, approximately 666 MB). Downloaded together they come to
 about 952 MB, since shared files download once.
 
 `fretformer-v2-lite/` reads only the full mix, so it has no Demucs graphs and
 skips separation. It holds Beat This, the transcriber's mel features, an
-encoder, a decoder, a fill-in decoder and its prefix tables (9 files,
+encoder, a decoder, an inpaint decoder and its prefix tables (9 files,
 approximately 555 MB; about 452 MB beyond Fretformer 2's shared files).
 
 The `fretformer-v1/` directory contains 11 files (approximately 693 MB):
@@ -107,7 +107,7 @@ repository commit with the matching application catalog.
 
 ## Licenses and attribution
 
-**Fretformer 2, Fretformer 2 Fill-in, Fretformer 2 Lite, and Fretformer v1
+**Fretformer 2, Fretformer 2 Inpaint, Fretformer 2 Lite, and Fretformer v1
 weights and ONNX exports:** Autochart contributors, CC BY-NC-SA 4.0. Noncommercial use,
 attribution, and share-alike conditions apply to the Fretformer materials.
 See `licenses/cc-by-nc-sa-4.0.txt`.

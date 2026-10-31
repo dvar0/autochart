@@ -20,7 +20,7 @@ gates are in [release-checklist.md](release-checklist.md).
 
 ## Fretformer 2 download
 
-Fretformer 2 and its Fill-in model are in `engine/catalog.json` as the
+Fretformer 2 and its Inpaint model are in `engine/catalog.json` as the
 `fretformer-2` pack and are the catalog default. They aren't on the model host
 yet, so setup can't download them until this is done:
 
@@ -43,8 +43,8 @@ yet, so setup can't download them until this is done:
 - [ ] Release notes give the new download size and say that Fretformer v1 stays
   available in Settings.
 - [ ] Fretformer 2 Lite (`fretformer-2-lite` pack, experimental) downloads from
-  Settings, generates with separation skipped, and fills in its own takes;
-  Fretformer 2's Fill-in on a Lite take separates first. Decide whether it
+  Settings, generates with separation skipped, and inpaints its own takes;
+  Fretformer 2's Inpaint on a Lite take separates first. Decide whether it
   ships in this update or comes out of the catalog.
 - [ ] On a slow machine, a run whose separation is projected past twice the
   song's length offers Lite once; Switch to Lite downloads it and reruns, Keep

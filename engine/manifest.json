@@ -53,7 +53,7 @@
       "label": "Fretformer 2",
       "titleTag": "Fretformer 2",
       "badge": "New",
-      "description": "Six-stem separation, style knobs, and solo and section markers. Comes with Fill-in.",
+      "description": "Six-stem separation, style knobs, and solo and section markers. Comes with Inpaint.",
       "status": "stable",
       "platforms": [
         "linux",
@@ -146,7 +146,7 @@
       "label": "Fretformer 2 Lite",
       "titleTag": "Fretformer 2 Lite",
       "badge": "Lite",
-      "description": "For slower computers: skips stem separation, so it follows the melody less closely. Has its own Fill-in.",
+      "description": "For slower computers: skips stem separation, so it follows the melody less closely. Has its own Inpaint model.",
       "status": "experimental",
       "availability": "installed",
       "platforms": [

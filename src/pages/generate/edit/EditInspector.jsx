@@ -116,7 +116,7 @@ function OverwriteConfirm({ confirm, bars, onConfirm, onCancel }) {
   );
 }
 
-// The Fill-in model, in the same plate the Generate tab uses for its model.
+// The Inpaint model, in the same plate the Generate tab uses for its model.
 function FillModelPlate({ models, value, onChange, disabled }) {
   const selected = models.find((model) => model.generatorId === value);
   return (
@@ -129,7 +129,7 @@ function FillModelPlate({ models, value, onChange, disabled }) {
               value={value}
               onChange={(e) => onChange(e.target.value)}
               disabled={disabled}
-              aria-label="Fill-in model"
+              aria-label="Inpaint model"
             >
               {models.map((model) => (
                 <option key={model.generatorId} value={model.generatorId}>{model.label}</option>
@@ -194,7 +194,7 @@ function RegenTab({
   const downloadShare = pending?.download?.total ? Math.min(1, pending.download.loaded / pending.download.total) : 0;
   const pendingShare = pending?.download ? downloadShare : pending?.total ? pending.done / pending.total : 0;
   const pendingText = !pending ? ""
-    : pending.download ? `Downloading Fill-in · ${Math.round(downloadShare * 100)}%`
+    : pending.download ? `Downloading Inpaint · ${Math.round(downloadShare * 100)}%`
       : pending.separating ? "Separating stems"
         : !pending.done ? "Loading the song"
           : pending.tries > 1 ? `Try ${pending.try + 1} of ${pending.tries} · ${percent}%` : `${percent}%`;

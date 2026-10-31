@@ -133,7 +133,7 @@ texts.
 ## Fretformer 2
 
 - Title: Fretformer 2 model weights and ONNX export (Fretformer 2, its
-  Fill-in model, and Fretformer 2 Lite)
+  Inpaint model, and Fretformer 2 Lite)
 - Creator and copyright: 2026 Autochart contributors
 - Source: Autochart engine catalog components `fretformer-2-onnx`,
   `fretformer-2-fill-in-onnx` and `fretformer-2-lite-onnx`, version 2.0.0

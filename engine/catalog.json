@@ -261,13 +261,13 @@
     {
       "id": "fretformer-2-fill-in-onnx",
       "kind": "chart-model",
-      "label": "Fretformer 2 Fill-in",
+      "label": "Fretformer 2 Inpaint",
       "version": "2.0.0",
       "channel": "stable",
       "license": "CC-BY-NC-SA-4.0",
       "source": "autochart",
       "attribution": {
-        "title": "Fretformer 2 Fill-in model weights and ONNX export",
+        "title": "Fretformer 2 Inpaint model weights and ONNX export",
         "creator": "Autochart contributors",
         "source": "Autochart engine catalog component fretformer-2-fill-in-onnx, version 2.0.0",
         "license": "CC-BY-NC-SA-4.0",
@@ -520,7 +520,7 @@
         },
         {
           "id": "fretformer",
-          "label": "Fretformer 2 and Fill-in",
+          "label": "Fretformer 2 and Inpaint",
           "description": "Creates the playable note chart and redoes the parts you pick.",
           "delivery": "download",
           "fileCount": 12
@@ -622,7 +622,7 @@
         },
         {
           "id": "fretformer",
-          "label": "Fretformer 2 Lite and Fill-in",
+          "label": "Fretformer 2 Lite and Inpaint",
           "description": "Creates the playable note chart from the full mix and redoes the parts you pick.",
           "delivery": "download",
           "fileCount": 7
