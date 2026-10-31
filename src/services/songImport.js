@@ -210,7 +210,8 @@ export async function saveMediaSong(file) {
 // Imports songs (from droppedItems.js: song folders, or { name, file } for a
 // loose audio or video file) one at a time, saving each as it lands, so a
 // stopped or failed run keeps what it finished. Returns the saved projects'
-// ids and titles and why any song failed.
+// ids and titles and why any song failed. onImported also gets the song it
+// came from.
 export async function importSongFolders(folders, { onProgress, onImported, shouldStop } = {}) {
   const imported = [];
   const failed = [];
@@ -223,7 +224,7 @@ export async function importSongFolders(folders, { onProgress, onImported, shoul
         : await saveImportedSong(await importSongFolder(folder.files));
       const project = { id: saved.id, title: saved.meta?.title || folder.name };
       imported.push(project);
-      onImported?.(project);
+      onImported?.(project, folder, saved);
     } catch (error) {
       failed.push({ name: folder.name || "Song", message: error?.message || String(error) });
     }

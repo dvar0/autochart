@@ -31,7 +31,7 @@ import {
 } from "../services/finalChart.js";
 import { exportChart, saveChartToCloneHeroLibrary } from "../services/generation.js";
 import {
-  bulkImportBusy, dismissBulkImport, getBulkImport, startBulkImport, stopBulkImport, subscribeBulkImport, undoBulkImport,
+  bulkImportBusy, dismissBulkImport, getBulkImport, getImportCoversMade, startBulkImport, stopBulkImport, subscribeBulkImport, undoBulkImport,
 } from "../services/bulkImport.js";
 import { dragHasFiles, dragLooksLikeSongs, readDrop } from "../services/droppedItems.js";
 import { SongArchiveError } from "../services/songArchives.js";
@@ -561,6 +561,7 @@ export default function Library({
   const [detailAction, setDetailAction] = useState("");
   const libraryFolderGate = useLibraryFolderGate();
   const bulk = useSyncExternalStore(subscribeBulkImport, getBulkImport);
+  const importCoversMade = useSyncExternalStore(subscribeBulkImport, getImportCoversMade);
   const [dropHot, setDropHot] = useState("");
   const [importError, setImportError] = useState(null);
   const [statusMsg, setStatusMsg] = useState("");
@@ -645,6 +646,11 @@ export default function Library({
       if (firstImportedId && bulkPhase !== "undone") setSelId(firstImportedId);
     }).catch(() => {});
   }, [importedCount, firstImportedId, bulkPhase, loadLibrary]);
+
+  // An imported video's cover lands after the video itself.
+  useEffect(() => {
+    if (importCoversMade) loadLibrary().catch(() => {});
+  }, [importCoversMade, loadLibrary]);
 
   const handleUndoImport = useCallback(() => {
     undoBulkImport({ keepIds: openProjectIds }).catch((err) => setImportError(err.message || String(err)));

@@ -1,5 +1,7 @@
+import { isVideoMedia, makeVideoThumbnail } from "./mediaMetadata.js";
 import { importSongFolders } from "./songImport.js";
-import { deleteProjectRecord, getProjectDeletionDetails, revokeCoverUrl } from "./songLibrary.js";
+import { deleteProjectRecord, getProjectDeletionDetails, revokeCoverUrl, updateSongRecord } from "./songLibrary.js";
+import { createVideoFileUrl } from "./videoPreview.js";
 
 // The desktop Library's song import (song folders and song files), kept
 // outside the page so it carries on (and can still be undone) if the Library
@@ -13,6 +15,47 @@ import { deleteProjectRecord, getProjectDeletionDetails, revokeCoverUrl } from "
 let state = null;
 let stopRequested = false;
 const listeners = new Set();
+
+// A video without embedded art gets a frame from it as its cover, the way
+// opening the project would. That waits for the video to decode (or convert),
+// so it runs after each video is in, one at a time, and never holds up the
+// import. coversMade counts them so the Library can show each one.
+const coverQueue = [];
+let coversRunning = false;
+let coversMade = 0;
+
+async function videoCover(file) {
+  const url = await createVideoFileUrl(file);
+  if (!url) return null;
+  try {
+    return await makeVideoThumbnail(file, url);
+  } finally {
+    if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+  }
+}
+
+async function makeVideoCovers() {
+  if (coversRunning) return;
+  coversRunning = true;
+  while (coverQueue.length) {
+    const { id, file } = coverQueue.shift();
+    try {
+      const cover = await videoCover(file);
+      if (!cover) continue;
+      await updateSongRecord(id, { _blobs: { albumArt: cover } });
+      revokeCoverUrl(id);
+      coversMade += 1;
+      listeners.forEach((listener) => listener());
+    } catch {
+      // Keeps its generated cover; opening the project tries again.
+    }
+  }
+  coversRunning = false;
+}
+
+export function getImportCoversMade() {
+  return coversMade;
+}
 
 function set(next) {
   state = next;
@@ -40,9 +83,13 @@ export async function startBulkImport(folders) {
   const result = await importSongFolders(folders, {
     shouldStop: () => stopRequested,
     onProgress: ({ done, name }) => set({ ...state, done, name, imported: [...imported] }),
-    onImported: (project) => {
+    onImported: (project, song, saved) => {
       imported.push(project);
       set({ ...state, imported: [...imported] });
+      if (song.file && isVideoMedia(song.file) && !saved.assets?.albumArt) {
+        coverQueue.push({ id: project.id, file: song.file });
+        makeVideoCovers();
+      }
     },
   });
   set({ phase: "done", total: folders.length, done: result.imported.length + result.failed.length, ...result });
@@ -64,6 +111,7 @@ export async function undoBulkImport({ keepIds = [] } = {}) {
   const keep = new Set(keepIds);
   const targets = state.imported.filter((project) => !keep.has(project.id));
   const kept = state.imported.length - targets.length;
+  coverQueue.length = 0;
   set({ ...state, phase: "undoing" });
   let removed = 0;
   let disposition = "delete";
