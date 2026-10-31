@@ -151,6 +151,10 @@ async function main() {
     await waitFor(() => evaluate("document.querySelectorAll('#video-test video.bg-layer').length === 2"), 'late video attached to both players', 60000);
     await waitFor(() => evaluate("[...document.querySelectorAll('#video-test video.bg-layer')].every(v => v.readyState >= 2 && Math.abs(v.currentTime - 5) < 0.1)"), 'late video respects paused transport and offset');
     assert.deepEqual(await evaluate("[...document.querySelectorAll('#video-test video.bg-layer')].map(v => getComputedStyle(v).objectFit)"), ['contain', 'contain']);
+    // A small move while paused still shows the frame at the playhead.
+    await evaluate('window.joinedPreview.seek(7.15);');
+    await waitFor(() => evaluate("(() => { const v = document.querySelectorAll('#video-test video.bg-layer')[1]; return !v.seeking && Math.abs(v.currentTime - 5.15) < 0.06; })()"), 'small paused seek moves the video');
+    await evaluate('window.joinedPreview.seek(7);');
     await waitFor(() => evaluate('Boolean(window.videoTest.project.albumUrl)'), 'asynchronous cover extracted');
     console.log('video preview: import returned before conversion', { importMs: Math.round(importMs), previewRequests, fit: 'contain', lateSeek: 'passed' });
 

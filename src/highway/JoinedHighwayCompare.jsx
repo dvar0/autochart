@@ -284,7 +284,9 @@ function JoinedHighwayCompare(
     const video = videoRef.current;
     if (!video) return;
     const mediaTime = Math.max(0, time - resolvedVideoOffset);
-    if (Math.abs(video.currentTime - mediaTime) > 0.3) {
+    // Playing, a little drift is fine and seeking would stutter. Paused, the
+    // frame should be the one at the playhead.
+    if (Math.abs(video.currentTime - mediaTime) > (play ? 0.3 : 0.05)) {
       try {
         video.currentTime = mediaTime;
       } catch {
