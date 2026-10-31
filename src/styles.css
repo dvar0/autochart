@@ -484,7 +484,6 @@ a.brand-row, a.rail-item { text-decoration: none; }
   border: none; background: none; outline: none; flex: 1; min-width: 0;
   font-size: var(--fs-md); color: var(--text);
 }
-.search input:focus-visible { outline: 2px solid var(--purple-bd); outline-offset: 2px; border-radius: 3px; }
 .search input::placeholder { color: var(--text-faint); }
 
 .btn-primary {
@@ -799,8 +798,13 @@ a.brand-row, a.rail-item { text-decoration: none; }
   text-align: left;
   cursor: pointer;
 }
-.tile-select:focus-visible,
+/* One ring per item: focus lights the cover's own ring, and a key pressed while
+   a selected item has focus (Shift, Ctrl, alt-tab) adds nothing. */
+.tile-select:focus-visible { outline: none; }
+.tile-select:focus-visible .tile-art { outline-color: var(--purple-bd); }
+.tile.sel .tile-select:focus-visible .tile-art { transform: translateY(-4px); }
 .row-select:focus-visible { outline: 2px solid var(--purple-bd); outline-offset: 3px; border-radius: var(--r-card); }
+.row.sel .row-select:focus-visible { outline: none; }
 .tile-select .tile-art { pointer-events: none; }
 .tile-art {
   position: relative;
