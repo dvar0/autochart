@@ -229,7 +229,7 @@ async function main() {
     const v1Solos = settingButton("Mark solos");
     await waitFor(() => evaluate(`Boolean(${v1Solos})`), "Mark solos row");
     assert.equal(await evaluate(`${v1Solos}.disabled`), true, "v1 cannot mark solos");
-    assert.equal(await evaluate('document.body.innerText.includes("this model doesn\'t mark solos")'), true, "v1 explains that it has no solos");
+    assert.equal(await evaluate('document.body.innerText.includes("This model doesn\'t mark solos")'), true, "v1 explains that it has no solos");
     await screenshot("1-v1-only");
 
     // The button downloads right there. Settings shows that download instead of
@@ -245,7 +245,7 @@ async function main() {
     await waitFor(() => evaluate('Boolean(document.querySelector(".settings-models"))'), "settings");
     await waitFor(() => evaluate('document.querySelector(".settings-models").innerText.includes("Installing…")'), "settings joining the download");
     assert.equal(installs, 1, "settings started a second download");
-    await click("Generate");
+    await click("Project");
     await waitFor(async () => (await cta()).startsWith("Downloading"), "the download still running on Generate");
     finishInstall();
     await waitFor(async () => /^Generate chart/.test(await cta()), "Generate ready after the download");
@@ -295,10 +295,10 @@ async function main() {
       missing: [...card.querySelectorAll(".demucs-set-missing")].length,
       buttons: [...card.querySelectorAll(".demucs-stem-grid button")].map((b) => b.textContent.trim()),
     }))`);
-    await evaluate('[...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("SEPARATION")).click()');
+    await evaluate('[...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("Separation")).click()');
     await waitFor(async () => (await cards()).length === 3, "three separation cards");
     const sixStemCards = Object.fromEntries((await cards()).map((card) => [card.name, card]));
-    assert.deepEqual(sixStemCards["Default · +0.5s"].labels, ["Fretformer · 4 stems", `${SIX_STEM.label} · 5 stems`]);
+    assert.deepEqual(sixStemCards["Default · +0.5s"].labels, ["Fretformer 1 · 4 stems", `${SIX_STEM.label} · 5 stems`]);
     assert.deepEqual(sixStemCards["Default · +0.5s"].buttons, ["Other", "Drums", "Bass", "Vocals", "Guitar", "Other", "Drums", "Bass", "Vocals"]);
     for (const name of ["Default", "Default · +1s"]) {
       assert.equal(sixStemCards[name].missing, 1, `${name} says it has no six-stem stems yet`);
@@ -311,8 +311,8 @@ async function main() {
     const forceButton = settingButton("Force a solo");
     await waitFor(() => evaluate(`Boolean(${solosButton})`), "Mark solos switch");
     assert.equal(await evaluate(`${solosButton}.disabled`), false, "the six-stem model can mark solos");
-    assert.equal(await evaluate(`${solosButton}.textContent.trim()`), "On", "Mark solos defaults to on");
-    assert.equal(await evaluate(`${forceButton}.textContent.trim()`), "Off", "Force a solo defaults to off");
+    assert.equal(await evaluate(`${solosButton}.getAttribute("aria-pressed")`), "true", "Mark solos defaults to on");
+    assert.equal(await evaluate(`${forceButton}.getAttribute("aria-pressed")`), "false", "Force a solo defaults to off");
     assert.equal(await evaluate(`${forceButton}.disabled`), false, "Force a solo is available while Mark solos is on");
     const tooltip = await evaluate('document.querySelector(".ms-info")?.getAttribute("title") || ""');
     assert.match(tooltip, /takes longer/, "Force a solo has its info tooltip");
@@ -329,7 +329,7 @@ async function main() {
     // Generating briefly disables the console; click once it is back.
     await waitFor(() => evaluate(`${forceButton}.disabled === false`), "Force a solo enabled");
     await evaluate(`(() => { ${forceButton}.click(); return true; })()`);
-    await waitFor(async () => (await evaluate(`${forceButton}.textContent.trim()`)) === "On", "Force a solo on");
+    await waitFor(async () => (await evaluate(`${forceButton}.getAttribute("aria-pressed")`)) === "true", "Force a solo on");
     await screenshot("6-force-solo", ".more-settings");
     await click("Generate chart");
     await waitFor(() => payloads.length === 2, "force-solo generate payload");
@@ -341,7 +341,7 @@ async function main() {
     await openMoreSettings();
     await waitFor(() => evaluate(`${solosButton}.disabled === false`), "Mark solos enabled");
     await evaluate(`(() => { ${solosButton}.click(); return true; })()`);
-    await waitFor(async () => (await evaluate(`${solosButton}.textContent.trim()`)) === "Off", "Mark solos off");
+    await waitFor(async () => (await evaluate(`${solosButton}.getAttribute("aria-pressed")`)) === "false", "Mark solos off");
     assert.equal(await evaluate(`${forceButton}.disabled`), true, "Force a solo is disabled while Mark solos is off");
     await click("Generate chart");
     await waitFor(() => payloads.length === 3, "solos-off payload");

@@ -75,7 +75,7 @@ export function Rail({
     : { id: "library", name: "Library", icon: <I.music /> };
   const pages = [
     home,
-    ...(web ? [] : [{ id: "generate", name: "Generate", icon: <I.bolt /> }]),
+    ...(web ? [] : [{ id: "generate", name: "Project", icon: <I.bolt /> }]),
     { id: "settings", name: "Settings", icon: <I.gear /> },
   ];
   const themeLabel = theme === "system" ? "System theme" : theme === "light" ? "Light mode" : "Dark mode";

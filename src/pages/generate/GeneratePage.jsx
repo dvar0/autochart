@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import useCoverAccent from "../../hooks/useCoverAccent.js";
+import { coverArtSeed } from "../../lib/coverArt/render.js";
 import useGenerateProject from "./useGenerateProject.js";
 import ProjectBar from "./ProjectBar.jsx";
 import PreviewStage from "./PreviewStage.jsx";
@@ -20,10 +22,22 @@ import { targetLabel } from "../../data/supportedTargets.js";
 // deck; Inpaint and Edit swap them for the editor panel and the song map +
 // piano roll. The stage stays put through every switch: one highway, one
 // playhead.
-export default function GeneratePage({ importedSong, initialFile = null, onOpenSongFolders, onSongTitle, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange }) {
+export default function GeneratePage({ importedSong, initialFile = null, onOpenSongFolders, onSongTitle, onSaved, onGeneratedSong, onProjectIdentified, onSetup, onOpenSettings, active = true, workspaceKey, onBusyChange, theme = "light" }) {
   const project = useGenerateProject({ importedSong, onSaved, onGeneratedSong, onProjectIdentified, visible: active });
   const highwayRef = useRef(null);
   const ws = useEditWorkspace(project, highwayRef, active);
+
+  // The rail wears the song's color, as the Library's panel does. The color
+  // settles once typing pauses, so each keystroke doesn't draw a cover.
+  const { title, artist } = project.details || {};
+  const named = Boolean(project.songId || project.sourceAudioFile) && Boolean(title || artist);
+  const seed = named ? coverArtSeed(title, artist) : null;
+  const [tintSeed, setTintSeed] = useState(seed);
+  useEffect(() => {
+    const timer = setTimeout(() => setTintSeed(seed), 400);
+    return () => clearTimeout(timer);
+  }, [seed]);
+  const { tint } = useCoverAccent({ cover: project.albumUrl, artSeed: tintSeed }, theme);
 
   // A project begun from the web Start page arrives with its song file. (Under
   // StrictMode this runs twice; the second read supersedes the first.)
@@ -83,7 +97,7 @@ export default function GeneratePage({ importedSong, initialFile = null, onOpenS
   return (
     <div className="ac-body">
       <div className="main" style={{ padding: 0 }}>
-        <div className={"gen-screen" + (editing ? " is-editing" : "")} data-tab={project.workTab}>
+        <div className={"gen-screen" + (editing ? " is-editing" : "")} data-tab={project.workTab} style={{ "--art-accent": tint }}>
           <ProjectBar project={project} />
           <PreviewStage project={project} ws={ws} highwayRef={highwayRef} onOpenSongFolders={onOpenSongFolders} />
           {editing ? (

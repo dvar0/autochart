@@ -251,7 +251,7 @@ function assert(condition, message) {
     assert(progressSource.includes('aria-controls="generation-pipeline-details"'), "pipeline toggle does not expose its controlled region");
     assert(settingsSource.includes("settings-install-reason") && setupSource.includes("setup-action-reason"), "disabled setup controls lack reasons");
     assert(consoleSource.includes("generate-cta-reason"), "Generate CTA lacks a disabled reason");
-    assert(labelsSource.includes('"Fretformer"') && labelsSource.includes('"FFmpeg media support"'), "shared human label catalog is incomplete");
+    assert(labelsSource.includes('"Fretformer 1"') && labelsSource.includes('"FFmpeg media support"'), "shared human label catalog is incomplete");
     assert(!generationSource.includes("Mock chart generated") && !generationSource.includes("Mock export"), "stale browser mock wording remains");
     assert(!librarySource.includes('useState("inok")'), "stale library selection id remains");
     assert(!hookSource.includes("draftVersionId: editorDraftVersionId") && !hookSource.includes("sourceVersionId: editorSourceVersionId"), "dead editor ids remain in project return");

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import useAppTheme from "../hooks/useAppTheme.js";
 
 // Note-activity histogram drawn behind a seekbar. Each lane is a chart
 // version: bars show notes-per-bin over the song so dense passages read at a
@@ -49,6 +50,7 @@ function drawLaneBars(ctx, bins, binCount, barWidth, y0, bandHeight, max, color,
 
 export default function DensityStrip({ lanes = [], duration = 0, layout = "auto", className = "" }) {
   const canvasRef = useRef(null);
+  const theme = useAppTheme();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -100,7 +102,7 @@ export default function DensityStrip({ lanes = [], duration = 0, layout = "auto"
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [lanes, duration, layout]);
+  }, [lanes, duration, layout, theme]);
 
   return (
     <canvas

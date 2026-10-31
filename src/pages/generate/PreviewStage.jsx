@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import HighwayPreview from "../../highway/HighwayPreview.jsx";
+import useAppTheme from "../../hooks/useAppTheme.js";
 import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import JoinedHighwayCompare from "../../highway/JoinedHighwayCompare.jsx";
 import DensityStrip from "../../highway/DensityStrip.jsx";
@@ -8,6 +9,7 @@ import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
 import { dragHasFiles, readDrop, songFoldersFromFileList } from "../../services/droppedItems.js";
 import { SongArchiveError } from "../../services/songArchives.js";
 import { I } from "../../icons.jsx";
+import { takeTitle } from "./takeNames.js";
 import { GenerationPreviewStage } from "./LiveGeneration.jsx";
 import { StemSeparationStage } from "./StageAnimations.jsx";
 import {
@@ -204,10 +206,11 @@ function DemucsCompareLane({
   const loading = Boolean(lane.stem && loadingKey === demucsAuditionKey(artifact?.id, stemSetId, lane.stem));
   const effectivelyMuted = globalMuted || lane.muted || (anySolo && !lane.solo) || volume <= 0;
   const selectedStem = stems.find((stem) => stem.id === lane.stem);
+  const theme = useAppTheme();
 
   useEffect(() => {
     drawWaveform(canvasRef.current, lane.peaks, progress, Boolean(loaded));
-  }, [lane.peaks, progress, loaded]);
+  }, [lane.peaks, progress, loaded, theme]);
 
   useEffect(() => {
     if (laneAudioRef.current) laneAudioRef.current.volume = volume;
@@ -308,6 +311,7 @@ function DemucsAuditionStage({ project }) {
   const [volume, setVolume] = useState(loadHighwayVolume);
   const [muted, setMuted] = useState(false);
   const [peaks, setPeaks] = useState([]);
+  const theme = useAppTheme();
   const [waveStatus, setWaveStatus] = useState("");
   const [compareLanes, setCompareLanes] = useState(() => [
     { id: "A", artifactId: "", stem: "", audition: null, peaks: [], duration: 0, muted: false, solo: false },
@@ -379,7 +383,7 @@ function DemucsAuditionStage({ project }) {
 
   useEffect(() => {
     drawWaveform(canvasRef.current, peaks, progress, Boolean(demucsAudition?.url));
-  }, [peaks, progress, demucsAudition?.url]);
+  }, [peaks, progress, demucsAudition?.url, theme]);
 
   useEffect(() => {
     const onResize = () => drawWaveform(canvasRef.current, peaks, progress, Boolean(demucsAudition?.url));
@@ -944,57 +948,46 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
 
   return (
     <section className="gen-preview-card">
-      <div className="gen-panel-head">
-        <div className="gen-head-line">
-          <div className="gen-head">{showingDemucsStage ? "SEPARATION AUDITION" : "PREVIEW STAGE"}</div>
-          {!showingDemucsStage && previewMode === "compare" && compareLyric && (
-            <div className="compare-head-lyrics" title={compareLyric.text}>
-              {compareLyric.text}
-            </div>
-          )}
-        </div>
-        <div className="preview-head-actions">
-          {/* Before the take chip, so the chip sits in the same place on every tab. */}
-          {editing && <EditStageActions project={project} />}
-          {showingDemucsStage && (
-            <div className="single-version-head demucs-stage-head-pill">
-              <span className="compare-badge">A</span>
-              <span className="single-version-name" title={demucsAudition?.label || activeDemucsArtifact?.name || "Audio separation"}>
-                {demucsAudition?.label || activeDemucsArtifact?.name || "Audio separation"}
-              </span>
-            </div>
-          )}
-          {!showingDemucsStage && track && !inCompare && selectedSingleVersion && (
-            <div className="single-version-head">
-              <span className="compare-badge">{selectedSingleVersion.badge}</span>
-              <span className="single-version-name" title={selectedSingleVersion.name}>
-                {selectedSingleVersion.name}
-              </span>
-            </div>
-          )}
-          {!showingDemucsStage && track && inCompare && (
-            <>
-              <div className="compare-layout-tabs" aria-label="Compare layout">
-                <button
-                  className={compareLayout === "joined" ? "active" : ""}
-                  onClick={() => handleCompareLayout("joined")}
-                >
-                  Joined
-                </button>
-                <button
-                  className={compareLayout === "split" ? "active" : ""}
-                  onClick={() => handleCompareLayout("split")}
-                >
-                  Split
-                </button>
-              </div>
-              <button className="compare-pill" onClick={regenCompare ? ws.toggleCompare : exitCompare}>
-                ✕ Close compare
+      {/* What's on stage sits on the highway; the stage itself gets the room. */}
+      <div className="stage-overlay">
+        {showingDemucsStage ? (
+          <div className="stage-label" title={demucsAudition?.label || activeDemucsArtifact?.name || "Audio separation"}>
+            <span className="stage-label-name">{demucsAudition?.label || activeDemucsArtifact?.name || "Audio separation"}</span>
+          </div>
+        ) : track && !inCompare && !showingLiveStage && selectedSingleVersion ? (
+          <div className="stage-label" title={selectedSingleVersion.name}>
+            <span className="compare-badge">{selectedSingleVersion.badge}</span>
+            <span className="stage-label-name">{takeTitle(selectedSingleVersion, project.generators || [])}</span>
+            {editing && <EditStageActions project={project} />}
+          </div>
+        ) : <span />}
+        {!showingDemucsStage && track && inCompare && (
+          <div className="stage-overlay-actions">
+            <div className="segmented compare-layout-tabs" aria-label="Compare layout">
+              <button
+                className={compareLayout === "joined" ? "active" : ""}
+                onClick={() => handleCompareLayout("joined")}
+              >
+                Joined
               </button>
-            </>
-          )}
-        </div>
+              <button
+                className={compareLayout === "split" ? "active" : ""}
+                onClick={() => handleCompareLayout("split")}
+              >
+                Split
+              </button>
+            </div>
+            <button className="compare-pill" onClick={regenCompare ? ws.toggleCompare : exitCompare}>
+              <I.close /> Close compare
+            </button>
+          </div>
+        )}
       </div>
+      {!showingDemucsStage && previewMode === "compare" && compareLyric && (
+        <div className="compare-head-lyrics" title={compareLyric.text}>
+          {compareLyric.text}
+        </div>
+      )}
 
       {busyAction === "separating" ? (
         <StemSeparationStage />
@@ -1070,7 +1063,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
           </div>
           {!sourceAudioFile && (
             <span className="dz-browse">
-              <I.upload /> Choose Media File
+              <I.upload /> Choose a media file
             </span>
           )}
           {canOpenFolders && (
@@ -1098,25 +1091,12 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
             <div className="preview-audio-error">{previewAudioError}</div>
           ) : compareLayout === "joined" ? (
             <>
-              <div className="joined-compare-selectors">
-                {joinedCompareVersions.map((version, index) => {
-                  const slotLabel = COMPARE_SLOT_LABELS[index] || String(index + 1);
-                  return (
-                    <div className="joined-version-select" key={`${index}-${version.id}`}>
-                      <span className="compare-badge">{slotLabel}</span>
-                      <span className="compare-pane-name" title={version.name}>
-                        {version.name}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
               <JoinedHighwayCompare
                 ref={joinedCompareRef}
                 charts={joinedCompareVersions.map((version, index) => ({
                   id: version.id,
                   updatedAt: version.updatedAt,
-                  name: version.name,
+                  name: takeTitle(version, project.generators || []),
                   badge: COMPARE_SLOT_LABELS[index] || String(index + 1),
                   track: version.track || baseTrack,
                   compareOffset: compareOffsetForVersion(version),
@@ -1142,7 +1122,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
                     <div className="compare-pane-head">
                       <span className="compare-badge">{slotLabel}</span>
                       <span className="compare-pane-name" title={version.name}>
-                        {version.name}
+                        {takeTitle(version, project.generators || [])}
                       </span>
                     </div>
                     <HighwayPreview
@@ -1175,8 +1155,8 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
             <button className="transport-btn" onClick={handleComparePlay}>
               {comparePlaying ? <><I.pause /> Pause</> : <><I.play /> Play</>}
             </button>
-            <button className="transport-btn ghost" onClick={handleCompareRestart} title="Restart all charts">
-              ⟲
+            <button className="transport-btn ghost icon-only" onClick={handleCompareRestart} title="Restart all charts" aria-label="Restart all charts">
+              <I.restart aria-hidden="true" />
             </button>
             <span className="transport-time">{fmtTime(compareProgress.time)}</span>
             <div
@@ -1227,8 +1207,13 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
               />
             </div>
             {compareLayout === "joined" && (
-              <button className="transport-btn ghost" onClick={handleCompareFullscreen}>
-                {compareFullscreen ? "⤢ Exit" : "⛶ Full screen"}
+              <button
+                className="transport-btn ghost icon-only"
+                onClick={handleCompareFullscreen}
+                title={compareFullscreen ? "Exit full screen" : "Full screen"}
+                aria-label={compareFullscreen ? "Exit full screen" : "Full screen"}
+              >
+                {compareFullscreen ? <I.fullscreenExit aria-hidden="true" /> : <I.fullscreen aria-hidden="true" />}
               </button>
             )}
         </div>}
@@ -1241,10 +1226,6 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
 function EditStageActions({ project }) {
   const { editor } = project;
   const saveLabel = editor.dirty ? "Saving…" : editor.savedAt ? "Saved" : "";
-  return (
-    <span className="stage-edit-meta">
-      {editor.draftVersion && editor.sourceVersion && <span>from {editor.sourceVersion.name}</span>}
-      {saveLabel && <span className={editor.dirty ? "busy" : ""}>{saveLabel}</span>}
-    </span>
-  );
+  if (!saveLabel) return null;
+  return <span className={"stage-edit-meta" + (editor.dirty ? " busy" : "")}>{saveLabel}</span>;
 }

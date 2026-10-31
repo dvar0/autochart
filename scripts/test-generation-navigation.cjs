@@ -96,7 +96,7 @@ async function main() {
     const running = () => evaluate(`Boolean([...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Stop'))`);
     await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector("img.bg-layer"))'), "saved background visible");
-    await click("Media");
+    await click("Song");
     await click("Remove background");
     await waitFor(() => evaluate('!document.querySelector(".bg-layer")'), "background cleared immediately");
     await click("Save");
@@ -104,8 +104,8 @@ async function main() {
     await waitFor(() => evaluate('document.body.innerText.includes("Project saved.")'), "save completed");
     await click("Library");
     await click("Open project");
-    await click("Media");
-    assert.equal(await evaluate('document.body.innerText.includes("Remove background")'), false, "background restored after reopening");
+    await click("Song");
+    assert.equal(await evaluate(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === "Remove background").disabled`), true, "background restored after reopening");
     // Picking another image after clearing is allowed; clearing it before
     // generation must also discard the pending upload.
     await evaluate(`(() => {
@@ -159,7 +159,7 @@ async function main() {
     await waitFor(() => evaluate('document.querySelectorAll(".compare-pane canvas.highway-canvas").length === 2 && !document.querySelector(".highway-loading")'), "split compare ready");
     await evaluate(`${compareButton}.click()`);
     await waitFor(() => evaluate('Number(document.querySelector(".compare-timeline .seekbar")?.value) > 10.2'), "split compare playback advances");
-    await click("✕ Close compare");
+    await click("Close compare");
     await waitFor(() => evaluate('Boolean(document.querySelector(".single-preview"))'), "single preview restored after compare");
     // ...and the single preview carries on playing from compare's time.
     await waitFor(() => evaluate('document.querySelector(".single-preview .transport-btn")?.textContent.includes("Pause") && Number(document.querySelector(".single-preview .seekbar")?.value) > 10.2'), "single preview keeps playing from compare's time");

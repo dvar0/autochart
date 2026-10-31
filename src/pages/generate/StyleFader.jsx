@@ -51,7 +51,7 @@ export default function StyleFader({ knob, color, raw, disabled, onChange }) {
       style={{ "--knob-color": color }}
       title={`${knob.name}: ${knob.hint} (${knob.ends[0]} → ${knob.ends[1]}). Auto lets the model choose.`}
     >
-      <span className="style-fader-value">{isAuto ? "auto" : raw}</span>
+      <span className="style-fader-value">{isAuto ? "" : raw}</span>
       <div
         ref={trackRef}
         className="style-fader-track"

@@ -1,3 +1,4 @@
+import { takeNumber } from "./takeNames.js";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import * as chartWriter from "@autochart/chart-writer";
 import { DIFF } from "../../data/difficultyMetadata.js";
@@ -1875,7 +1876,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         setJustGeneratedId(generated.id);
         if (justGeneratedTimer.current) clearTimeout(justGeneratedTimer.current);
         justGeneratedTimer.current = setTimeout(() => setJustGeneratedId(""), 1700);
-        setStatusMsg(`Generated ${generated.name} as a new version.`);
+        setStatusMsg(`Generated ${generated.name} as a new take.`);
         onSaved?.();
       } else {
         setStatusMsg(result.chartPath ? `Generated chart at ${result.chartPath}` : result.message || `Job ${result.jobId}: ${result.status}`);
@@ -2022,7 +2023,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           ? "E"
         : v.status === "draft"
           ? "M"
-          : String(index),
+          : takeNumber(v, index),
     noteCount: v.noteCount ?? v.meta?.noteCount ?? v.track?.notes?.length ?? 0,
   }));
   const candidateVersions = decoratedVersions.filter((v) => v.id !== FINAL_VERSION_ID);

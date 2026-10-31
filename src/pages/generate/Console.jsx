@@ -116,7 +116,7 @@ export default function Console({ project }) {
               <span className="step-num">3</span>
               <div>
                 <b>Generate</b>
-                <small>Takes land in the deck below the preview.</small>
+                <small>Takes appear below.</small>
               </div>
             </li>
           </ol>
@@ -153,7 +153,7 @@ export default function Console({ project }) {
             <div className="variant-field generation-field">
               <div className="field-line">
                 <label>Difficulty</label>
-                {visibleDifficulties.length === 1 && <small>fixed by this model</small>}
+                {visibleDifficulties.length === 1 && <small>Set by this model</small>}
               </div>
               <div className="difficulty-segments" role="radiogroup" aria-label="Chart difficulty">
                 {visibleDifficulties.map((option) => (
@@ -195,9 +195,7 @@ export default function Console({ project }) {
 
             <div className={"variant-field generation-field style-field" + (hasKnobs ? "" : " is-off")}>
               <div className="field-line">
-                <label>
-                  Style <span className="field-aside">auto = model picks</span>
-                </label>
+                <label>Style</label>
                 {hasKnobs ? (
                   <button
                     type="button"
@@ -213,7 +211,7 @@ export default function Console({ project }) {
                     All auto
                   </button>
                 ) : (
-                  <small>not on this model</small>
+                  <small>Not on this model</small>
                 )}
               </div>
               <div className="style-faders" style={{ "--knob-count": styleKnobs.length }}>
@@ -286,10 +284,9 @@ export default function Console({ project }) {
             <div className="variant-field generation-field lead-in-field">
               <div className="lead-in-label">
                 <label>Lead-in silence</label>
-                <small>{usesSourceChartSync ? "fixed by the imported chart" : "silence added before the song"}</small>
+                <small>{usesSourceChartSync ? "Set by the imported chart" : "Added before the song"}</small>
               </div>
               <div className="lead-in-row">
-                <span>sec</span>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -302,6 +299,7 @@ export default function Console({ project }) {
                   onChange={(e) => updateAdvancedNumberControl("leadInSilenceSeconds", e.target.value)}
                   aria-label="Lead-in silence seconds"
                 />
+                <span>s</span>
               </div>
             </div>
 
@@ -324,7 +322,7 @@ export default function Console({ project }) {
                 className={
                   "gen-cta" +
                   (!sourceAudioFile && !runActive && !modelDownload ? " needs-input" : "") +
-                  (runActive && stopping ? " is-busy" : "")
+                  (runActive ? " is-stop" : "")
                 }
                 onClick={runActive ? handleStopGenerate : modelDownload ? downloadSelectedModel : handleGenerate}
                 disabled={
@@ -354,14 +352,16 @@ export default function Console({ project }) {
                     <span className="cta-spinner" aria-hidden="true" /> Stopping…
                   </>
                 ) : runActive ? (
-                  "Stop"
+                  <>
+                    <I.close /> Stop
+                  </>
                 ) : pendingDownloadMb != null ? (
                   <>
-                    Download and generate{pendingDownloadMb ? ` · ${pendingDownloadMb} MB` : ""} <I.boltFill />
+                    <I.boltFill /> Download and generate{pendingDownloadMb ? ` · ${pendingDownloadMb} MB` : ""}
                   </>
                 ) : (
                   <>
-                    Generate chart <I.boltFill />
+                    <I.boltFill /> Generate chart
                   </>
                 )}
               </button>

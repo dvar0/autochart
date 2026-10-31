@@ -96,21 +96,21 @@ export default function ProjectBar({ project }) {
         <input
           className="project-title-input"
           value={details.title}
-          placeholder="Untitled Song"
+          placeholder="Untitled song"
           onChange={setField("title")}
           aria-label="Song title"
         />
         <input
           className="project-artist-input"
           value={details.artist}
-          placeholder="Unknown Artist"
+          placeholder="Unknown artist"
           onChange={setField("artist")}
           aria-label="Artist"
         />
       </div>
 
       <div className="project-bar-actions">
-        <BarPopover icon={<I.music />} label="Media" isSet={Boolean(sourceAudioFile)}>
+        <BarPopover icon={<I.music />} label="Song" isSet={Boolean(sourceAudioFile)}>
           <div className="bar-pop-current">
             {sourceAudioName ? (
               <>
@@ -139,41 +139,46 @@ export default function ProjectBar({ project }) {
             <span>Video background</span>
             <input type="file" accept="video/*" onChange={pickBackground("video")} disabled={busy} />
           </label>
-          {background && (
-            <button className="bar-pop-btn" onClick={clearBackground} disabled={busy}>
-              <I.trash />
-              <span>Remove background</span>
-            </button>
-          )}
-        </BarPopover>
-
-        <BarPopover icon={<I.pencil />} label="Details">
-          <div className="field">
-            <label>Album</label>
-            <input placeholder="Album" value={details.album} onChange={setField("album")} />
-          </div>
-          <div className="field">
-            <label>Year</label>
-            <input placeholder="Year" value={details.year} onChange={setField("year")} />
-          </div>
-          <div className="field">
-            <label htmlFor="project-genre">Genre</label>
-            <input id="project-genre" placeholder="e.g. Rock" value={details.genre || ""} onChange={setField("genre")} />
-          </div>
-          <div className="field">
-            <label id="project-charter-label">Charter</label>
-            <div className="field-static" role="textbox" aria-readonly="true" aria-labelledby="project-charter-label">
-              <RichText value={details.charter || "Autochart"} />
-            </div>
-            <small>Generated charts are credited to Autochart. Imported chart credits are preserved.</small>
-          </div>
-        </BarPopover>
-
-        {songId && (
-          <button className="bar-btn bar-save" onClick={handleSave} disabled={busy}>
-            {busyAction === "saving" ? "Saving…" : "Save"}
+          <button className="bar-pop-btn" onClick={clearBackground} disabled={busy || !background}>
+            <I.trash />
+            <span>Remove background</span>
           </button>
-        )}
+          <div className="bar-pop-fields">
+            <div className="field">
+              <label>Title</label>
+              <input placeholder="Title" value={details.title} onChange={setField("title")} />
+            </div>
+            <div className="field">
+              <label>Year</label>
+              <input placeholder="Year" value={details.year} onChange={setField("year")} />
+            </div>
+            <div className="field">
+              <label htmlFor="project-genre">Genre</label>
+              <input id="project-genre" placeholder="e.g. Rock" value={details.genre || ""} onChange={setField("genre")} />
+            </div>
+            <div className="field">
+              <label id="project-charter-label">Charter</label>
+              <div
+                className="field-static"
+                role="textbox"
+                aria-readonly="true"
+                aria-labelledby="project-charter-label"
+                title="Generated charts are credited to Autochart. Imported chart credits are preserved."
+              >
+                <RichText value={details.charter || "Autochart"} />
+              </div>
+            </div>
+          </div>
+        </BarPopover>
+
+        <button
+          className="bar-btn bar-save"
+          onClick={handleSave}
+          disabled={busy || !songId}
+          title={songId ? "Save this project" : "Generate a chart first"}
+        >
+          {busyAction === "saving" ? "Saving…" : "Save"}
+        </button>
       </div>
     </header>
   );

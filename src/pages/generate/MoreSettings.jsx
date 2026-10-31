@@ -64,13 +64,12 @@ function Toggle({ on, onClick, disabled }) {
   return (
     <button
       type="button"
-      className={"ms-toggle" + (on ? " on" : "")}
+      className={"model-switch" + (on ? " on" : "")}
       onClick={onClick}
       disabled={disabled}
       aria-pressed={on}
     >
-      <span className="ms-toggle-knob" aria-hidden="true" />
-      {on ? "On" : "Off"}
+      <span className="model-switch-knob" aria-hidden="true" />
     </button>
   );
 }
@@ -189,7 +188,7 @@ export default function MoreSettings({ project }) {
 
         <div className="ms-group">
           <h3>Timing</h3>
-          <Row label="Beat map" hint={usesSourceChartSync ? "taken from the imported chart" : "found from the audio"}>
+          <Row label="Beat map" hint={usesSourceChartSync ? "Taken from the imported chart" : "Found from the audio"}>
             <select
               value={c.timingDetector}
               onChange={(e) => updateGenerationControl("timingDetector", e.target.value)}
@@ -202,7 +201,7 @@ export default function MoreSettings({ project }) {
           </Row>
           <Row
             label="Smoothing"
-            hint={usesSourceChartSync ? "the imported chart is already steady" : "steadies the beat spacing"}
+            hint={usesSourceChartSync ? "The imported chart is already steady" : "Steadies the beat spacing"}
             disabled={usesSourceChartSync}
           >
             <Toggle
@@ -217,7 +216,7 @@ export default function MoreSettings({ project }) {
           <h3>Solos</h3>
           <Row
             label="Mark solos"
-            hint={marksSolos ? "where the model hears one" : "this model doesn't mark solos"}
+            hint={marksSolos ? "Where the model hears one" : "This model doesn't mark solos"}
             disabled={!marksSolos}
           >
             <Toggle
@@ -228,7 +227,7 @@ export default function MoreSettings({ project }) {
           </Row>
           <Row
             label="Force a solo"
-            hint="adds one if the model found none"
+            hint="Adds one if the model found none"
             info={FORCE_SOLO_INFO}
             disabled={!marksSolos || c.solos === false}
           >
@@ -242,7 +241,7 @@ export default function MoreSettings({ project }) {
 
         <div className="ms-group">
           <h3>Sampling</h3>
-          <Row label="Temperature" hint="higher is more varied">
+          <Row label="Temperature" hint="Higher is more varied">
             <input
               inputMode="decimal"
               value={c.temperature}
@@ -251,7 +250,7 @@ export default function MoreSettings({ project }) {
               aria-label="Temperature"
             />
           </Row>
-          <Row label="Top-p" hint="lower is safer">
+          <Row label="Top-p" hint="Lower is safer">
             <input
               inputMode="decimal"
               value={c.topP}
@@ -262,7 +261,7 @@ export default function MoreSettings({ project }) {
           </Row>
           <Row
             label="Style strength"
-            hint={!hasKnobs ? "this model has no style" : knobsSet ? "how hard style is pushed" : "set a style first"}
+            hint={!hasKnobs ? "This model has no style" : knobsSet ? "How hard style is pushed" : "Set a style first"}
             disabled={!knobsSet}
           >
             <input

@@ -465,7 +465,7 @@ function HighwayPreview(
       </div>
       {!hideTransport && <div className="transport">
         <button className="transport-btn" onClick={playing ? pausePreview : playPreview} disabled={!ready}>{playing ? <><I.pause aria-hidden="true" /> Pause</> : <><I.play aria-hidden="true" /> Play</>}</button>
-        <button className="transport-btn ghost" onClick={restartPreview} disabled={!ready} title="Restart from the beginning" aria-label="Restart from the beginning">⟲</button>
+        <button className="transport-btn ghost icon-only" onClick={restartPreview} disabled={!ready} title="Restart from the beginning" aria-label="Restart from the beginning"><I.restart aria-hidden="true" /></button>
         <span className="transport-time">{fmtTime(progress.time)}</span>
         <div className="timeline"><DensityStrip lanes={track ? [{ notes: track.notes, solos: track.solos }] : []} duration={progress.duration || 0} /><input className="seekbar" type="range" min={0} max={progress.duration || 0} step={0.05} value={Math.min(progress.time, progress.duration || 0)} onChange={(event) => seekPreview(Number(event.target.value))} disabled={!ready} aria-label="Preview position" /></div>
         <span className="transport-time">{fmtTime(progress.duration)}</span>
@@ -474,7 +474,7 @@ function HighwayPreview(
           <button type="button" className="transport-btn ghost highway-toggle" onClick={() => setHighwayPanel((open) => !open)} title="Adjust visual highway settings" aria-expanded={highwayPanel} aria-controls="highway-settings-panel">Highway</button>
           {highwayPanel && <div className="highway-settings-panel" id="highway-settings-panel"><div className="settings-title">Highway settings</div><div className="settings-row"><div><div className="settings-label">Tilt</div><div className="settings-hint">Lower is flatter. Higher is steeper.</div></div><div className="calib"><button type="button" onClick={() => adjustHighwayTilt(-HIGHWAY_TILT_STEP)} aria-label="Decrease highway tilt">−</button><span className="calib-val">{tilt.toFixed(2)}</span><button type="button" onClick={() => adjustHighwayTilt(HIGHWAY_TILT_STEP)} aria-label="Increase highway tilt">+</button></div></div><div className="settings-row"><div><div className="settings-label">Lyrics</div><div className="settings-hint">Show lyric events from the chart.</div></div><button type="button" className={"visual-toggle" + (lyricsEnabled ? " on" : "")} onClick={toggleLyrics} aria-pressed={lyricsEnabled}>{lyricsEnabled ? "On" : "Off"}</button></div></div>}
         </div>}
-        <button className="transport-btn ghost" onClick={handleFullscreenToggle} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? "⤢ Exit" : "⛶ Full screen"}</button>
+        <button className="transport-btn ghost icon-only" onClick={handleFullscreenToggle} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? <I.fullscreenExit aria-hidden="true" /> : <I.fullscreen aria-hidden="true" />}</button>
       </div>}
     </div>
   );

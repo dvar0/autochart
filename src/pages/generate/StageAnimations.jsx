@@ -106,17 +106,6 @@ export function StemSeparationStage() {
       <div className="live-stage-board">
         <StageSignal mode="split" />
       </div>
-      <div className="live-stage-status">
-        <div className="live-stage-status-row">
-          <span className="live-rec"><i aria-hidden="true" />SPLIT</span>
-          <div className="live-stage-status-main">
-            <b>Separating stems</b>
-          </div>
-        </div>
-        <div className="gen-progressbar sm" aria-hidden="true">
-          <i className="indeterminate" />
-        </div>
-      </div>
     </div>
   );
 }

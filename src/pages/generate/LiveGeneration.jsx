@@ -4,7 +4,7 @@ import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import LiveNoteStrip from "./LiveNoteStrip.jsx";
 import LiveScore from "./LiveScore.jsx";
 import { StageSignal } from "./StageAnimations.jsx";
-import { describeRunStage, megabytesOf, runDownload, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
+import { describeRunStage, runDownload, runProgressPercent, runIsStreaming, runIsSeparating } from "./GenerationProgress.jsx";
 import { BETA_MODELS, MODEL_FAMILIES } from "../../data/modelFamilies.js";
 import { I } from "../../icons.jsx";
 
@@ -49,11 +49,6 @@ function signalMode(phase) {
   return phase === "separating" ? "split" : phase === "preparing" ? "prep" : "beat";
 }
 
-function modelLabel(generatorId) {
-  return (MODEL_FAMILIES.find((family) => family.generatorId === generatorId)
-    || BETA_MODELS.find((model) => model.generatorId === generatorId))?.label || "the model";
-}
-
 function downloadPercent(download) {
   return download.total ? Math.min(100, (download.loaded / download.total) * 100) : 0;
 }
@@ -87,7 +82,6 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
   const live = project.liveGeneration;
   const phase = liveBoardPhase(project);
   const pct = livePercent(project);
-  const title = project.details?.title || "Live transcription";
   const separating = phase === "separating";
   const download = phase === "downloading" ? runDownload(project.genRun) : null;
   const hasSelectedTrack = Boolean(project.track);
@@ -253,7 +247,7 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
                 onClick={dismissToChart}
                 title="Back to the selected chart"
               >
-                ✕ Chart
+                <I.close /> Chart
               </button>
             )}
           </>
@@ -262,28 +256,6 @@ export function GenerationPreviewStage({ project, highwayRef: sharedHighwayRef, 
         ) : null}
         {scoreShown && <LiveScore map={project.genRun?.map || null} leaving={!scoreOn} />}
       </div>
-      {isLive && <div className="live-stage-status">
-        <div className="live-stage-status-row">
-          <span className={"live-rec" + (download ? " is-download" : "")}>
-            <i aria-hidden="true" />{download ? "DOWNLOAD" : separating ? "SPLIT" : "REC"}
-          </span>
-          <div className="live-stage-status-main">
-            <b>{title}</b>
-            <small>
-              {download
-                ? `Downloading ${modelLabel(project.genRun?.generatorId)} · ${megabytesOf(download.loaded)} of ${megabytesOf(download.total)} MB`
-                : separating
-                  ? "Separating stems"
-                  : [statusLabel(project), beatLabel(live)].filter(Boolean).join(" · ")}
-            </small>
-          </div>
-          {!separating && !download && <span className="live-stage-notes">{live?.noteCount || 0} notes</span>}
-          <span className="live-stage-pct">{Math.round(download ? downloadPercent(download) : pct)}%</span>
-        </div>
-        <div className="gen-progressbar sm" aria-hidden="true">
-          <i style={{ width: `${download ? downloadPercent(download) : pct}%` }} />
-        </div>
-      </div>}
     </div>
   );
 }
@@ -322,9 +294,7 @@ export function LiveGenerationTakeCard({ project, selected = false, onClick }) {
       aria-label={clickable ? "Show live generation board" : undefined}
     >
       <div className="take-card-top">
-        <span className={"live-rec-badge" + (separating ? " split" : "")}>
-          <i />{separating ? "SPLIT" : "REC"}
-        </span>
+        <span className="live-dot" aria-hidden="true"><i /></span>
         <span className="take-name">
           {download
             ? `Downloading the model · ${Math.round(downloadPercent(download))}%`
@@ -348,7 +318,6 @@ export function LiveGenerationTakeCard({ project, selected = false, onClick }) {
       </div>
       {!separating && (
         <div className="take-tags">
-          <span className="take-tag primary">live</span>
           <span className="take-tag mod">{statusLabel(project)}</span>
         </div>
       )}
