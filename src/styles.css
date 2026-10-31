@@ -3608,6 +3608,13 @@ video.bg-layer {
   --text: oklch(from var(--art-accent) .28 .04 h);
   --text-dim: oklch(from var(--art-accent) .40 .04 h);
   --text-faint: oklch(from var(--art-accent) .45 .04 h);
+  /* The accent follows the same hue at the lavender's own lightness and
+     chroma, so tabs and selections don't stay blue on a brown rail. */
+  --purple: oklch(from var(--art-accent) .428 .103 h);
+  --purple-bri: oklch(from var(--art-accent) .537 .13 h);
+  --purple-bg: oklch(from var(--art-accent) .898 .037 h);
+  --rail-sel: oklch(from var(--art-accent) .831 .057 h);
+  --purple-bd: oklch(from var(--art-accent) .715 .094 h);
   background: var(--window);
 }
 .ac-app[data-theme="dark"] .console-rail {
@@ -3619,6 +3626,12 @@ video.bg-layer {
   --text: oklch(from var(--art-accent) .93 .015 h);
   --text-dim: oklch(from var(--art-accent) .82 .025 h);
   --text-faint: oklch(from var(--art-accent) .78 .025 h);
+  --purple: oklch(from var(--art-accent) .817 .091 h);
+  --purple-fg: oklch(from var(--art-accent) .311 .04 h);
+  --purple-bri: oklch(from var(--art-accent) .863 .066 h);
+  --purple-bg: oklch(from var(--art-accent) .417 .06 h);
+  --rail-sel: var(--purple-bg);
+  --purple-bd: oklch(from var(--art-accent) .678 .101 h);
 }
 /* state-aware emptiness: numbered mini-guide instead of dead controls */
 .console-steps {
