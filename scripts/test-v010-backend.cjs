@@ -234,6 +234,8 @@ async function main() {
   assert.equal(runtimeSelection.platformLabel("darwin"), "macOS");
   assert.equal(runtimeSelection.normalizeRequestedHardwareMode("macos"), "cpu");
   assert.equal(settingsStore.normalizeSettings({ hardwareMode: "macos" }).hardwareMode, "cpu");
+  // A download source saved by 0.1.0 must not outlive the update.
+  assert.equal(settingsStore.normalizeSettings({ assetBaseUrl: "https://example.test/old" }).assetBaseUrl, undefined);
   const packs = [
     { id: "standard-linux-cpu", platforms: ["linux"], architectures: ["x64"] },
     { id: "standard-linux-webgpu", platforms: ["linux"], architectures: ["x64"] },
@@ -276,6 +278,42 @@ async function main() {
   assert.equal(runtimeSelection.effectiveHardwareMode({ hardwareMode: "auto" }, "linux", "arm64"), "cpu");
   assert.equal(modelManager.deriveCombinedStatus({ platform: "linux", arch: "x64", packStatus: "corrupt" }), "corrupt");
   assert.equal(modelManager.deriveCombinedStatus({ platform: "linux", arch: "x64", packStatus: "partial" }), "partial");
+
+  // Licenses another model's download installed don't make this model partial.
+  const modelsRoot = await fs.mkdtemp(path.join(os.tmpdir(), "autochart-model-scan-"));
+  try {
+    const scanStatus = async () => {
+      const scan = await modelManager.scanModelSetup({
+        settings: { modelsFolder: modelsRoot },
+        catalog: {
+          packs: [],
+          components: [{
+            id: "scan-test",
+            label: "Scan test",
+            files: [
+              { path: "scan-test/first.onnx", source: "remote", size: 5 },
+              { path: "scan-test/second.onnx", source: "remote", size: 5 },
+              { path: "licenses/scan-test.txt", source: "bundled-license", size: 7 },
+            ],
+          }],
+        },
+      });
+      return scan.components[0].status;
+    };
+    await fs.mkdir(path.join(modelsRoot, "licenses"));
+    await fs.mkdir(path.join(modelsRoot, "scan-test"));
+    await fs.writeFile(path.join(modelsRoot, "licenses/scan-test.txt"), "license");
+    assert.equal(await scanStatus(), "missing");
+    await fs.writeFile(path.join(modelsRoot, "scan-test/first.onnx"), "model");
+    assert.equal(await scanStatus(), "partial");
+    await fs.writeFile(path.join(modelsRoot, "scan-test/second.onnx"), "model");
+    assert.equal(await scanStatus(), "ready");
+    await fs.rm(path.join(modelsRoot, "scan-test"), { recursive: true });
+    await fs.writeFile(path.join(modelsRoot, "licenses/scan-test.txt"), "damaged license");
+    assert.equal(await scanStatus(), "corrupt");
+  } finally {
+    await fs.rm(modelsRoot, { recursive: true, force: true });
+  }
 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "autochart-demucs-workspace-"));
   try {

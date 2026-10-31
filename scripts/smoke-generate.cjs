@@ -115,7 +115,6 @@ function defaultSettings(args) {
     modelsFolder: args.modelsFolder,
     cacheFolder: args.cacheFolder,
     cloneHeroLibraryFolder: "",
-    assetBaseUrl: args.assetBaseUrl,
     hardwareMode: args.hardware,
   };
 }
@@ -302,7 +301,7 @@ async function installIfNeeded(settings, args) {
 
   const packId = await packOf(manifest, generator.id);
   log("installing assets", packId || currentScan.standardPack?.id || "standard pack");
-  const install = await assetInstaller.installAssets(runtimeSettings, {
+  const install = await assetInstaller.installAssets({ ...runtimeSettings, assetBaseUrl: args.assetBaseUrl }, {
     packId,
     onProgress: (event) => {
       if (event.type === "progress" && Number.isFinite(event.percent)) {

@@ -2,7 +2,6 @@ const path = require("path");
 
 const settingsStore = require("./settingsStore.cjs");
 const libraryStore = require("./libraryStore.cjs");
-const assetInstaller = require("./assetInstaller.cjs");
 
 function resolveValue(value) {
   return typeof value === "function" ? value() : value;
@@ -38,7 +37,6 @@ function createHostContext({
         cacheParentFolder,
         cacheFolder: path.join(cacheParentFolder, settingsStore.CACHE_DIR_NAME),
         cloneHeroLibraryFolder: "",
-        assetBaseUrl: process.env.AUTOCHART_ASSETS_BASE_URL || assetInstaller.DEFAULT_ASSET_BASE_URL,
       };
     }
     if (process.platform === "darwin") {
@@ -49,7 +47,6 @@ function createHostContext({
         cacheParentFolder,
         cacheFolder: path.join(cacheParentFolder, settingsStore.CACHE_DIR_NAME),
         cloneHeroLibraryFolder: "",
-        assetBaseUrl: process.env.AUTOCHART_ASSETS_BASE_URL || assetInstaller.DEFAULT_ASSET_BASE_URL,
       };
     }
     const cacheParentFolder = path.join(
@@ -66,7 +63,6 @@ function createHostContext({
       cacheParentFolder,
       cacheFolder: path.join(cacheParentFolder, settingsStore.CACHE_DIR_NAME),
       cloneHeroLibraryFolder: "",
-      assetBaseUrl: process.env.AUTOCHART_ASSETS_BASE_URL || assetInstaller.DEFAULT_ASSET_BASE_URL,
     };
   }
 

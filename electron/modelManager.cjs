@@ -377,16 +377,16 @@ async function scanComponent(
     }
     const inspected = await inspectFile(file, fileRoots, installedCatalogs);
     files.push(inspected);
-    // A clean source checkout already has a model descriptor and licenses.
-    // Those verified source files alone are not a partial model installation.
-    // Installed copies, model data, and corrupt files still count for repair.
-    const checkoutSupportFile = inspected.status === "ready" && (
+    // A clean source checkout already has a model descriptor, and licenses are
+    // shared between models, so another model's download installs them too.
+    // Those verified files alone are not a partial model installation. Model
+    // data and corrupt files still count for repair.
+    const supportFile = inspected.status === "ready" && (
       (path.basename(file.path) === "manifest.json" &&
         inspected.resolvedPath === path.resolve(developmentModelsRoot, file.path)) ||
-      (file.source === "bundled-license" && developmentAssetRoot &&
-        inspected.resolvedPath === path.resolve(developmentAssetRoot, file.path))
+      file.source === "bundled-license"
     );
-    if (inspected.status !== "missing" && !checkoutSupportFile) hasInstallationFiles = true;
+    if (inspected.status !== "missing" && !supportFile) hasInstallationFiles = true;
   }
 
   const artifactStatuses = files.map((file) => file.status);
@@ -577,12 +577,12 @@ function summarizeGeneratorStatus(requirements, inferredFiles) {
     if (failedComponent.status === "unsupported") {
       message = failedComponent.message || `${failedComponent.label} is not supported on this platform.`;
     } else if (failedComponent.status === "corrupt") {
-      message = `The ${failedComponent.label} needs repair. Open Setup to scan or repair the chart generation package.`;
+      message = `${failedComponent.label} has a damaged file. Repair it in Settings.`;
     } else {
-      message = `The ${failedComponent.label} is not installed. Open Setup to scan or repair the chart generation package.`;
+      message = `${failedComponent.label} isn't downloaded. Download it in Settings.`;
     }
   } else if (failedFile) {
-    message = `The model file ${failedFile.path} is not installed. Open Setup to scan or repair the chart generation package.`;
+    message = "A model file is missing. Download the model again in Settings.";
   }
   return {
     status,

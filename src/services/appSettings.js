@@ -13,7 +13,6 @@ const DEFAULT_SETTINGS = {
   updateChannel: "stable",
   theme: "system",
   railCollapsed: false,
-  assetBaseUrl: "",
   defaultGeneratorId: "",
   fillInDrafts: false,
   liteOfferDeclined: false,

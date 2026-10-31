@@ -33,7 +33,6 @@ const DEFAULT_SETTINGS = {
   hardwareMode: "auto",
   updateChannel: "stable",
   theme: "system",
-  assetBaseUrl: "",
   // Generator new projects start on; empty follows the catalog default.
   defaultGeneratorId: "",
   // Lists beta generators (drafting with the fill-in model) in the model picker.
@@ -94,7 +93,9 @@ function normalizeSettings(settings = {}, defaults = {}) {
     ? next.updateChannel
     : DEFAULT_SETTINGS.updateChannel;
   next.theme = ["system", "light", "dark"].includes(next.theme) ? next.theme : DEFAULT_SETTINGS.theme;
-  next.assetBaseUrl = String(next.assetBaseUrl || "").trim();
+  // Older versions saved their model download source here, which would keep
+  // them on that revision's files after an update.
+  delete next.assetBaseUrl;
   next.defaultGeneratorId = String(next.defaultGeneratorId || "").trim();
   next.fillInDrafts = next.fillInDrafts === true;
   next.liteOfferDeclined = next.liteOfferDeclined === true;
