@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import useAppTheme from "../../../hooks/useAppTheme.js";
 import { FRET_COLORS, OPEN_NOTE_COLOR } from "../../../data/notePalette.js";
 import { snapTicks } from "./chartEditor.js";
 import {
@@ -37,7 +38,8 @@ const SECTION_ROW_H = 24;
 const BAR_ROW_H = 22;
 const SP_H = 20;
 const SOLO_H = 20;
-const SCROLLBAR_H = 18;
+// Room for the horizontal scrollbar, so it never covers the solo strip.
+const SCROLLBAR_H = 14;
 const EDGE_GRAB = 5;
 const SUSTAIN_GRAB = 7;
 const SELECTION_GRAB = 6;
@@ -255,7 +257,7 @@ export default function PianoRollEditor({
     const surface2 = vars.getPropertyValue("--surface-2").trim() || (dark ? "#3d4761" : "#e3e7f4");
     const border = vars.getPropertyValue("--border").trim() || (dark ? "#505a76" : "#a7b2d4");
     const borderSoft = vars.getPropertyValue("--border-soft").trim() || (dark ? "#404b66" : "#c7cfe7");
-    const textDim = vars.getPropertyValue("--text-dim").trim() || (dark ? "#95a0bb" : "#535a7c");
+    const textDim = vars.getPropertyValue("--text-dim").trim() || (dark ? "#aeb6cc" : "#535a7c");
     const purple = vars.getPropertyValue("--purple").trim() || (dark ? "#92a3d3" : "#4a4585");
     const purpleBri = vars.getPropertyValue("--purple-bri").trim() || purple;
     const orange = vars.getPropertyValue("--orange").trim() || "#ea76cb";
@@ -293,10 +295,6 @@ export default function PianoRollEditor({
       ctx.stroke();
     }
 
-    // The horizontal scrollbar lives in this footer band, so it never covers
-    // the solo strip at the bottom of the editable lanes.
-    ctx.fillStyle = dark ? "rgba(20,22,34,0.72)" : "rgba(241,243,251,0.92)";
-    ctx.fillRect(0, editorH, viewW, SCROLLBAR_H);
 
     // Grid lines (snap subdivisions, beats, bars).
     const snapStep = snapTicks(activeDoc.resolution, editorRef.current.snap);
@@ -708,9 +706,10 @@ export default function PianoRollEditor({
   }, [onViewChange]);
 
   // Redraw on any state that affects the picture.
+  const theme = useAppTheme();
   useEffect(() => {
     scheduleDraw();
-  }, [doc, editor.revision, editor.selectedNoteIds, editor.selectedRangeIds, editor.playhead, editor.snap, pxPerBeat, layout, mode, bars, sections, regions, pending, loops, activeLoop, scheduleDraw]);
+  }, [doc, editor.revision, editor.selectedNoteIds, editor.selectedRangeIds, editor.playhead, editor.snap, pxPerBeat, layout, mode, bars, sections, regions, pending, loops, activeLoop, theme, scheduleDraw]);
 
   useEffect(() => {
     reportView();

@@ -71,7 +71,7 @@ export default function EditTimeline({ project, ws }) {
               aria-label="Mouse and keys"
               title="Mouse and keys"
             >
-              <I.info />
+              ?
             </button>
             {ws.helpOpen && <EditHelp tab={ws.tab} />}
           </div>
@@ -92,7 +92,7 @@ export default function EditTimeline({ project, ws }) {
                   : undefined
             }
           >
-            {ws.comparing ? "✕ Comparing" : `Compare (${ws.compareMarks.length})`}
+            {ws.comparing ? <><I.close /> Comparing</> : `Compare (${ws.compareMarks.length})`}
           </button>
         </div>
       </div>

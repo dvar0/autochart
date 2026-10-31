@@ -217,7 +217,7 @@ function RegenTab({
                     {redoLabel(bars, [region], sections)}
                   </button>
                   <button className="insp-spot-x" onClick={() => onRemoveArea(region)} title="Remove" aria-label="Remove">
-                    ×
+                    <I.close />
                   </button>
                 </span>
               ))}
@@ -237,9 +237,7 @@ function RegenTab({
           <div className="field-line">
             <label>
               Tries
-              <i className="ms-info insp-info" title={TRIES_INFO} aria-label={TRIES_INFO} role="img">
-                <I.info />
-              </i>
+              <i className="help-dot" title={TRIES_INFO} aria-label={TRIES_INFO} role="img">?</i>
             </label>
           </div>
           <div className="preset-grid tries-grid" role="radiogroup" aria-label="Tries">
@@ -259,9 +257,7 @@ function RegenTab({
         </div>
         <div className="variant-field generation-field style-field">
           <div className="field-line">
-            <label>
-              Style <span className="field-aside">auto = model picks</span>
-            </label>
+            <label>Style</label>
             <button type="button" className="field-link" onClick={onAllAuto} disabled={busy || allAuto}>
               All auto
             </button>
@@ -298,7 +294,7 @@ function RegenTab({
                 disabled={Boolean(blockedReason)}
                 title={blockedReason || "Inpaint (R)"}
               >
-                Inpaint <I.spark />
+                <I.spark /> Inpaint
               </button>
             </div>
           )}
@@ -307,7 +303,7 @@ function RegenTab({
 
       <section className="insp-card insp-history">
         <div className="insp-eyebrow">
-          INPAINTED
+          Inpainted
           <button
             type="button"
             className="field-link insp-alike"
@@ -315,7 +311,7 @@ function RegenTab({
             disabled={!canPickMostAlike}
             title="Switch repeated sections (Verse 1, Verse 2) to the tries that look most alike"
           >
-            Pick most alike
+            Pick the closest
           </button>
         </div>
         {redos.length ? (
@@ -325,7 +321,7 @@ function RegenTab({
             {inpaintRuns(doc).map(({ run, number, rows }) => (
               <li key={run.id}>
                 <div className="insp-run-head">
-                  INPAINT <b>{number}</b>
+                  Inpaint <b>{number}</b>
                   <time>{runTime(run.at)}</time>
                 </div>
                 <ul>
