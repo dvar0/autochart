@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { I } from "../icons.jsx";
 import { generationDownloadSize } from "../data/generationCatalog.js";
 import { DeviceReadout, UNCHECKED_DEVICE, browserLabel, deviceFromProbe, memoryText } from "../components/DeviceFacts.jsx";
+import { askConfirm } from "../components/ConfirmDialog.jsx";
 import InstallProgress from "../components/InstallProgress.jsx";
 import {
   friendlyTarget,
@@ -359,12 +360,16 @@ export default function Settings() {
     }
   };
 
-  const confirmAndClearCache = () => {
+  const confirmAndClearCache = async () => {
     const cachePath = settings.cacheFolder;
     if (!cachePath) return;
-    const confirmed = window.confirm(
-      `Clear Autochart cache?\n\nThis permanently deletes only Autochart's owned cache directory:\n${cachePath}\n\nThis cannot be undone.`
-    );
+    const confirmed = await askConfirm({
+      title: "Clear the cache?",
+      body: "This deletes Autochart's separations and analysis for good. Your projects stay.",
+      detail: cachePath,
+      confirmLabel: "Clear cache",
+      danger: true,
+    });
     if (confirmed) {
       void runAction("clear-cache", () => clearCacheFolder(cachePath));
     }
@@ -435,7 +440,8 @@ export default function Settings() {
   // Browser version: models and separations live in the browser's storage, which
   // phones run short of, so they can be removed here.
   const removeDownloads = async (request, question) => {
-    if (!window.confirm(question)) return;
+    const confirmed = await askConfirm({ title: "Remove downloads?", body: question, confirmLabel: "Remove", danger: true });
+    if (!confirmed) return;
     setBusy(request.all ? "removing-all" : `removing-${request.packId}`);
     setMessage("");
     try {
@@ -457,7 +463,7 @@ export default function Settings() {
       .reduce((sum, id) => sum + (generatorsById.get(id)?.setup?.bytes || 0), 0);
     void removeDownloads(
       { packId: family.packId },
-      `Remove ${family.label} from this browser?${bytes ? ` This frees ${formatSize(bytes)}.` : ""}\n\nIt downloads again the next time you use it.`
+      `${family.label} leaves this browser${bytes ? `, freeing ${formatSize(bytes)}` : ""}. It downloads again the next time you use it.`
     );
   };
 
@@ -472,7 +478,7 @@ export default function Settings() {
     ].filter(Boolean).join(", ");
     void removeDownloads(
       { all: true },
-      `Remove all models and separations from this browser?${parts ? ` (${parts})` : ""}\n\nModels download again, and songs separate again, the next time you generate. Your songs and charts stay.`
+      `Models and separations leave this browser${parts ? ` (${parts})` : ""}. They come back the next time you generate. Your songs and charts stay.`
     );
   };
 
@@ -741,18 +747,34 @@ export default function Settings() {
                   <div className="folder-row" key={row.key}>
                     <div className="folder-row-copy">
                       <b>{row.title}</b>
-                      <span className={"folder-path" + (value ? "" : " empty")} title={value || ""}>
-                        {value ? shortPath(value, home) : "Not set"}
-                      </span>
-                    </div>
-                    <div className="folder-row-actions">
                       <button
-                        className="settings-secondary"
+                        type="button"
+                        className={"folder-path" + (value ? "" : " empty")}
                         onClick={() => runAction("opening", () => openSettingsPath(row.key))}
                         disabled={Boolean(busy) || !value}
-                        title="Open folder"
+                        title={value ? `Open ${value}` : ""}
                       >
-                        <I.open /> Open
+                        {value ? shortPath(value, home) : "Not set"}
+                      </button>
+                    </div>
+                    <div className="folder-row-actions">
+                      {row.key === "cacheFolder" && (
+                        <button
+                          className="folder-link"
+                          onClick={confirmAndClearCache}
+                          disabled={Boolean(busy) || !value}
+                          title="Delete separations and analysis"
+                        >
+                          Clear
+                        </button>
+                      )}
+                      <button
+                        className="folder-link"
+                        onClick={() => runAction(`reset-${row.key}`, () => resetSettingsPath(row.key))}
+                        disabled={Boolean(busy) || atDefault}
+                        title={atDefault ? "Already the default" : "Go back to the default folder"}
+                      >
+                        Reset
                       </button>
                       <button
                         className="settings-secondary"
@@ -760,26 +782,8 @@ export default function Settings() {
                         disabled={Boolean(busy)}
                         title="Choose another folder"
                       >
-                        <I.inbox /> Change
+                        Change
                       </button>
-                      <button
-                        className="settings-secondary"
-                        onClick={() => runAction(`reset-${row.key}`, () => resetSettingsPath(row.key))}
-                        disabled={Boolean(busy) || atDefault}
-                        title={atDefault ? "Already the default" : "Go back to the default folder"}
-                      >
-                        <I.undo /> Reset
-                      </button>
-                      {row.key === "cacheFolder" && (
-                        <button
-                          className="settings-secondary"
-                          onClick={confirmAndClearCache}
-                          disabled={Boolean(busy) || !value}
-                          title="Delete separations and analysis"
-                        >
-                          <I.trash /> Clear
-                        </button>
-                      )}
                     </div>
                   </div>
                 );

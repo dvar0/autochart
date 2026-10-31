@@ -97,7 +97,7 @@ export default function UpdateSheet({ state, busy, onClose, onWhatsNew }) {
     <ReleaseCard
       label="Updates"
       kicker={update ? `Autochart ${update.version}` : `Autochart ${current}`}
-      title={update ? update.headline || `Autochart ${update.version} is out` : "You're up to date"}
+      title={update ? update.headline || `Autochart ${update.version} is out` : state?.lastCheckedAt ? "You're up to date" : "Updates"}
       sub={update ? update.sub : ""}
       image={image}
       onClose={onClose}
