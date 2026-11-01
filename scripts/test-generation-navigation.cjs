@@ -155,10 +155,14 @@ async function main() {
       seek.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
     await waitFor(() => evaluate('document.querySelector(".compare-transport .transport-time")?.textContent === "0:10"'), "compare seek updates transport");
-    await click("Split");
-    await waitFor(() => evaluate('document.querySelectorAll(".compare-pane canvas.highway-canvas").length === 2 && !document.querySelector(".highway-loading")'), "split compare ready");
+    // Grid is the same highways tiled: switching keeps the engine, so it
+    // keeps the time and doesn't reload.
+    await click("Grid");
+    await waitFor(() => evaluate('Boolean(document.querySelector(".joined-highway-grid.is-grid")) && document.querySelectorAll(".joined-highway-canvas").length === 2 && !document.querySelector(".highway-loading")'), "grid compare ready");
     await evaluate(`${compareButton}.click()`);
-    await waitFor(() => evaluate('Number(document.querySelector(".compare-timeline .seekbar")?.value) > 10.2'), "split compare playback advances");
+    await waitFor(() => evaluate('Number(document.querySelector(".compare-timeline .seekbar")?.value) > 10.2'), "grid compare playback advances");
+    await click("Side by side");
+    await waitFor(() => evaluate('Boolean(document.querySelector(".joined-highway-grid.is-side")) && document.querySelector(".compare-transport .transport-btn")?.textContent.includes("Pause")'), "side by side keeps playing after the switch");
     await click("Close compare");
     await waitFor(() => evaluate('Boolean(document.querySelector(".single-preview"))'), "single preview restored after compare");
     // ...and the single preview carries on playing from compare's time.

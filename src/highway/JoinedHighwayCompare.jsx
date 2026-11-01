@@ -198,6 +198,8 @@ function createJoinedRendererAdapter(getStates, getEngine) {
 function JoinedHighwayCompare(
   {
     charts = [],
+    // "side": all highways in one row. "grid": two per row, tiled.
+    layout = "side",
     audioBuffer,
     background,
     muted = false,
@@ -471,6 +473,13 @@ function JoinedHighwayCompare(
     };
   }, [redrawCurrent]);
 
+  // Switching layout keeps the engine and playback; only the canvases change
+  // size, which the stage's ResizeObserver doesn't see.
+  useEffect(() => {
+    const rafId = requestAnimationFrame(redrawCurrent);
+    return () => cancelAnimationFrame(rafId);
+  }, [layout, redrawCurrent]);
+
   useEffect(() => {
     const engine = engineRef.current;
     if (background?.type === "video" && engine) syncVideo(engine.songTime, playing);
@@ -483,7 +492,7 @@ function JoinedHighwayCompare(
       <div className="highway-wrap preview-stage joined-compare-stage" ref={stageRef}>
         <HighwayBackground background={background} videoRef={videoRef} onVideoReady={() => syncVideo(engineRef.current?.songTime || 0, Boolean(engineRef.current?.running))} />
         <div
-          className={`joined-highway-grid joined-highway-grid-${visibleCharts.length || 1}`}
+          className={`joined-highway-grid joined-highway-grid-${visibleCharts.length || 1} is-${layout === "grid" ? "grid" : "side"}`}
           style={{ "--joined-count": visibleCharts.length || 1 }}
         >
           {visibleCharts.map((chart, index) => (
@@ -505,7 +514,7 @@ function JoinedHighwayCompare(
         </div>
         {!visibleCharts.length && <div className="highway-empty">{t("Choose two chart versions to compare.")}</div>}
         {visibleCharts.length > 0 && !ready && !error && (
-          <div className="highway-empty highway-loading">{t("Loading joined compare…")}</div>
+          <div className="highway-empty highway-loading">{t("Loading compare…")}</div>
         )}
         {error && <div className="highway-empty play-error">{error}</div>}
       </div>

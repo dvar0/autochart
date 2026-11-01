@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import HighwayPreview from "../../highway/HighwayPreview.jsx";
 import useAppTheme from "../../hooks/useAppTheme.js";
 import useSpaceToPlay from "../../hooks/useSpaceToPlay.js";
 import JoinedHighwayCompare from "../../highway/JoinedHighwayCompare.jsx";
@@ -703,7 +702,6 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
   // versions of regenerated areas in the slots and the song map as transport.
   const regenCompare = editing && Boolean(ws?.comparing);
   const inCompare = regenCompare || previewMode === "compare";
-  const compareCount = regenCompare ? ws.compareCharts.length : selectedCompareVersions.length;
 
   const [dropHot, setDropHot] = useState(false);
   // An empty project also opens Clone Hero song folders, in its own place.
@@ -711,7 +709,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
   const [folderError, setFolderError] = useState("");
   const folderInputRef = useRef(null);
   const canOpenFolders = Boolean(onOpenSongFolders) && !sourceAudioFile && !busy;
-  const [compareLayout, setCompareLayout] = useState("joined");
+  const [compareLayout, setCompareLayout] = useState("side");
   const [comparePlaying, setComparePlaying] = useState(false);
   const [compareProgress, setCompareProgress] = useState({ time: 0, duration: 0 });
   const compareDuration = compareProgress.duration;
@@ -720,13 +718,12 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
   const lastCompareVolumeRef = useRef(compareVolume > 0 ? compareVolume : 1);
   const compareShellRef = useRef(null);
   const joinedCompareRef = useRef(null);
-  const comparePreviewRefs = useRef([]);
 
   // Where the single stage picks up after a compare closes.
   const [handoff, setHandoff] = useState({ time: 0, playing: false });
 
   useEffect(() => {
-    setCompareLayout("joined");
+    setCompareLayout("side");
     setComparePlaying(false);
     setCompareProgress({ time: 0, duration: 0 });
     setHandoff({ time: 0, playing: false });
@@ -744,10 +741,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
     label: "compare",
   });
 
-  const getComparePreviews = () =>
-    compareLayout === "joined"
-      ? [joinedCompareRef.current].filter(Boolean)
-      : comparePreviewRefs.current.slice(0, compareCount).filter(Boolean);
+  const getComparePreviews = () => [joinedCompareRef.current].filter(Boolean);
 
   const pauseCompare = () => {
     getComparePreviews().forEach((preview) => preview.pause?.());
@@ -807,10 +801,6 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inCompare, baseTrack]);
 
-  useEffect(() => {
-    comparePreviewRefs.current = comparePreviewRefs.current.slice(0, compareCount);
-  }, [compareCount]);
-
   const handleMediaDragOver = (e) => {
     if (!dragHasFiles(e)) return;
     e.preventDefault();
@@ -854,17 +844,13 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
     }).catch((err) => setFolderError(err instanceof SongArchiveError ? err.message : t("That drop couldn't be read.")));
   };
 
-  const handleCompareLayout = (layout) => {
-    if (layout === compareLayout) return;
-    pauseCompare();
-    if (compareFullscreen) void handleCompareFullscreen();
-    setCompareLayout(layout);
-  };
+  // Both layouts are the same highways on one engine, so switching keeps
+  // playing and stays in full screen.
+  const handleCompareLayout = (layout) => setCompareLayout(layout);
 
-  // Joined view renders every selected take; the deck checkboxes cap at 4.
+  // Compare renders every selected take; the deck checkboxes cap at 4.
   // Inpaint's versions all share the draft's timing, so no offsets.
   const compareVersions = regenCompare ? ws.compareCharts : selectedCompareVersions;
-  const joinedCompareVersions = compareVersions;
   const compareLeadInSeconds = regenCompare
     ? 0
     : selectedCompareVersions.reduce((max, version) => Math.max(max, leadInSilenceSecondsFromVersion(version)), 0);
@@ -887,7 +873,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
       if (highwayRef.current === facade) highwayRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regenCompare, compareLayout]);
+  }, [regenCompare]);
   const regenProgress = (time, duration) => {
     setCompareProgress({ time, duration });
     ws.onProgress(time, duration);
@@ -948,6 +934,32 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
     return () => reportPreviewPlaying?.(false);
   }, [showingSinglePreview, reportPreviewPlaying]);
 
+  // The layout switch and Close compare. In full screen they move inside the
+  // full-screen element, in the same corner, so the layout can still change.
+  const compareActions = (
+    <div className="stage-overlay-actions">
+      <div className="segmented compare-layout-tabs" aria-label={t("Compare layout")}>
+        <button
+          className={compareLayout === "side" ? "active" : ""}
+          aria-pressed={compareLayout === "side"}
+          onClick={() => handleCompareLayout("side")}
+        >
+          {t("Side by side")}
+        </button>
+        <button
+          className={compareLayout === "grid" ? "active" : ""}
+          aria-pressed={compareLayout === "grid"}
+          onClick={() => handleCompareLayout("grid")}
+        >
+          {t("Grid")}
+        </button>
+      </div>
+      <button className="compare-pill" onClick={regenCompare ? ws.toggleCompare : exitCompare}>
+        <I.close /> {t("Close compare")}
+      </button>
+    </div>
+  );
+
   return (
     <section className="gen-preview-card">
       {/* What's on stage sits on the highway; the stage itself gets the room. */}
@@ -963,27 +975,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
             {editing && <EditStageActions project={project} />}
           </div>
         ) : <span />}
-        {!showingDemucsStage && track && inCompare && (
-          <div className="stage-overlay-actions">
-            <div className="segmented compare-layout-tabs" aria-label={t("Compare layout")}>
-              <button
-                className={compareLayout === "joined" ? "active" : ""}
-                onClick={() => handleCompareLayout("joined")}
-              >
-                {t("Joined")}
-              </button>
-              <button
-                className={compareLayout === "split" ? "active" : ""}
-                onClick={() => handleCompareLayout("split")}
-              >
-                {t("Split")}
-              </button>
-            </div>
-            <button className="compare-pill" onClick={regenCompare ? ws.toggleCompare : exitCompare}>
-              <I.close /> {t("Close compare")}
-            </button>
-          </div>
-        )}
+        {!showingDemucsStage && track && inCompare && !compareFullscreen && compareActions}
       </div>
       {!showingDemucsStage && previewMode === "compare" && compareLyric && (
         <div className="compare-head-lyrics" title={compareLyric.text}>
@@ -1086,70 +1078,40 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
         </>
       ) : (
         <div
-          className={`compare-shell compare-shell-${compareLayout}${compareFullscreen ? " is-fullscreen" : ""}`}
-          ref={compareLayout === "joined" ? compareShellRef : null}
+          className={`compare-shell${compareFullscreen ? " is-fullscreen" : ""}`}
+          ref={compareShellRef}
         >
+          {compareFullscreen && (
+            <div className="stage-overlay compare-fullscreen-overlay">
+              <span />
+              {compareActions}
+            </div>
+          )}
           {previewAudioError ? (
             <div className="preview-audio-error">{previewAudioError}</div>
-          ) : compareLayout === "joined" ? (
-            <>
-              <JoinedHighwayCompare
-                ref={joinedCompareRef}
-                charts={joinedCompareVersions.map((version, index) => ({
-                  id: version.id,
-                  updatedAt: version.updatedAt,
-                  name: takeCardName(version, project.generators || []),
-                  badge: version.badge || COMPARE_SLOT_LABELS[index] || String(index + 1),
-                  track: version.track || baseTrack,
-                  compareOffset: compareOffsetForVersion(version),
-                }))}
-                audioBuffer={audioBuffer}
-                videoOffset={activeVideoOffset}
-                background={background}
-                muted={compareMuted}
-                volume={compareVolume}
-                initialTime={compareProgress.time}
-                playOnReady={comparePlaying}
-                className="joined-compare-shell"
-                onProgress={regenCompare ? regenProgress : (time, duration) => setCompareProgress({ time, duration })}
-                onPlayingChange={regenCompare ? project.setEditorPlaying : undefined}
-              />
-            </>
           ) : (
-            <div className={`compare-grid compare-grid-${compareVersions.length}`}>
-              {compareVersions.map((version, index) => {
-                const slotLabel = version.badge || COMPARE_SLOT_LABELS[index] || String(index + 1);
-                const name = takeCardName(version, project.generators || []);
-                return (
-                  <div className="compare-pane" key={`${index}-${version.id}`}>
-                    <div className="compare-pane-head">
-                      <span className="compare-badge">{slotLabel}</span>
-                      <span className="compare-pane-name" title={name}>{name}</span>
-                    </div>
-                    <HighwayPreview
-                      ref={(node) => {
-                        comparePreviewRefs.current[index] = node;
-                      }}
-                      track={version.track || baseTrack}
-                      compareOffset={compareOffsetForVersion(version)}
-                      audioBuffer={audioBuffer}
-                      videoOffset={activeVideoOffset}
-                      background={background}
-                      hideTransport
-                      hideControls
-                      showLyrics={false}
-                      muted={compareMuted || index !== 0}
-                      volume={compareVolume}
-                      initialTime={compareProgress.time}
-                      playOnReady={comparePlaying}
-                      className="compare-preview"
-                      onProgress={index === 0 ? (regenCompare ? regenProgress : (time, duration) => setCompareProgress({ time, duration })) : undefined}
-                      onPlayingChange={regenCompare && index === 0 ? project.setEditorPlaying : undefined}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+            <JoinedHighwayCompare
+              ref={joinedCompareRef}
+              layout={compareLayout}
+              charts={compareVersions.map((version, index) => ({
+                id: version.id,
+                updatedAt: version.updatedAt,
+                name: takeCardName(version, project.generators || []),
+                badge: version.badge || COMPARE_SLOT_LABELS[index] || String(index + 1),
+                track: version.track || baseTrack,
+                compareOffset: compareOffsetForVersion(version),
+              }))}
+              audioBuffer={audioBuffer}
+              videoOffset={activeVideoOffset}
+              background={background}
+              muted={compareMuted}
+              volume={compareVolume}
+              initialTime={compareProgress.time}
+              playOnReady={comparePlaying}
+              className="joined-compare-shell"
+              onProgress={regenCompare ? regenProgress : (time, duration) => setCompareProgress({ time, duration })}
+              onPlayingChange={regenCompare ? project.setEditorPlaying : undefined}
+            />
           )}
 
           {!regenCompare && <div className="compare-transport">
@@ -1164,7 +1126,7 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
               className="compare-timeline"
             >
               <DensityStrip
-                lanes={(compareLayout === "joined" ? joinedCompareVersions : selectedCompareVersions).map(
+                lanes={compareVersions.map(
                   (version, index) => ({
                     notes: (version.track || baseTrack)?.notes || [],
                     solos: (version.track || baseTrack)?.solos,
@@ -1207,16 +1169,14 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
                 aria-label={t("Volume")}
               />
             </div>
-            {compareLayout === "joined" && (
-              <button
-                className="transport-btn ghost icon-only"
-                onClick={handleCompareFullscreen}
-                title={compareFullscreen ? t("Exit full screen") : t("Full screen")}
-                aria-label={compareFullscreen ? t("Exit full screen") : t("Full screen")}
-              >
-                {compareFullscreen ? <I.fullscreenExit aria-hidden="true" /> : <I.fullscreen aria-hidden="true" />}
-              </button>
-            )}
+            <button
+              className="transport-btn ghost icon-only"
+              onClick={handleCompareFullscreen}
+              title={compareFullscreen ? t("Exit full screen") : t("Full screen")}
+              aria-label={compareFullscreen ? t("Exit full screen") : t("Full screen")}
+            >
+              {compareFullscreen ? <I.fullscreenExit aria-hidden="true" /> : <I.fullscreen aria-hidden="true" />}
+            </button>
         </div>}
         </div>
       )}

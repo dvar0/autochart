@@ -2864,6 +2864,11 @@ video.bg-layer {
   pointer-events: none;
 }
 .stage-overlay > * { pointer-events: auto; }
+.compare-shell .compare-fullscreen-overlay {
+  top: 16px;
+  left: 16px;
+  right: 16px;
+}
 .stage-overlay-actions {
   flex: none;
   display: flex;
@@ -2871,8 +2876,7 @@ video.bg-layer {
   gap: 8px;
 }
 .stage-label,
-.joined-highway-label,
-.compare-pane-head {
+.joined-highway-label {
   min-width: 0;
   max-width: min(420px, 100%);
   height: 28px;
@@ -2887,18 +2891,15 @@ video.bg-layer {
   font-weight: 600;
 }
 .stage-label:has(.compare-badge),
-.joined-highway-label:has(.compare-badge),
-.compare-pane-head:has(.compare-badge) { padding-left: 4px; }
+.joined-highway-label:has(.compare-badge) { padding-left: 4px; }
 .stage-label .compare-badge,
-.joined-highway-label .compare-badge,
-.compare-pane-head .compare-badge {
+.joined-highway-label .compare-badge {
   width: 20px;
   height: 20px;
   font-size: var(--fs-xs);
 }
 .stage-label-name,
-.joined-highway-name,
-.compare-pane-name {
+.joined-highway-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3436,14 +3437,28 @@ video.bg-layer {
   display: grid;
   grid-template-columns: repeat(var(--joined-count), minmax(0, 1fr));
 }
+/* Grid: two takes stack, three or four tile two by two. */
+.joined-highway-grid.is-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+}
+.joined-highway-grid.is-grid.joined-highway-grid-1,
+.joined-highway-grid.is-grid.joined-highway-grid-2 {
+  grid-template-columns: minmax(0, 1fr);
+}
 .joined-highway-slot {
   position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
-.joined-highway-slot + .joined-highway-slot {
+.joined-highway-grid.is-side .joined-highway-slot + .joined-highway-slot,
+.joined-highway-grid.is-grid:not(.joined-highway-grid-2) .joined-highway-slot:nth-child(even) {
   border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+.joined-highway-grid.is-grid.joined-highway-grid-2 .joined-highway-slot + .joined-highway-slot,
+.joined-highway-grid.is-grid .joined-highway-slot:nth-child(n + 3) {
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
 }
 .joined-highway-canvas {
   display: block;
@@ -3463,37 +3478,11 @@ video.bg-layer {
 .joined-compare-stage .highway-empty {
   z-index: 3;
 }
-.compare-grid {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(170px, 1fr);
-  gap: 12px;
-}
-
-.compare-pane {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: var(--r-card);
-  background: var(--surface-2);
-}
-.compare-pane-head {
-  position: absolute;
-  z-index: 3;
-  left: 12px;
-  top: 12px;
-  max-width: calc(100% - 24px);
-  pointer-events: none;
-}
 /* The top-right chart's label stops short of the compare controls over it
-   (Joined/Split and Close compare, with room for longer translations). */
-.joined-highway-slot:last-child:not(:first-child) .joined-highway-label,
-.compare-pane:nth-child(2) .compare-pane-head {
+   (the layout switch and Close compare, with room for longer translations). */
+.joined-highway-grid.is-side .joined-highway-slot:last-child:not(:first-child) .joined-highway-label,
+.joined-highway-grid.is-grid:not(.joined-highway-grid-2) .joined-highway-slot:nth-child(2) .joined-highway-label,
+.joined-highway-grid.is-grid.joined-highway-grid-2 .joined-highway-slot:first-child .joined-highway-label {
   max-width: max(34px, calc(100% - 24px - 300px));
 }
 .compare-badge,
@@ -3514,17 +3503,6 @@ video.bg-layer {
   width: 22px;
   height: 22px;
   font-size: var(--fs-xs);
-}
-.compare-preview {
-  flex: 1;
-  min-height: 0;
-  gap: 0;
-}
-.compare-preview .preview-stage,
-.compare-preview .highway-wrap {
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
 }
 .compare-transport {
   flex: none;
@@ -5089,13 +5067,10 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 }
 
 @media (max-width: 760px) {
-  .compare-grid,
-.difficulty-segments,
+  .difficulty-segments,
 .seed-row {
     grid-template-columns: 1fr;
   }
-  .compare-pane:nth-child(2) .compare-pane-head { max-width: calc(100% - 24px); }
-  .compare-pane:first-child .compare-pane-head { max-width: max(34px, calc(100% - 24px - 300px)); }
 
   .project-bar-actions { margin-left: 0; flex: 1; justify-content: flex-end; }
   .gen-preview-card {
