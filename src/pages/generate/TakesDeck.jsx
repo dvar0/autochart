@@ -735,8 +735,10 @@ export default function TakesDeck({ project }) {
                   role="button"
                   aria-pressed={isSelected}
                   tabIndex={showingDemucs ? -1 : 0}
+                  // Enter picks the take; Space is left to play and pause, so
+                  // a card still focused after a shift-click doesn't close compare.
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === "Enter") {
                       e.preventDefault();
                       previewVersion(v.id);
                     }
