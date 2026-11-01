@@ -113,6 +113,28 @@ export async function songFoldersFromPickedFiles(fileList) {
   return folders;
 }
 
+// Phones and tablets can't pick a folder: their browsers ignore
+// webkitdirectory, so a song's files (or its .sng/.zip) are picked instead.
+const UA = globalThis.navigator?.userAgent || "";
+const TOUCH_MAC = /Macintosh/.test(UA) && (globalThis.navigator?.maxTouchPoints || 0) > 1;
+export const CAN_PICK_FOLDERS = typeof HTMLInputElement !== "undefined"
+  && "webkitdirectory" in HTMLInputElement.prototype
+  && !/Android|iPhone|iPad|iPod/i.test(UA) && !TOUCH_MAC;
+
+/**
+ * The song folders in a folder pick: every song folder by its relative
+ * path (see songFoldersFromFileList), plus the songs packed in any .sng or
+ * .zip inside it.
+ */
+export async function songFoldersFromFolderPick(fileList) {
+  const files = Array.from(fileList || []);
+  const archives = files.filter(isSongArchive);
+  const folders = songFoldersFromFileList(files.filter((file) => !isSongArchive(file)));
+  const songFolders = folders.filter(({ files: folderFiles }) => isSongFolder(folderFiles));
+  for (const archive of archives) songFolders.push(...await songFoldersFromArchive(archive));
+  return songFolders.length ? songFolders : folders;
+}
+
 /**
  * Splits a folder picker's FileList into song folders by their relative
  * paths, so picking a songs directory brings in every song inside it. A pick

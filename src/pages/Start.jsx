@@ -4,11 +4,16 @@ import { DeviceReadout, UNCHECKED_DEVICE, deviceFact, deviceFromProbe } from "..
 import { FRET_COLORS } from "../data/notePalette.js";
 import { MEDIA_ACCEPT } from "../services/mediaMetadata.js";
 
-// A Clone Hero song as one file (.sng, .zip), or its folder's files picked
-// together. Android gets no list (see MEDIA_ACCEPT).
+import {
+  CAN_PICK_FOLDERS, dragHasFiles, dragLooksLikeFolders, readDrop, songFoldersFromFolderPick, songFoldersFromPickedFiles,
+} from "../services/droppedItems.js";
+import { SongArchiveError, isSongArchive } from "../services/songArchives.js";
+
+// Open a Clone Hero song picks the song's folder. Where folders can't be
+// picked (phones), it picks the folder's files together or a .sng/.zip.
+// Choose a song also takes a .sng/.zip. Android gets no list (see MEDIA_ACCEPT).
 const SONG_ACCEPT = MEDIA_ACCEPT && [".sng", ".zip", ".chart", ".ini", ".png", ".jpg", ".jpeg", MEDIA_ACCEPT].join(",");
-import { dragHasFiles, dragLooksLikeFolders, readDrop, songFoldersFromPickedFiles } from "../services/droppedItems.js";
-import { SongArchiveError } from "../services/songArchives.js";
+const CHOOSE_ACCEPT = MEDIA_ACCEPT && [MEDIA_ACCEPT, ".sng", ".zip"].join(",");
 import { importSongFolder, saveImportedSong } from "../services/songImport.js";
 import { getSongRecord, recordToImported } from "../services/songLibrary.js";
 import { electronHardware } from "../services/runtimeBridge.js";
@@ -502,7 +507,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     const picked = Array.from(input.files || []);
     input.value = "";
     if (!picked.length) return;
-    songFoldersFromPickedFiles(picked)
+    (CAN_PICK_FOLDERS ? songFoldersFromFolderPick(picked) : songFoldersFromPickedFiles(picked))
       .then((folders) => openSongFolders(folders, noSong()))
       .catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : t("Those files couldn't be read.")));
   };
@@ -524,15 +529,21 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
         <input
           ref={songRef}
           type="file"
-          accept={MEDIA_ACCEPT}
+          accept={CHOOSE_ACCEPT}
           hidden
           onChange={(event) => {
             const file = event.target.files?.[0];
+            if (file && isSongArchive(file)) {
+              handleSongPick(event);
+              return;
+            }
             event.target.value = "";
             if (file) void confirmCloseSong().then((ok) => { if (ok) onSong(file); });
           }}
         />
-        <input ref={folderRef} type="file" accept={SONG_ACCEPT} multiple hidden onChange={handleSongPick} />
+        {CAN_PICK_FOLDERS
+          ? <input ref={folderRef} type="file" webkitdirectory="" multiple hidden onChange={handleSongPick} />
+          : <input ref={folderRef} type="file" accept={SONG_ACCEPT} multiple hidden onChange={handleSongPick} />}
       </div>
       <p className={"start-hint" + (openError ? " is-error" : "")}>
         {openError || <><I.shield /> {t("Or drop a song or song folder anywhere. It never leaves this device.")}</>}
