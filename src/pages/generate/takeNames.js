@@ -24,10 +24,16 @@ export function modelName(version, generators = []) {
 // What a take is called on its card and on the stage. The stored name also
 // lists the difficulty, the sampling, the seed and the number, all of which
 // have their own place next to it. Takes from elsewhere keep their name.
+// Charts the app didn't write. Imported takes can carry the project's
+// generation settings, so the source decides, not the settings.
+function madeElsewhere(version) {
+  return version?.source === "imported-chart" || !version?.settings?.generation;
+}
+
 export function takeTitle(version, generators = []) {
   const name = String(version?.name || "");
   // Names the app gave charts it didn't write show in the current language.
-  if (!version?.settings?.generation) return IMPORTED_NAMES[name]?.() || name;
+  if (madeElsewhere(version)) return IMPORTED_NAMES[name]?.() || name;
   const model = modelName(version, generators);
   if (!model) return name;
   const edit = name.match(/\bEdit (\d+)$/i);
@@ -51,7 +57,7 @@ export function takeCardName(version, generators = []) {
   const base = edit ? edit[1] : name;
   const generation = version?.settings?.generation;
   const number = base.match(/#(\d+)$/);
-  const shown = !generation
+  const shown = madeElsewhere(version)
     ? IMPORTED_NAMES[base]?.() || base
     : number
       ? generationVersionName(modelName(version, generators) || base.replace(/\s.*$/, ""), generation, number[1])

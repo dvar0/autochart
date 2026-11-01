@@ -9,7 +9,7 @@ import { MEDIA_ACCEPT } from "../../services/mediaMetadata.js";
 import { dragHasFiles, readDrop, songFoldersFromFileList } from "../../services/droppedItems.js";
 import { SongArchiveError } from "../../services/songArchives.js";
 import { I } from "../../icons.jsx";
-import { takeTitle } from "./takeNames.js";
+import { takeCardName, takeTitle } from "./takeNames.js";
 import { GenerationPreviewStage } from "./LiveGeneration.jsx";
 import { StemSeparationStage } from "./StageAnimations.jsx";
 import {
@@ -1098,8 +1098,8 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
                 charts={joinedCompareVersions.map((version, index) => ({
                   id: version.id,
                   updatedAt: version.updatedAt,
-                  name: takeTitle(version, project.generators || []),
-                  badge: COMPARE_SLOT_LABELS[index] || String(index + 1),
+                  name: takeCardName(version, project.generators || []),
+                  badge: version.badge || COMPARE_SLOT_LABELS[index] || String(index + 1),
                   track: version.track || baseTrack,
                   compareOffset: compareOffsetForVersion(version),
                 }))}
@@ -1118,14 +1118,13 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
           ) : (
             <div className={`compare-grid compare-grid-${compareVersions.length}`}>
               {compareVersions.map((version, index) => {
-                const slotLabel = COMPARE_SLOT_LABELS[index] || String(index + 1);
+                const slotLabel = version.badge || COMPARE_SLOT_LABELS[index] || String(index + 1);
+                const name = takeCardName(version, project.generators || []);
                 return (
                   <div className="compare-pane" key={`${index}-${version.id}`}>
                     <div className="compare-pane-head">
                       <span className="compare-badge">{slotLabel}</span>
-                      <span className="compare-pane-name" title={version.name}>
-                        {takeTitle(version, project.generators || [])}
-                      </span>
+                      <span className="compare-pane-name" title={name}>{name}</span>
                     </div>
                     <HighwayPreview
                       ref={(node) => {

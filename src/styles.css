@@ -3490,6 +3490,12 @@ video.bg-layer {
   max-width: calc(100% - 24px);
   pointer-events: none;
 }
+/* The top-right chart's label stops short of the compare controls over it
+   (Joined/Split and Close compare, with room for longer translations). */
+.joined-highway-slot:last-child:not(:first-child) .joined-highway-label,
+.compare-pane:nth-child(2) .compare-pane-head {
+  max-width: max(34px, calc(100% - 24px - 300px));
+}
 .compare-badge,
 .version-badge {
   width: 26px;
@@ -5088,6 +5094,8 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .seed-row {
     grid-template-columns: 1fr;
   }
+  .compare-pane:nth-child(2) .compare-pane-head { max-width: calc(100% - 24px); }
+  .compare-pane:first-child .compare-pane-head { max-width: max(34px, calc(100% - 24px - 300px)); }
 
   .project-bar-actions { margin-left: 0; flex: 1; justify-content: flex-end; }
   .gen-preview-card {
