@@ -20,7 +20,9 @@ function normalizeVersion(raw, fallback = {}) {
     difficulty: settings.difficulty || fallback.settings?.difficulty || "expert",
     model: settings.model || fallback.settings?.model || "",
   };
-  const generation = settings.generation || fallback.settings?.generation;
+  // A stored take keeps only its own run settings; borrowing the project's
+  // latest run would label imported takes with someone else's style.
+  const generation = raw ? raw.settings?.generation : fallback.settings?.generation;
   if (generation) normalizedSettings.generation = generation;
   const version = {
     id: raw?.id || fallback.id || newVersionId("ver"),
