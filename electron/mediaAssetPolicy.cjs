@@ -15,11 +15,14 @@ const MEDIA_ASSET_ROLES = new Set([
 const ROLE_POLICY = {
   audio: {
     extensions: new Set([
-      ".ogg", ".oga", ".opus", ".mp3", ".wav", ".wave", ".flac",
+      ".ogg", ".oga", ".ogx", ".opus", ".mp3", ".wav", ".wave", ".flac",
       ".m4a", ".aac", ".aiff", ".aif", ".mp4", ".m4v", ".mov",
       ".webm", ".ogv", ".mkv",
     ]),
     mimePrefixes: ["audio/", "video/"],
+    // Chromium reports .ogx (Ogg Vorbis/Opus with the generic Xiph extension)
+    // as application/ogg.
+    mimeTypes: new Set(["application/ogg"]),
     // Preview uses WebAudio and therefore still decodes the complete source in
     // renderer memory. Keep this well below multi-gigabyte video allowances.
     maxSelectedBytes: 512 * MiB,
@@ -73,7 +76,7 @@ function dataByteLength(data) {
 function mimeMatches(policy, mime) {
   const value = String(mime || "").trim().toLowerCase();
   if (!value || value === "application/octet-stream") return false;
-  return policy.mimePrefixes.some((prefix) => value.startsWith(prefix));
+  return policy.mimeTypes?.has(value) || policy.mimePrefixes.some((prefix) => value.startsWith(prefix));
 }
 
 function assertMediaAssetMetadata(role, metadata = {}, { inline = false } = {}) {
@@ -129,7 +132,7 @@ function mimeFromMediaFileName(fileName, fallback = "application/octet-stream") 
   if (name.endsWith(".wav") || name.endsWith(".wave")) return "audio/wav";
   if (name.endsWith(".aiff") || name.endsWith(".aif")) return "audio/aiff";
   if (name.endsWith(".opus")) return "audio/opus";
-  if (name.endsWith(".ogg") || name.endsWith(".oga")) return "audio/ogg";
+  if (name.endsWith(".ogg") || name.endsWith(".oga") || name.endsWith(".ogx")) return "audio/ogg";
   if (name.endsWith(".mp4") || name.endsWith(".m4v") || name.endsWith(".mov")) return "video/mp4";
   if (name.endsWith(".webm")) return "video/webm";
   if (name.endsWith(".ogv")) return "video/ogg";

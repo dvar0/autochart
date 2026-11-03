@@ -67,7 +67,7 @@ export function mimeFromFile(fileName, fallback = "application/octet-stream") {
   if (name.endsWith(".aac")) return "audio/aac";
   if (name.endsWith(".wav") || name.endsWith(".wave")) return "audio/wav";
   if (name.endsWith(".opus")) return "audio/opus";
-  if (name.endsWith(".ogg") || name.endsWith(".oga")) return "audio/ogg";
+  if (name.endsWith(".ogg") || name.endsWith(".oga") || name.endsWith(".ogx")) return "audio/ogg";
   if (name.endsWith(".mp4")) return "video/mp4";
   if (name.endsWith(".webm")) return "video/webm";
   if (name.endsWith(".ogv")) return "video/ogg";

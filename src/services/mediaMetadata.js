@@ -1,4 +1,4 @@
-const AUDIO_EXTS = [".ogg", ".opus", ".mp3", ".wav", ".wave", ".flac", ".m4a", ".aac", ".aiff", ".aif"];
+const AUDIO_EXTS = [".ogg", ".oga", ".ogx", ".opus", ".mp3", ".wav", ".wave", ".flac", ".m4a", ".aac", ".aiff", ".aif"];
 const VIDEO_EXTS = [".mp4", ".m4v", ".mov", ".webm", ".ogv", ".mkv"];
 export const MAX_METADATA_SCAN_BYTES = 8 * 1024 * 1024;
 

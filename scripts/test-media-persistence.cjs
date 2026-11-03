@@ -384,6 +384,19 @@ async function main() {
       () => assertMediaAssetMetadata("albumArt", { name: "cover.exe", mime: "image/png", size: 1 }),
       /Unsupported albumArt file type/
     );
+    // Chromium reports .ogx (Ogg Opus/Vorbis) as application/ogg.
+    assert.equal(
+      assertMediaAssetMetadata("audio", { name: "song.ogx", mime: "application/ogg", size: 1 }).mime,
+      "application/ogg"
+    );
+    assert.throws(
+      () => assertMediaAssetMetadata("audio", { name: "song.exe", mime: "application/ogg", size: 1 }),
+      /Unsupported audio file type/
+    );
+    assert.throws(
+      () => assertMediaAssetMetadata("albumArt", { name: "cover.png", mime: "application/ogg", size: 1 }),
+      /Unsupported albumArt file type/
+    );
     assert.throws(
       () => assertMediaAssetMetadata("audio", {
         name: "memory.ogg",

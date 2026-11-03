@@ -15,7 +15,7 @@ import { buildSourceReplacementRecord } from "../pages/generate/sourceReplacemen
 import { seedSeparation } from "./generation.js";
 import { getStoredAssetSource, recordFromImport, saveSongRecord, updateSongRecord } from "./songLibrary.js";
 
-const AUDIO_EXTS = [".ogg", ".opus", ".mp3", ".wav", ".wave", ".flac", ".m4a", ".aac", ".aiff", ".aif"];
+const AUDIO_EXTS = [".ogg", ".oga", ".ogx", ".opus", ".mp3", ".wav", ".wave", ".flac", ".m4a", ".aac", ".aiff", ".aif"];
 const ART_STEMS = ["album", "albumart", "artwork", "cover", "coverart", "folder", "front"];
 const BACKGROUND_STEMS = ["background", "bg", "stage", "venue"];
 const VIDEO_STEMS = ["background", "bg", "video"];
