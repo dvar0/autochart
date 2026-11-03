@@ -62,7 +62,9 @@ async function main() {
   const encoder = await onnxLib.loadEncoderSessions(manifest, "webgpu");
   if (onnxLib.sessionDevice(encoder, "unknown") !== "webgpu") {
     log("SKIP: no WebGPU adapter in this runtime");
-    return;
+    // Leave now: with no adapter, ONNX Runtime's teardown at a normal exit
+    // segfaults (the other WebGPU gate exits the same way).
+    process.exit(0);
   }
   const encoderCtx = await onnxLib.runEncoder(encoder, features(nBeats * channels * 80 * 32), new Uint8Array(nBeats).fill(1), nBeats);
   const ctx = { ...ctx0, ...encoderCtx };
