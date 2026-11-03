@@ -35,6 +35,15 @@ its core network runs as an ONNX graph. Fretformer v1's folder still lists the
 two STFT basis graphs (`demucs_analysis_stft.onnx`, `demucs_synthesis_istft.onnx`)
 because its published pack pins them, but the engine no longer loads them and
 the browser doesn't download them. The Fretformer 2 folders don't have them.
+The STFTs run on worker threads while the core runs (`stftTasks.mjs`, started
+by the host: `stftWorker.cjs` on the desktop, `engine/web/stftWorker.mjs` in
+the browser): the analysis of the next chunks and the inverse STFT of the last
+ones. Chunks are still overlap-added in order on the calling thread, so the
+stems and the progress and stem-level events are the same as on one thread.
+`stftWorkerCount` in `demucsSeparate.mjs` picks the count (up to 4 on CPU,
+where the core keeps ONNX Runtime's default threads; up to 8 on a GPU); a host
+without workers, or a worker that fails, leaves the rest to the calling thread.
+`engine/test/stft-workers-parity.cjs` checks both against each other.
 
 ### Browser engine
 

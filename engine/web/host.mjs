@@ -219,6 +219,27 @@ export async function releaseSessions(match = null) {
   }
 }
 
+// STFT workers for Demucs (stftWorker.mjs). They pass plain buffers, so they
+// work without cross-origin isolation too.
+function startStftWorkers(count) {
+  if (typeof Worker !== "function") return null;
+  return Array.from({ length: count }, () => {
+    const worker = new Worker(new URL("./stftWorker.mjs", import.meta.url), { type: "module", name: "autochart-stft" });
+    return {
+      post: (message, transfer) => worker.postMessage(message, transfer),
+      listen(onMessage, onError) {
+        worker.onmessage = ({ data }) => onMessage(data);
+        worker.onerror = (event) => {
+          event.preventDefault?.();
+          onError(new Error(event.message || "worker error"));
+        };
+        worker.onmessageerror = () => onError(new Error("unreadable worker message"));
+      },
+      terminate: () => worker.terminate(),
+    };
+  });
+}
+
 export function setRuntimeFallbackCallback(fn) {
   fallbackCallback = typeof fn === "function" ? fn : null;
 }
@@ -236,6 +257,8 @@ export async function installWebHost({ wasmPaths = null, threads = null } = {}) 
     sessionDevice,
     graphSource,
     loadTables,
+    hardwareThreads: () => globalThis.navigator?.hardwareConcurrency || 1,
+    startStftWorkers,
   });
   trackDevices();
   rewriteShaders();

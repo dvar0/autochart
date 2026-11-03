@@ -1,7 +1,8 @@
 import { framePower } from "./songMap.mjs";
-import { createSession, graphPath, sessionDevice, tensor, runSession } from "./runtime.mjs";
+import { createSession, graphPath, sessionDevice, tensor, runSession, hardwareThreads, startStftWorkers } from "./runtime.mjs";
 import { demucsOrchestration } from "./manifest.mjs";
-import { createStft } from "./stft.mjs";
+import { stftFor, chunkShape, analyseChannel, synthesiseStream } from "./stftTasks.mjs";
+import { createWorkerPool } from "./workerPool.mjs";
 
 // Only the core network is a graph: both STFTs run in JS (stft.mjs), so the
 // model folder's demucs_analysis_stft / demucs_synthesis_istft go unused.
@@ -16,46 +17,13 @@ async function loadDemucsSessions(manifest, device = "cpu", log = null) {
   };
   const orch = demucsOrchestration(manifest);
   const core = await load("demucs-core-network");
-  return { stft: createStft(orch.nfft, orch.hopLength), core, device: sessionDevice(core, device) };
+  const resolved = sessionDevice(core, device);
+  return { stft: stftFor(orch.nfft, orch.hopLength), core, device: resolved, stftWorkers: stftWorkerCount(resolved, hardwareThreads()) };
 }
 
 // Faithful JS port of the reference Demucs-ONNX separation pipeline, with the
 // STFTs computed exactly (stft.mjs): 88-116 dB per stem against PyTorch
 // htdemucs_6s, where the reference's float32 DFT basis graphs got 44-81 dB.
-
-const ceil = Math.ceil;
-const floor = Math.floor;
-
-// ndarray-style reflect pad on the last axis of shape (rows, cols), padding (pl, pr) on cols.
-// arr: Float32Array length rows*cols, row-major. Returns Float32Array length rows*(cols+pl+pr).
-function reflectPadLastAxis(arr, rows, cols, pl, pr) {
-  const newCols = cols + pl + pr;
-  const out = new Float32Array(rows * newCols);
-  for (let r = 0; r < rows; r += 1) {
-    const inBase = r * cols;
-    const outBase = r * newCols + pl;
-    // copy original
-    out.set(arr.subarray(inBase, inBase + cols), outBase);
-    // left reflect
-    for (let i = 0; i < pl; i += 1) {
-      out[outBase - 1 - i] = arr[inBase + (i + 1)];
-    }
-    // right reflect
-    for (let i = 0; i < pr; i += 1) {
-      out[outBase + cols + i] = arr[inBase + (cols - 2 - i)];
-    }
-  }
-  return out;
-}
-
-function zeroPadLastAxis(arr, rows, cols, pl, pr) {
-  const newCols = cols + pl + pr;
-  const out = new Float32Array(rows * newCols);
-  for (let r = 0; r < rows; r += 1) {
-    out.set(arr.subarray(r * cols, r * cols + cols), r * newCols + pl);
-  }
-  return out;
-}
 
 const tick = (times, key, since) => {
   times[key] = (times[key] || 0) + performance.now() - since;
@@ -63,8 +31,7 @@ const tick = (times, key, since) => {
 };
 
 // Run STFT -> core -> inverse STFT on ONE chunk padded to segmentLength.
-// chunkViews: { data: Float32Array length 1*2*segmentLength, dims: [1,2,L] }
-// Returns stems: { data: Float32Array length 1*4*2*L, dims: [1,4,2,L] }
+// mixFlat: Float32Array (B*C=2, L). Returns { data: (1, S, C, L), dims }.
 async function runSegment(mixFlat, B, C, L, sessions, orch, times = {}) {
   let t = performance.now();
   if (L !== orch.segmentLength) {
@@ -73,87 +40,32 @@ async function runSegment(mixFlat, B, C, L, sessions, orch, times = {}) {
       `Refusing to run core (silent corruption off-shape).`
     );
   }
-  const hl = orch.hopLength;
-  const le = ceil(L / hl); // 336
-  const pad = (hl >> 1) * 3; // 1536
-  const padRight = pad + le * hl - L; // matches np.pad reflect (pad, pad_right)
-  // Reflect-pad both channels on the sample axis. mixFlat is (B*C=2, L).
-  const x0 = reflectPadLastAxis(mixFlat, B * C, L, pad, padRight); // (2, padded_L)
-  // [2, 2049, T]
-  const { real: realRaw, imag: imagRaw, dims: realDims } = sessions.stft.analysis(x0, B * C, L + pad + padRight);
-  const analysisTime = realDims[realDims.length - 1];
-  const freqRaw = realDims[realDims.length - 2];
-  // real[:, :-1, :] : drop nyquist -> freq=freqRaw-1=2048 ; then [:, :, 2:2+le]
-  const freqOut = freqRaw - 1;
-  const timeOut = le; // slice 2 : 2+le on last axis
-  const sliceStart = 2;
-  const realSliced = sliceChannelsTime(realRaw, B * C, freqRaw, analysisTime, 1, sliceStart, timeOut);
-  const imagSliced = sliceChannelsTime(imagRaw, B * C, freqRaw, analysisTime, 1, sliceStart, timeOut);
+  const shape = chunkShape(orch);
+  const { le, freq } = shape;
+  const bins = freq * le;
   // core inputs: real [2, 2048, le], imag [2, 2048, le], mix [1, 2, L]
-  const realT = tensor("float32", realSliced, [B * C, freqOut, timeOut]);
-  const imagT = tensor("float32", imagSliced, [B * C, freqOut, timeOut]);
-  const mixT = tensor("float32", mixFlat, [B, C, L]);
+  const real = new Float32Array(B * C * bins);
+  const imag = new Float32Array(B * C * bins);
+  for (let r = 0; r < B * C; r += 1) {
+    analyseChannel(sessions.stft, mixFlat.subarray(r * L, (r + 1) * L), shape, real.subarray(r * bins, (r + 1) * bins), imag.subarray(r * bins, (r + 1) * bins));
+  }
   t = tick(times, "analysis", t);
-  const coreOut = await runSession(sessions.core, { real: realT, imag: imagT, mix: mixT });
-  const zrRaw = await coreOut.zout_real.getData(true); // (1,4,2,2048,le)
-  const ziRaw = await coreOut.zout_imag.getData(true);
-  const xtRaw = await coreOut.xt.getData(true); // (1,4,2,L)
-  t = tick(times, "core", t);
-  const zrDims = coreOut.zout_real.dims; // [1,4,2,2048,le]
-  const ztTime = zrDims[zrDims.length - 1]; // le
-  const S = orch.sources.length; // 4
-  // reshape zr/zi to (B*S*C=8, 2048, le)
-  const flatSC = B * S * C; // 8
-  const zrReshaped = zrRaw; // already contiguous (1*4*2*2048*le == 8*2048*le)
-  const ziReshaped = ziRaw;
-  const le2 = hl * ceil(L / hl) + 2 * pad;
-  // The core's spectrogram has no nyquist bin and sits 2 frames in from each
-  // side of the frames the inverse STFT expects; both are zero.
-  const y = sessions.stft.synthesis(zrReshaped, ziReshaped, {
-    streams: flatSC, inBins: freqOut, inFrames: ztTime, framePad: 2, length: le2,
+  const coreOut = await runSession(sessions.core, {
+    real: tensor("float32", real, [B * C, freq, le]),
+    imag: tensor("float32", imag, [B * C, freq, le]),
+    mix: tensor("float32", mixFlat, [B, C, L]),
   });
-  tick(times, "synthesis", t);
-  return assembleStems(y, xtRaw, flatSC, B, S, C, le2, pad, L, le2);
-}
-
-// slice [:, :-1, :] (drop LAST freq bin) then [:, :, 2:2+le] -> (rows, freq-1, tLen)
-function sliceChannelsTime(src, rows, freq, time, freqDropLast, tStart, tLen) {
-  // Drop the trailing `freqDropLast` freq indices (np [:, :-freqDropLast, :]).
-  const drop = freqDropLast || 0;
-  const freqOut = freq - drop;
-  const out = new Float32Array(rows * freqOut * tLen);
-  for (let r = 0; r < rows; r += 1) {
-    for (let f = 0; f < freqOut; f += 1) {
-      // src freq index = f (keep 0..freqOut-1, drop the tail `drop` indices)
-      const srcOff = r * freq * time + f * time + tStart;
-      const dstOff = r * freqOut * tLen + f * tLen;
-      out.set(src.subarray(srcOff, srcOff + tLen), dstOff);
-    }
-  }
-  return out;
-}
-
-// yRaw: (flatSC=8, ySamples). Trim to [..., pad:pad+L], reshape (1,S,C,L), add xt, return {data,dims}.
-function assembleStems(yRaw, xtRaw, flatSC, B, S, C, ySamples, pad, L, le2) {
-  if (ySamples < pad + L) {
-    throw new Error(`synthesis output too short: ${ySamples} < pad+L=${pad + L}`);
-  }
-  // y trimmed to (flatSC, L)
-  const yTrim = new Float32Array(flatSC * L);
-  for (let r = 0; r < flatSC; r += 1) {
-    yTrim.set(yRaw.subarray(r * ySamples + pad, r * ySamples + pad + L), r * L);
-  }
-  // reshape to (B, S, C, L). flatSC = B*S*C, ordering is stem-major then channel: index = s*C + c
+  const zr = await coreOut.zout_real.getData(true); // (1,S,2,2048,le)
+  const zi = await coreOut.zout_imag.getData(true);
+  const xt = await coreOut.xt.getData(true); // (1,S,2,L)
+  t = tick(times, "core", t);
+  // Rows are stem-major then channel (s*C + c), as the core lays them out.
+  const S = orch.sources.length;
   const out = new Float32Array(B * S * C * L);
-  for (let s = 0; s < S; s += 1) {
-    for (let c = 0; c < C; c += 1) {
-      const flatRow = s * C + c; // row in yTrim
-      const outOff = ((0 * S + s) * C + c) * L; // B=1
-      out.set(yTrim.subarray(flatRow * L, flatRow * L + L), outOff);
-    }
+  for (let r = 0; r < B * S * C; r += 1) {
+    synthesiseStream(sessions.stft, zr.subarray(r * bins, (r + 1) * bins), zi.subarray(r * bins, (r + 1) * bins), xt.subarray(r * L, (r + 1) * L), shape, out.subarray(r * L, (r + 1) * L));
   }
-  // add xt (same layout B,S,C,L)
-  for (let i = 0; i < out.length; i += 1) out[i] += xtRaw[i];
+  tick(times, "synthesis", t);
   return { data: out, dims: [B, S, C, L] };
 }
 
@@ -203,9 +115,32 @@ function triangularWeights(N, transitionPower) {
   return w;
 }
 
+// STFT workers for separate(). While the core network runs a chunk, the
+// workers do the analysis STFT of the next chunks and the inverse STFT of
+// the last ones. The core gets most of the CPU on a CPU run, so it keeps its
+// threads and the workers fill the time it leaves idle.
+function stftWorkerCount(device, threads) {
+  if (!(threads > 1)) return 0;
+  return device === "cpu" ? Math.min(4, threads) : Math.min(8, threads - 1);
+}
+
+// How many chunks the workers run ahead of the core (analysis) and behind it
+// (inverse STFT). Each chunk behind holds its spectrograms until it is done.
+const AHEAD = 2;
+const BEHIND = 2;
+
+// Marks a promise as handled, so one left behind when separate() throws
+// doesn't end the process; whoever awaits it still gets the rejection.
+const quiet = (promise) => {
+  promise.catch(() => {});
+  return promise;
+};
+
 // Separate a stereo mix into the model's sources.
 // mixFlat: Float32Array length 2*L, planar (all left samples, then all right).
 // Returns [{ name, left, right }] in orch.sources order.
+// sessions.stftWorkers sets how many STFT workers to use; 0 runs everything
+// on this thread. Either way the stems are the same to the byte.
 async function separate(mixFlat, totalLength, sessions, orch, { onProgress = null, onPower = null, log = null } = {}) {
   if (totalLength !== mixFlat.length / 2) {
     throw new Error(`mix length mismatch: ${mixFlat.length} != 2*${totalLength}`);
@@ -227,29 +162,26 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
   const offsets = [];
   for (let off = 0; off < totalLength; off += stride) offsets.push(off);
   const nTotal = offsets.length;
-  if (log) log(`  separating ${nTotal} chunks`);
+  const chunkLengthOf = (i) => Math.min(totalLength - offsets[i], segmentLength);
+  const paddedChunk = (i) => chunkPadded(mixFlat, B, C, totalLength, offsets[i], chunkLengthOf(i), segmentLength);
   const t0 = Date.now();
   const times = {};
-  for (let i = 0; i < nTotal; i += 1) {
+
+  // Overlap-adds chunk i's stems (S*C rows of segmentLength), in chunk order.
+  const addChunk = (i, segData) => {
     const offset = offsets[i];
-    const chunkLength = Math.min(totalLength - offset, segmentLength);
-    const padded = chunkPadded(mixFlat, B, C, totalLength, offset, chunkLength, segmentLength);
-    const seg = await runSegment(padded, B, C, segmentLength, sessions, orch, times); // {data (1,S,2,SEG), dims}
-    const segData = seg.data;
+    const chunkLength = chunkLengthOf(i);
     // center_trim each (B,S,C) row to chunkLength
     // out[..., offset:end] += w_clipped * seg_out_trim
     const end = Math.min(offset + segmentLength, totalLength);
     const targetLen = end - offset;
     const wClipped = wAll.subarray(0, chunkLength); // length chunkLength
-    // seg layout (B=1,S,C,SEG): index = ((s*C+c)*SEG + t)
-    for (let s = 0; s < S; s += 1) {
-      for (let c = 0; c < C; c += 1) {
-        const segRow = (s * C + c) * segmentLength;
-        const trimStart = (segmentLength - chunkLength) >> 1;
-        const row = rows[s * C + c];
-        for (let t = 0; t < targetLen; t += 1) {
-          row[offset + t] += wClipped[t] * segData[segRow + trimStart + t];
-        }
+    const trimStart = (segmentLength - chunkLength) >> 1;
+    for (let r = 0; r < S * C; r += 1) {
+      const segRow = r * segmentLength + trimStart;
+      const row = rows[r];
+      for (let t = 0; t < targetLen; t += 1) {
+        row[offset + t] += wClipped[t] * segData[segRow + t];
       }
     }
     // sum_weight[offset:end] += w_clipped[:targetLen]
@@ -272,6 +204,30 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
     const elapsed = (Date.now() - t0) / 1000;
     if (log) log(`  [seg ${i + 1}/${nTotal}] offset=${offset} chunk_len=${chunkLength} (${elapsed.toFixed(1)}s elapsed)`);
     if (onProgress) onProgress({ index: i + 1, total: nTotal, offset, chunkLength, elapsed });
+  };
+
+  let added = 0;
+  const addNext = (segData) => {
+    addChunk(added, segData);
+    added += 1;
+  };
+  const workers = startStftWorkers(Math.min(sessions.stftWorkers || 0, 2 * S * C));
+  if (log) log(`  separating ${nTotal} chunks${workers ? ` (${workers.length} STFT workers)` : ""}`);
+  if (workers) {
+    const pool = createWorkerPool(workers);
+    try {
+      await separateOnWorkers(pool, nTotal, paddedChunk, addNext, sessions, orch, times);
+    } catch (err) {
+      // A worker that fails leaves the rest of the chunks to this thread.
+      if (!pool.failed) throw err;
+      if (log) log(`  ${err.message}; separating chunks ${added + 1}-${nTotal} without workers`);
+    } finally {
+      pool.close();
+    }
+  }
+  for (let i = added; i < nTotal; i += 1) {
+    const seg = await runSegment(paddedChunk(i), B, C, segmentLength, sessions, orch, times);
+    addNext(seg.data);
   }
 
   if (log) log(`  separation time per step: ${Object.entries(times).map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`).join(", ")}`);
@@ -285,6 +241,80 @@ async function separate(mixFlat, totalLength, sessions, orch, { onProgress = nul
 
   // Stems as {name, left, right} in the model's source order.
   return orch.sources.map((name, s) => ({ name, left: rows[s * C], right: rows[s * C + 1] }));
+}
+
+// separate()'s chunk loop with the STFTs on workers. The core runs the chunks
+// in order on this thread and addNext gets their stems in order, so the
+// callbacks fire as before, just later. times: core = the core network,
+// waiting = this thread waiting on the workers.
+async function separateOnWorkers(pool, nTotal, paddedChunk, addNext, sessions, orch, times) {
+  const C = 2;
+  const S = orch.sources.length;
+  const shape = chunkShape(orch);
+  const { L, le, freq } = shape;
+  const bins = freq * le;
+  const base = { nfft: orch.nfft, hop: orch.hopLength, shape };
+
+  const analysis = new Map();
+  const analyse = (i) => {
+    const mix = paddedChunk(i);
+    const channels = [];
+    for (let c = 0; c < C; c += 1) {
+      const row = mix.slice(c * L, (c + 1) * L);
+      channels.push(pool.run({ ...base, op: "analysis", row }, [row.buffer]));
+    }
+    return quiet(Promise.all(channels).then((parts) => ({ mix, parts })));
+  };
+
+  const behind = [];
+  const finish = async ({ streams }) => {
+    const t = performance.now();
+    const outs = await streams;
+    times.waiting = (times.waiting || 0) + performance.now() - t;
+    const segData = new Float32Array(S * C * L);
+    outs.forEach(({ out }, r) => segData.set(out, r * L));
+    addNext(segData);
+  };
+
+  for (let i = 0; i < nTotal; i += 1) {
+    for (let j = i; j <= i + AHEAD && j < nTotal; j += 1) {
+      if (!analysis.has(j)) analysis.set(j, analyse(j));
+    }
+    let t = performance.now();
+    const { mix, parts } = await analysis.get(i);
+    analysis.delete(i);
+    times.waiting = (times.waiting || 0) + performance.now() - t;
+    t = performance.now();
+    const real = new Float32Array(C * bins);
+    const imag = new Float32Array(C * bins);
+    parts.forEach((part, c) => {
+      real.set(part.real, c * bins);
+      imag.set(part.imag, c * bins);
+    });
+    const coreOut = await runSession(sessions.core, {
+      real: tensor("float32", real, [C, freq, le]),
+      imag: tensor("float32", imag, [C, freq, le]),
+      mix: tensor("float32", mix, [1, C, L]),
+    });
+    const zr = await coreOut.zout_real.getData(true);
+    const zi = await coreOut.zout_imag.getData(true);
+    const xt = await coreOut.xt.getData(true);
+    times.core = (times.core || 0) + performance.now() - t;
+    const streams = [];
+    for (let r = 0; r < S * C; r += 1) {
+      const task = {
+        ...base,
+        op: "synthesis",
+        zr: zr.slice(r * bins, (r + 1) * bins),
+        zi: zi.slice(r * bins, (r + 1) * bins),
+        xt: xt.slice(r * L, (r + 1) * L),
+      };
+      streams.push(pool.run(task, [task.zr.buffer, task.zi.buffer, task.xt.buffer]));
+    }
+    behind.push({ streams: quiet(Promise.all(streams)) });
+    if (behind.length > BEHIND) await finish(behind.shift());
+  }
+  while (behind.length) await finish(behind.shift());
 }
 
 // Sum model sources into the cached stems per orch.stemFold (htdemucs_6s:
@@ -319,4 +349,5 @@ export {
   runSegment,
   chunkPadded,
   centerTrim,
+  stftWorkerCount,
 };

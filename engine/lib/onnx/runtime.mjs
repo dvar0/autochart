@@ -10,6 +10,10 @@
 //   sessionDevice(session, fallback) -> "cpu" | "webgpu" | ...
 //   graphSource(manifest, role) -> what createSession loads for that graph
 //   loadTables(manifest, file) -> Map of the npz's arrays (see parseNpz)
+// and may provide:
+//   hardwareThreads() -> logical CPU count
+//   startStftWorkers(count) -> worker adapters (see workerPool.mjs), or null
+//     where workers can't start; each runs stftTasks.mjs
 
 let host = null;
 
@@ -48,4 +52,20 @@ export function graphPath(manifest, role) {
 
 export function loadTables(manifest, file) {
   return current().loadTables(manifest, file);
+}
+
+export function hardwareThreads() {
+  const h = current();
+  return h.hardwareThreads ? h.hardwareThreads() : 1;
+}
+
+// Null when the host has no workers: the caller stays on its own thread.
+export function startStftWorkers(count) {
+  const h = current();
+  if (!h.startStftWorkers || !(count > 0)) return null;
+  try {
+    return h.startStftWorkers(count) || null;
+  } catch {
+    return null;
+  }
 }

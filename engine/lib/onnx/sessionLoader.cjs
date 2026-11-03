@@ -8,6 +8,7 @@ const ort = require("onnxruntime-node");
 const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
+const { Worker } = require("worker_threads");
 const { graphPath, loadNpz } = require("./modelsManifest.cjs");
 const { installHost } = require("./runtime.mjs");
 
@@ -267,6 +268,30 @@ async function runSession(session, inputs) {
   return session.run(inputs);
 }
 
+function hardwareThreads() {
+  try {
+    return (os.availableParallelism && os.availableParallelism()) || os.cpus().length || 1;
+  } catch {
+    return 1;
+  }
+}
+
+function startStftWorkers(count) {
+  const file = path.join(__dirname, "stftWorker.cjs");
+  return Array.from({ length: count }, () => {
+    const worker = new Worker(file);
+    return {
+      post: (message, transfer) => worker.postMessage(message, transfer),
+      listen(onMessage, onError) {
+        worker.on("message", onMessage);
+        worker.on("error", onError);
+        worker.on("exit", (code) => { if (code) onError(new Error(`exited with code ${code}`)); });
+      },
+      terminate: () => worker.terminate(),
+    };
+  });
+}
+
 function clearSessionCache() {
   sessionCache.clear();
   resetAutoDeviceResolution();
@@ -279,6 +304,8 @@ installHost({
   sessionDevice,
   graphSource: graphPath,
   loadTables: async (manifest, file) => loadNpz(path.join(manifest.folder, file)),
+  hardwareThreads,
+  startStftWorkers,
 });
 
 module.exports = {
@@ -295,4 +322,5 @@ module.exports = {
   resetAutoDeviceResolution,
   setRuntimeFallbackCallback,
   sessionDevice,
+  startStftWorkers,
 };
