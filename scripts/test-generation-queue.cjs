@@ -157,6 +157,8 @@ async function main() {
 
     // Picking keeps the Library on screen; the right panel becomes the queue.
     await waitFor(() => hasButton("Queue"), "Queue button");
+    // The button shows before the songs load; wait for them on slow machines.
+    await waitFor(() => evaluate('Boolean(document.querySelector(".tile-select"))'), "library songs");
     await click("Queue");
     await waitFor(() => evaluate('Boolean(document.querySelector(".queue-panel"))'), "queue panel");
     assert.equal(await evaluate('Boolean(document.querySelector(".tile-select"))'), true, "library left the screen");
