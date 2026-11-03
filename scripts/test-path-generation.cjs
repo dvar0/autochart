@@ -47,7 +47,7 @@ async function rendererContract(sourcePath) {
     const inMemory = { name: "memory.ogg", type: "audio/ogg", size: 8, arrayBuffer: file.arrayBuffer };
     await assert.rejects(
       generation.generateChart({ audioFile: inMemory, difficulty: "expert" }),
-      /exists only in memory/
+      /only exists in memory/
     );
     const storedResult = await generation.generateChart({
       audioFile: inMemory,
