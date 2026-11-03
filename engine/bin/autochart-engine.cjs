@@ -502,21 +502,27 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
     },
   });
 
-  let stemsMap = {};
-  const stemArrays = {};
+  // The stems go to disk only when they're kept. The mel tables read the
+  // same WAV bytes from memory either way.
+  const stemsMap = {};
+  const stemWavs = {};
+  const { channelOrder } = onnxLib.melTableSpec(manifest);
   for (const stem of stems) {
+    const tableStem = !storedTables && channelOrder.includes(stem.name);
+    if (!keepStems && !tableStem) continue;
+    const wav = onnxLib.stereoWavBuffer(stem.left, stem.right, orch.sampleRate, { bits: 32 });
+    if (tableStem) stemWavs[stem.name] = { wav };
+    if (!keepStems) continue;
     const outPath = path.join(stemDir, `${stem.name}.wav`);
     await demucsWorkspaceSafety.ensureContainedDirectory(cacheDir, stemDir, { create: false });
     await demucsWorkspaceSafety.assertSafeLeaf(stemDir, outPath);
-    await onnxLib.writeStereoWav(outPath, stem.left, stem.right, orch.sampleRate, { bits: 32, rootDirectory: cacheDir });
+    await writeVerifiedAtomic(outPath, wav, { rootDirectory: cacheDir, label: "Demucs WAV" });
     const writtenStem = await readVerifiedFile(outPath, { label: `Demucs ${stem.name} stem` });
     stemsMap[stem.name] = { path: outPath, identity: writtenStem.identity, format: "wav", mime: "audio/wav" };
-    stemArrays[stem.name] = { left: stem.left, right: stem.right, sampleRate: orch.sampleRate };
   }
   // Stored tables stay as they were (separating again only to play the stems),
   // so later charts match earlier ones.
-  const melTables = storedTables || await writeMelTables(onnxLib, manifest, job, cacheDir, tablesPath, stemsMap);
-  if (!keepStems) stemsMap = await removeStems(cacheDir, stemsMap);
+  const melTables = storedTables || await writeMelTables(onnxLib, manifest, job, cacheDir, tablesPath, stemWavs);
   // Later runs of this song show the same map without separating again.
   await writeVerifiedAtomic(path.join(stemDir, onnxLib.MAP_FILE), JSON.stringify(songMap), {
     rootDirectory: cacheDir,
@@ -552,7 +558,7 @@ async function onnxSeparate(job, jobPath, { command, generator = null }) {
     device: executionProvider,
     requestedDevice,
   });
-  return { ...prepareOutput, stemArrays, melTables, demucsModel: orch.model, songMapShown: true };
+  return { ...prepareOutput, melTables, demucsModel: orch.model, songMapShown: true };
 }
 
 // A separation's stored map, for a run that reuses it. False when it has none
@@ -1012,31 +1018,35 @@ async function decodeFullMono(onnxLib, audioPath) {
   return fullMono;
 }
 
-// Each stem the transcriber reads, as mono 22.05 kHz.
-async function decodeStemMonos(onnxLib, stems, channelOrder) {
-  const stemMonos = {};
-  for (const name of channelOrder.filter((channel) => channel !== "full")) {
-    const stemPathObj = stems && stems[name];
-    if (!stemPathObj || !stemPathObj.path) throw new Error(`mel tables: missing ${name} stem`);
-    const verifiedStem = await readVerifiedFile(stemPathObj.path, {
-      expectedIdentity: stemPathObj.identity,
+// One stem as the transcriber reads it, mono 22.05 kHz. stem is its WAV bytes
+// ({ wav }) or a stored stem ({ path, identity }).
+async function decodeStemMono(onnxLib, name, stem) {
+  let wav = stem && stem.wav;
+  if (!wav) {
+    if (!stem || !stem.path) throw new Error(`mel tables: missing ${name} stem`);
+    wav = (await readVerifiedFile(stem.path, {
+      expectedIdentity: stem.identity,
       label: `Demucs ${name} stem`,
       maxBytes: 2 * 1024 * 1024 * 1024,
-    });
-    const s = await onnxLib.decodeStereoF32Buffer(verifiedStem.data, { sampleRate: 22050 });
-    const mono = new Float32Array(s.length);
-    for (let i = 0; i < s.length; i += 1) mono[i] = 0.5 * (s.left[i] + s.right[i]);
-    stemMonos[name] = mono;
+    })).data;
   }
-  return stemMonos;
+  const s = await onnxLib.decodeStereoF32Buffer(wav, { sampleRate: 22050 });
+  const mono = new Float32Array(s.length);
+  for (let i = 0; i < s.length; i += 1) mono[i] = 0.5 * (s.left[i] + s.right[i]);
+  return mono;
 }
 
-// Makes a separation's mel tables from its stems and stores them in its stem folder.
+// Makes a separation's mel tables from its stems and stores them in its stem
+// folder. The mix and the stems go through FFmpeg side by side.
 async function writeMelTables(onnxLib, manifest, job, cacheDir, tablesPath, stems) {
   const log = (message) => emit({ type: "log", stage: "demucs", stream: "stdout", message });
   const { channelOrder } = onnxLib.melTableSpec(manifest);
-  const fullMono = await decodeFullMono(onnxLib, path.resolve(job.audioPath));
-  const stemMonos = await decodeStemMonos(onnxLib, stems, channelOrder);
+  const names = channelOrder.filter((channel) => channel !== "full");
+  const [fullMono, ...monos] = await Promise.all([
+    decodeFullMono(onnxLib, path.resolve(job.audioPath)),
+    ...names.map((name) => decodeStemMono(onnxLib, name, stems && stems[name])),
+  ]);
+  const stemMonos = Object.fromEntries(names.map((name, i) => [name, monos[i]]));
   const tables = await onnxLib.makeMelTables({ manifest, fullMono, stemMonos, log });
   const bytes = await onnxLib.encodeMelTables(tables);
   await demucsWorkspaceSafety.assertSafeLeaf(path.dirname(tablesPath), tablesPath);

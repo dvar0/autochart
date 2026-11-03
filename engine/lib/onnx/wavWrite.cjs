@@ -3,9 +3,11 @@
 const fs = require("fs");
 const path = require("path");
 const { writeVerifiedAtomic } = require("../../../electron/fileSafety.cjs");
+const LITTLE_ENDIAN = require("os").endianness() === "LE";
+
 // Minimal PCM/float WAV writer for stereo Float32 channel buffers.
 // bits: 32 = IEEE float (audioFormat 3), 16 = signed PCM (audioFormat 1).
-async function writeStereoWav(outPath, left, right, sampleRate = 44100, opts = {}) {
+function stereoWavBuffer(left, right, sampleRate = 44100, opts = {}) {
   const bits = opts.bits === 16 ? 16 : 32;
   const floatFmt = bits === 32;
   const frames = Math.min(left.length, right.length);
@@ -26,7 +28,13 @@ async function writeStereoWav(outPath, left, right, sampleRate = 44100, opts = {
   buffer.write("data", 36, "ascii");
   buffer.writeUInt32LE(dataSize, 40);
   let offset = 44;
-  if (floatFmt) {
+  if (floatFmt && LITTLE_ENDIAN) {
+    const samples = new Float32Array(buffer.buffer, buffer.byteOffset + 44, frames * 2);
+    for (let i = 0; i < frames; i += 1) {
+      samples[2 * i] = left[i];
+      samples[2 * i + 1] = right[i];
+    }
+  } else if (floatFmt) {
     for (let i = 0; i < frames; i += 1) {
       buffer.writeFloatLE(left[i], offset); offset += 4;
       buffer.writeFloatLE(right[i], offset); offset += 4;
@@ -39,11 +47,15 @@ async function writeStereoWav(outPath, left, right, sampleRate = 44100, opts = {
       buffer.writeInt16LE(Math.round(r * 32767), offset); offset += 2;
     }
   }
-  await writeVerifiedAtomic(outPath, buffer, {
+  return buffer;
+}
+
+async function writeStereoWav(outPath, left, right, sampleRate = 44100, opts = {}) {
+  await writeVerifiedAtomic(outPath, stereoWavBuffer(left, right, sampleRate, opts), {
     rootDirectory: opts.rootDirectory || path.dirname(outPath),
     label: "Demucs WAV",
   });
   return outPath;
 }
 
-module.exports = { writeStereoWav };
+module.exports = { stereoWavBuffer, writeStereoWav };

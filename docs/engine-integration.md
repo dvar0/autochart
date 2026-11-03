@@ -216,7 +216,9 @@ from the mix), so a separation is stored as those features
 1.2 MB per minute of audio) instead of its stems (about 100 MB per minute).
 Right after Demucs, the engine runs the mel graph on each stem channel on the
 CPU, clips 80 dB under the loudest stem, rounds to 1/256 dB and stores the
-result delta-coded and gzipped; then it deletes the stems. The transcriber
+result delta-coded and gzipped. The stems reach that step as WAV bytes in
+memory, resampled by FFmpeg side by side, and go to disk only when they're
+kept. The transcriber
 clips 80 dB under its reference, which is at least as loud as any stem, so the
 clip changes nothing, and the rounding leaves charts unchanged (same notes for
 the same seed, checked on CPU and WebGPU with Fretformer, Fretformer 2 and
