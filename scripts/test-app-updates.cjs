@@ -77,6 +77,10 @@ async function main() {
   assert.equal(compareVersions("1.0.0", "1.0.0"), 0);
   assert.equal(compareVersions("1.0.0-beta.1", "1.0.0"), -1);
   assert.equal(compareVersions("1.0.1", "1.0.0"), 1);
+  assert.equal(compareVersions("1.0.0-beta.2", "1.0.0-beta.10"), -1, "prerelease numbers compare by value");
+  assert.equal(compareVersions("1.0.0-beta", "1.0.0-beta.1"), -1);
+  assert.equal(compareVersions("1.0.0-alpha.9", "1.0.0-beta.1"), -1);
+  assert.equal(compareVersions("1.0.0-1", "1.0.0-rc"), -1, "numeric identifiers sort before words");
 
   // Signatures and feed shape
   assert.equal(verifyFeed(signed(feed()), PUBLIC).feed.version, "0.3.0");

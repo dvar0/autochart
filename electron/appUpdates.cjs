@@ -35,6 +35,24 @@ function parseVersion(value) {
   return { core: match.slice(1, 4).map(Number), pre: match[4] || "" };
 }
 
+// Prerelease identifiers in semver order: numbers by value and before words,
+// words by ASCII, and a longer list after its own prefix (beta.2 < beta.10).
+function comparePrerelease(left, right) {
+  const a = left.split(".");
+  const b = right.split(".");
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if (a[i] === undefined) return -1;
+    if (b[i] === undefined) return 1;
+    if (a[i] === b[i]) continue;
+    const numA = /^\d+$/.test(a[i]);
+    const numB = /^\d+$/.test(b[i]);
+    if (numA && numB) return Number(a[i]) < Number(b[i]) ? -1 : 1;
+    if (numA !== numB) return numA ? -1 : 1;
+    return a[i] < b[i] ? -1 : 1;
+  }
+  return 0;
+}
+
 // Release order; a prerelease sorts before its release.
 function compareVersions(left, right) {
   const a = parseVersion(left);
@@ -46,7 +64,7 @@ function compareVersions(left, right) {
   if (a.pre === b.pre) return 0;
   if (!a.pre) return 1;
   if (!b.pre) return -1;
-  return a.pre < b.pre ? -1 : 1;
+  return comparePrerelease(a.pre, b.pre);
 }
 
 function httpsUrl(value, label) {
