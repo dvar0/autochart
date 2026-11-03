@@ -10,7 +10,7 @@ import { t } from "../i18n/index.js";
 import { decodeAudioFile } from "../../engine/web/audio.mjs";
 import { loadMelTables } from "../../engine/web/stemStore.mjs";
 import {
-  audioLeadInMs, buildProjectFile, delayChart, exportableTables, PROJECT_FILE, tablesFileName, versionLeadInMs,
+  audioLeadInMs, buildProjectFile, delayChart, exportableTables, isProjectFileName, PROJECT_FILE, tablesFileName, versionLeadInMs,
 } from "../../shared/projectFile.js";
 import { buildSng, iniToSngMetadata } from "../../shared/sng.js";
 import { exportCover } from "../lib/coverArt/exportCover.js";
@@ -19,6 +19,10 @@ import { getAppSettings } from "../services/appSettings.js";
 import { getSongRecord } from "../services/songLibrary.js";
 
 const GAME_AUDIO = new Set(["ogg", "mp3", "opus", "wav"]);
+// The files an export writes under one of their names (as the desktop
+// export's CLONE_HERO_ASSET_NAMES). Saving again replaces them all, so a
+// file from an earlier save (song.ogg next to a new song.wav) can't linger.
+const MANAGED_FILE = /^(?:notes\.(?:chart|mid|midi)|song\.(?:ini|ogg|mp3|opus|wav|flac|m4a|aac|aiff?|mp4)|album\.(?:png|jpe?g)|background\.(?:png|jpe?g|webp|mp4)|video\.(?:mp4|webm|ogv))$/i;
 const LITE_GENERATOR_ID = "autochart.fretformer.v2-lite-onnx";
 const VIDEO = new Set(["webm", "mp4"]);
 
@@ -63,6 +67,8 @@ function buildSongIni(meta, resources = {}) {
     ["autochart_ai_generated", meta.autochart_ai_generated],
     ["autochart_generated_difficulties", meta.autochart_generated_difficulties],
     ["autochart_generator", meta.autochart_generator],
+    // Marks the folder as an Autochart export so a later export may replace it.
+    ["autochart_export", "1"],
     ["loading_phrase", meta.autochart_ai_generated === "true"
       ? `Contains AI-generated guitar difficulties: ${meta.autochart_generated_difficulties}. ${generatedWith(meta)}`
       : ""],
@@ -340,6 +346,25 @@ export async function chooseSongsFolder() {
   return handle.name;
 }
 
+// An earlier save's files this one doesn't write again. Only in a folder an
+// Autochart export made (its song.ini says so), never another song's.
+async function removeEarlierSave(dir, files) {
+  const writing = new Set(files.map((file) => file.name.toLowerCase()));
+  let ini = "";
+  try {
+    ini = await (await (await dir.getFileHandle("song.ini")).getFile()).text();
+  } catch {
+    return;
+  }
+  if (!/^\s*autochart_(?:export|provenance_version)\s*=\s*1\s*$/im.test(ini)) return;
+  const stale = [];
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind !== "file" || writing.has(name.toLowerCase())) continue;
+    if (MANAGED_FILE.test(name) || isProjectFileName(name)) stale.push(name);
+  }
+  for (const name of stale) await dir.removeEntry(name).catch(() => {});
+}
+
 export async function saveToSongsFolder(songId, versionId = null) {
   if (!canSaveToFolder()) throw new Error(t("This browser can't save into folders. Use Export to download the song instead."));
   const { record, versionId: exportedId, files } = await cloneHeroFiles(songId, versionId);
@@ -352,6 +377,7 @@ export async function saveToSongsFolder(songId, versionId = null) {
   }
   const folder = cloneHeroFolderName(record.meta, { copy: true });
   const dir = await root.getDirectoryHandle(folder, { create: true });
+  await removeEarlierSave(dir, files);
   for (const file of files) {
     const handle = await dir.getFileHandle(file.name, { create: true });
     const writable = await handle.createWritable();
