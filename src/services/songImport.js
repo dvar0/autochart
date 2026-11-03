@@ -49,6 +49,26 @@ function namedLike(name, stems, exts) {
   return stems.some((s) => stem === s || stem.startsWith(s));
 }
 
+// Clone Hero folders hold the song's mix as song.<ext>, often next to its
+// preview clip and the band's stems (guitar.ogg, drums_1.ogg, crowd.ogg...).
+// The mix comes first, then any audio that isn't a preview or a stem, and a
+// stem (the guitar first) only when nothing else is there.
+const NOT_THE_MIX = /^(preview|crowd|guitar|rhythm|bass|keys|backing|harmony|vocals(_\d)?|drums(_\d)?)$/;
+
+function songAudioFile(files) {
+  const audio = files.filter((file) => hasExt(basename(file), AUDIO_EXTS));
+  const stemOf = (file) => {
+    const name = basename(file);
+    return name.slice(0, -extname(name).length);
+  };
+  return audio.find((file) => basename(file) === "song.ogg")
+    || audio.find((file) => stemOf(file) === "song")
+    || audio.find((file) => !NOT_THE_MIX.test(stemOf(file)))
+    || audio.find((file) => stemOf(file) === "guitar")
+    || audio.find((file) => stemOf(file) !== "preview")
+    || null;
+}
+
 // Minimal song.ini parser — just the [song] section key/values we care about.
 function parseSongIni(text) {
   const meta = {};
@@ -74,9 +94,7 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
   const chartFile = find((n) => n === "notes.chart");
   const midFile = find((n) => n === "notes.mid" || n === "notes.midi");
   const iniFile = find((n) => n === "song.ini");
-  const audioFile =
-    find((n) => n === "song.ogg") ||
-    find((n) => AUDIO_EXTS.some((e) => n.endsWith(e)));
+  const audioFile = songAudioFile(files);
   const artFile = find((n) => namedLike(n, ART_STEMS, IMAGE_EXTS));
 
   // Background: Clone Hero songs may ship a video (video.mp4 / video.webm)
@@ -96,12 +114,14 @@ export async function importSongFolder(fileList, { difficulty = "expert" } = {})
   const chartText = await chartFile.text();
   const chart = parseChart(chartText);
 
-  // Pick the requested difficulty, else the hardest available.
-  const available = Object.keys(chart.tracks);
+  // Pick the requested difficulty, else the hardest available. Charts often
+  // keep an empty section for a difficulty nobody charted.
+  const charted = Object.keys(chart.tracks).filter((d) => chart.tracks[d].notes.length);
+  const available = charted.length ? charted : Object.keys(chart.tracks);
   let chosen = difficulty;
-  if (!chart.tracks[chosen]) {
+  if (!available.includes(chosen)) {
     const order = ["expert", "hard", "medium", "easy"];
-    chosen = order.find((d) => chart.tracks[d]) || available[0];
+    chosen = order.find((d) => available.includes(d)) || available[0];
     if (chosen) {
       warnings.push(t("No {missing} chart, so {used} is shown.", { missing: DIFF[difficulty]?.name || difficulty, used: DIFF[chosen]?.name || chosen }));
     }

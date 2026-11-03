@@ -89,12 +89,32 @@ const library = require("../electron/libraryStore.cjs");
       assert.equal(roundTrip.meta.autochart_generated_difficulties, generatedDifficulties);
       assert.equal(roundTrip.meta.charter, expectedCredit);
     }
+    // The song's mix, not its preview clip or a stem, is the project's audio.
+    for (const [names, expected] of [
+      [["preview.ogg", "song.opus"], "song.opus"],
+      [["bass.ogg", "crowd.ogg", "song.mp3"], "song.mp3"],
+      [["preview.mp3", "Some Song.flac"], "Some Song.flac"],
+      [["drums_1.ogg", "guitar.ogg", "preview.ogg"], "guitar.ogg"],
+    ]) {
+      const picked = await importSongFolder([new File([generated.chart.text], "notes.chart"),
+        ...names.map((name) => new File(["OggS"], name))]);
+      assert.equal(picked.audioBlob.name, expected, names.join(", "));
+    }
+    // An empty section isn't a charted difficulty.
+    const emptyExpert = "[Song]\n{\n  Resolution = 192\n}\n[SyncTrack]\n{\n  0 = B 120000\n}\n" +
+      "[ExpertSingle]\n{\n}\n[HardSingle]\n{\n  192 = N 1 0\n}\n";
+    const hardOnly = await importSongFolder([new File([emptyExpert], "notes.chart"), new File(["OggS"], "song.ogg")]);
+    assert.equal(hardOnly.meta.difficulty, "hard");
+    assert.deepEqual(hardOnly.meta.availableDifficulties, ["hard"]);
+    assert.ok(hardOnly.track.notes.length > 0);
+    await assert.rejects(importSongFolder([new File([generated.chart.text], "notes.chart"), new File(["OggS"], "preview.ogg")]),
+      /No audio file/);
     const injection = exportChartMetadata(generated, { charter: "Someone else", genre: 'Rock\ncharter = Spoofed' });
     assert.equal(chartSongMetadata(injection.chartText).charter, "Autochart");
     assert.equal(chartSongMetadata(injection.chartText).genre, "Rock charter = Spoofed");
     const cleared = exportChartMetadata(generated, { genre: "" });
     assert.equal(chartSongMetadata(cleared.chartText).genre, undefined);
-    console.log("chart metadata: genre, fixed AI credit, mixed/edited lineage, export and re-import passed");
+    console.log("chart metadata: genre, fixed AI credit, mixed/edited lineage, export, re-import and song audio choice passed");
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
