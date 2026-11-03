@@ -716,6 +716,21 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
   const [compareVolume, setCompareVolume] = useState(loadHighwayVolume);
   const [compareMuted, setCompareMuted] = useState(false);
   const lastCompareVolumeRef = useRef(compareVolume > 0 ? compareVolume : 1);
+  // The single stage keeps its own volume (saved as it changes), so a
+  // compare picks up the saved one each time it opens, not the one from when
+  // this page did.
+  const [compareOpen, setCompareOpen] = useState(inCompare);
+  if (compareOpen !== inCompare) {
+    setCompareOpen(inCompare);
+    if (inCompare) {
+      const saved = loadHighwayVolume();
+      setCompareVolume(saved);
+      setCompareMuted(saved <= 0);
+    }
+  }
+  useEffect(() => {
+    if (compareVolume > 0) lastCompareVolumeRef.current = compareVolume;
+  }, [compareVolume]);
   const compareShellRef = useRef(null);
   const joinedCompareRef = useRef(null);
 

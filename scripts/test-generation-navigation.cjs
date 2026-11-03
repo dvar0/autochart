@@ -141,6 +141,13 @@ async function main() {
     await waitFor(() => evaluate('Boolean(document.querySelector(".single-preview .transport-btn:not(.ghost):not(:disabled)"))'), "single preview ready");
     await evaluate('document.querySelector(".single-preview .transport-btn").click()');
     await waitFor(() => evaluate('document.querySelector(".single-preview .transport-btn")?.textContent.includes("Pause")'), "single preview playing");
+    // A volume set on the single preview carries into compare.
+    await evaluate(`(() => {
+      const slider = document.querySelector(".single-preview .volume-slider");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(slider, "0.2");
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    })()`);
     // Checking the second take opens compare on its own, and it carries on
     // playing from where the single preview was.
     const singleTime = await evaluate('Number(document.querySelector(".single-preview .seekbar")?.value)');
@@ -148,6 +155,7 @@ async function main() {
     await waitFor(() => evaluate('document.querySelectorAll(".joined-highway-canvas").length === 2 && Number(document.querySelector(".compare-timeline .seekbar")?.max) > 29'), "joined compare loaded with audio duration");
     const compareButton = 'document.querySelector(".compare-transport .transport-btn")';
     await waitFor(() => evaluate(`Number(document.querySelector(".compare-timeline .seekbar")?.value) > ${singleTime + 0.2}`), "joined compare keeps playing from the single preview's time");
+    assert.equal(await evaluate('Number(document.querySelector(".compare-transport .volume-slider")?.value)'), 0.2, "compare opens at the single preview's volume");
     await evaluate(`${compareButton}.click()`);
     await evaluate(`(() => {
       const seek = document.querySelector('.compare-timeline .seekbar');
