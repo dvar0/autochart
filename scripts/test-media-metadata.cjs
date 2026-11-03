@@ -49,6 +49,11 @@ function sparseFile(name, size, pieces, forbidden = []) {
   };
   return file;
 }
+const u32le = (value) => {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32LE(value);
+  return bytes;
+};
 const smallFile = (name, ...parts) => {
   const bytes = Buffer.concat(parts);
   return sparseFile(name, bytes.length, [[0, bytes]]);
@@ -86,7 +91,6 @@ function oggStream(packets, serial = 0x1234) {
   return Buffer.concat(pages);
 }
 const vorbisComments = (prefix, fields) => {
-  const u32le = (value) => { const b = Buffer.alloc(4); b.writeUInt32LE(value); return b; };
   const entries = fields.map((field) => Buffer.from(field));
   return Buffer.concat([prefix, u32le(6), Buffer.from("vendor"), u32le(entries.length),
     ...entries.flatMap((entry) => [u32le(entry.length), entry])]);
@@ -176,6 +180,44 @@ const flacPicture = (mime, data) => Buffer.concat([u32(3), u32(mime.length), Buf
   assert.equal(mp3.meta.title, title);
   assert.equal(mp3.meta.artist, artist);
 
+  // ID3 details taggers really write: big-endian UTF-16, v2.4 multiple values,
+  // an extended header, unsynchronisation, loosely typed covers, and a tag in
+  // front of a FLAC stream.
+  const synchsafe = (n) => Buffer.from([(n >> 21) & 127, (n >> 14) & 127, (n >> 7) & 127, n & 127]);
+  const id3 = (version, flags, ...frames) => {
+    const tagBody = Buffer.concat(frames);
+    return Buffer.concat([Buffer.from("ID3", "latin1"), Buffer.from([version, 0, flags]), synchsafe(tagBody.length), tagBody]);
+  };
+  const rawFrame = (id, frameBody, version = 3) =>
+    Buffer.concat([Buffer.from(id), version === 4 ? synchsafe(frameBody.length) : u32(frameBody.length), Buffer.alloc(2), frameBody]);
+  const utf16be = Buffer.concat([Buffer.from([1, 0xfe, 0xff]), Buffer.from(title, "utf16le").swap16()]);
+  const utf16le = Buffer.concat([Buffer.from([1, 0xff, 0xfe]), Buffer.from(artist, "utf16le")]);
+  let tagged = await read(smallFile("be.mp3", id3(3, 0, rawFrame("TIT2", utf16be), rawFrame("TPE1", utf16le))));
+  assert.equal(tagged.meta.title, title, "UTF-16 big-endian text");
+  assert.equal(tagged.meta.artist, artist);
+  tagged = await read(smallFile("multi.mp3", id3(4, 0, rawFrame("TPE1", Buffer.from("\x03One\0Two\0", "latin1"), 4))));
+  assert.equal(tagged.meta.artist, "One, Two", "v2.4 values are null-separated");
+  const extended = Buffer.concat([u32(6), Buffer.alloc(6)]);
+  tagged = await read(smallFile("ext.mp3", id3(3, 0x40, extended, frame("TIT2", title))));
+  assert.equal(tagged.meta.title, title, "extended header is skipped");
+  const cover = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0x00, 0xff, 0xd9]);
+  const apic = (mime) => rawFrame("APIC", Buffer.concat([Buffer.from([0]), Buffer.from(mime), Buffer.from([0, 3, 0]), cover]));
+  // Unsynchronised: every 0xFF is followed by an inserted zero.
+  const unsync = (bytes) => Buffer.from([...bytes].flatMap((byte) => byte === 0xff ? [0xff, 0] : [byte]));
+  tagged = await read(smallFile("unsync.mp3", id3(3, 0x80, unsync(Buffer.concat([frame("TIT2", title), apic("image/jpeg")])))));
+  assert.equal(tagged.meta.title, title);
+  assert.deepEqual(Buffer.from(await tagged.albumBlob.arrayBuffer()), cover, "unsynchronised cover");
+  tagged = await read(smallFile("loose.mp3", id3(3, 0, apic("JPG"))));
+  assert.equal(tagged.albumBlob?.type, "image/jpeg", "cover type comes from its bytes");
+  tagged = await read(smallFile("heic.mp3", id3(3, 0, rawFrame("APIC", Buffer.concat([Buffer.from("\0image/heic\0\x03\0", "latin1"), Buffer.from("....ftypheic")])))));
+  assert.equal(tagged.albumBlob, null, "covers the library can't keep are left out");
+  const flacBlock = (type, blockBody, last) => Buffer.concat([Buffer.from([(last ? 0x80 : 0) | type, 0, (blockBody.length >> 8) & 255, blockBody.length & 255]), blockBody]);
+  const flacComments = Buffer.concat([u32le(6), Buffer.from("vendor"), u32le(1), u32le(Buffer.byteLength(`TITLE=${title}`)), Buffer.from(`TITLE=${title}`)]);
+  const flacStream = Buffer.concat([Buffer.from("fLaC"), flacBlock(0, Buffer.alloc(34), false), flacBlock(4, flacComments, true)]);
+  tagged = await read(smallFile("prefixed.flac", id3(3, 0, frame("TIT2", "ID3 title"), frame("TPE1", artist)), flacStream));
+  assert.equal(tagged.meta.title, title, "FLAC tags behind an ID3 tag");
+  assert.equal(tagged.meta.artist, artist, "ID3 fills what the FLAC tags leave out");
+
   const source = smallFile("unrelated-filename.mov", ftyp, legacy);
 
   // Ogg Opus (.opus/.ogx) and Ogg Vorbis: cover art large enough to span pages.
@@ -207,5 +249,5 @@ const flacPicture = (mime, data) => Buffer.concat([u32(3), u32(mime.length), Buf
     assert.ok(info.raw.meta.title, "real file title missing");
     console.log(path.basename(sourcePath), JSON.stringify(info.meta));
   }
-  console.log("Media metadata: QuickTime, iTunes, mdta, trailing tags, bounded reads, malformed files, ID3, Ogg Opus/Vorbis, and project metadata passed.");
+  console.log("Media metadata: QuickTime, iTunes, mdta, trailing tags, bounded reads, malformed files, ID3 (UTF-16, v2.4, extended headers, unsync, FLAC prefix), Ogg Opus/Vorbis, and project metadata passed.");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

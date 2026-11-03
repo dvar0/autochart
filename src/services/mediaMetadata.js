@@ -73,7 +73,6 @@ function imageExtForMime(mime = "") {
   if (lower.includes("jpeg") || lower.includes("jpg")) return ".jpg";
   if (lower.includes("webp")) return ".webp";
   if (lower.includes("gif")) return ".gif";
-  if (lower.includes("heic")) return ".heic";
   return ".png";
 }
 
@@ -87,9 +86,23 @@ function makeFile(parts, name, type) {
   }
 }
 
+// Tags often name a cover's type loosely ("JPG", "image/jpg") or wrongly, and
+// the library rejects a cover whose type isn't image/*, so the bytes decide.
+function pictureMime(picture) {
+  const data = picture.data;
+  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return "image/jpeg";
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return "image/png";
+  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return "image/gif";
+  if (decodeBytes(data.subarray(0, 4), "iso-8859-1") === "RIFF" && decodeBytes(data.subarray(8, 12), "iso-8859-1") === "WEBP") return "image/webp";
+  // Anything else (HEIC, BMP, a URL "-->") isn't a cover the library or the
+  // games take.
+  return null;
+}
+
 function makePictureBlob(picture, sourceName) {
   if (!picture?.data?.length) return null;
-  const mime = picture.mime || "image/png";
+  const mime = pictureMime(picture);
+  if (!mime) return null;
   const ext = imageExtForMime(mime);
   return makeFile([picture.data], `${safeBaseName(sourceName)} cover${ext}`, mime);
 }
@@ -186,14 +199,26 @@ function decodeBytes(bytes, encoding = "utf-8") {
   }
 }
 
+// UTF-16 text in ID3 starts with a byte-order mark, either way round;
+// TextDecoder("utf-16") is little-endian only.
+function decodeUtf16WithBom(bytes) {
+  return bytes[0] === 0xfe && bytes[1] === 0xff
+    ? decodeBytes(bytes.subarray(2), "utf-16be")
+    : decodeBytes(bytes, "utf-16le");
+}
+
 function decodeId3Text(bytes) {
   if (!bytes?.length) return "";
   const encoding = bytes[0];
   const body = bytes.slice(1);
-  if (encoding === 0) return decodeBytes(body, "iso-8859-1");
-  if (encoding === 1) return decodeBytes(body, "utf-16");
-  if (encoding === 2) return decodeBytes(body, "utf-16be");
-  return decodeBytes(body, "utf-8");
+  let text;
+  if (encoding === 0) text = decodeBytes(body, "iso-8859-1");
+  else if (encoding === 1) text = decodeUtf16WithBom(body);
+  else if (encoding === 2) text = decodeBytes(body, "utf-16be");
+  else text = decodeBytes(body, "utf-8");
+  // ID3v2.4 separates multiple values with a null (each UTF-16 value carries
+  // its own byte-order mark).
+  return text.replace(/\0+$/, "").split("\0").map((value) => value.replace(/^\uFEFF/, "").trim()).filter(Boolean).join(", ");
 }
 
 function synchsafe(bytes, offset) {
@@ -254,27 +279,63 @@ function parseId3Picture(frame, version) {
   return data.length ? { mime, data } : null;
 }
 
+// Unsynchronisation inserts a zero after every 0xFF; take them back out.
+function resynchronise(bytes) {
+  const out = new Uint8Array(bytes.length);
+  let length = 0;
+  for (let i = 0; i < bytes.length; i += 1) {
+    out[length++] = bytes[i];
+    if (bytes[i] === 0xff && bytes[i + 1] === 0) i += 1;
+  }
+  return out.subarray(0, length);
+}
+
+/** The bytes an ID3v2 tag at the start of `bytes` takes up, footer included; 0 without one. */
+function id3TagLength(bytes) {
+  if (bytes.length < 10 || decodeBytes(bytes.subarray(0, 3), "iso-8859-1") !== "ID3") return 0;
+  return 10 + synchsafe(bytes, 6) + (bytes[3] === 4 && bytes[5] & 0x10 ? 10 : 0);
+}
+
 function parseId3(bytes) {
   const out = { meta: {}, picture: null };
   if (bytes.length < 10 || decodeBytes(bytes.slice(0, 3), "iso-8859-1") !== "ID3") return out;
   const version = bytes[3];
+  const flags = bytes[5];
   const tagSize = synchsafe(bytes, 6);
-  const tagEnd = Math.min(bytes.length, 10 + tagSize);
-  let offset = 10;
+  // A tag longer than the bytes read ends in a cut-off frame, which is no use
+  // as a cover.
+  const complete = 10 + tagSize <= bytes.length;
+  let body = bytes.subarray(10, Math.min(bytes.length, 10 + tagSize));
+  // Before v2.4, unsynchronisation applies to the whole tag.
+  if (version < 4 && flags & 0x80) body = resynchronise(body);
+  let offset = 0;
+  if (version >= 3 && flags & 0x40 && body.length >= 4) {
+    // Extended header: v2.3's size leaves out its own 4 bytes, v2.4's doesn't.
+    offset = version === 4 ? synchsafe(body, 0) : uint32be(body, 0) + 4;
+  }
+  const tagEnd = body.length;
 
   while (offset + (version === 2 ? 6 : 10) <= tagEnd) {
     const frameIdSize = version === 2 ? 3 : 4;
-    const id = decodeBytes(bytes.slice(offset, offset + frameIdSize), "iso-8859-1").replace(/\0/g, "");
+    const id = decodeBytes(body.slice(offset, offset + frameIdSize), "iso-8859-1").replace(/\0/g, "");
     if (!id) break;
-    const size = version === 2 ? uint24be(bytes, offset + 3) : version === 4 ? synchsafe(bytes, offset + 4) : uint32be(bytes, offset + 4);
+    const size = version === 2 ? uint24be(body, offset + 3) : version === 4 ? synchsafe(body, offset + 4) : uint32be(body, offset + 4);
     const headerSize = version === 2 ? 6 : 10;
     const frameStart = offset + headerSize;
     const frameEnd = Math.min(frameStart + size, tagEnd);
     if (size <= 0 || frameEnd <= frameStart) break;
-    const frame = bytes.slice(frameStart, frameEnd);
-    const metaKey = TEXT_FRAME_MAP[id];
-    if (metaKey) setMeta(out.meta, metaKey, decodeId3Text(frame));
-    if (!out.picture && (id === "APIC" || id === "PIC")) out.picture = parseId3Picture(frame, version);
+    const frameFlags = version === 2 ? 0 : body[offset + 9];
+    // Compressed or encrypted frames can't be read here.
+    const unreadable = version === 3 ? frameFlags & 0xc0 : version === 4 ? frameFlags & 0x0c : 0;
+    if (!unreadable) {
+      let frame = body.slice(frameStart, frameEnd);
+      if (version === 4 && frameFlags & 0x01) frame = frame.subarray(4); // data length indicator
+      if (version === 4 && frameFlags & 0x02) frame = resynchronise(frame);
+      const metaKey = TEXT_FRAME_MAP[id];
+      if (metaKey) setMeta(out.meta, metaKey, decodeId3Text(frame));
+      const whole = complete || frameStart + size <= tagEnd;
+      if (!out.picture && whole && (id === "APIC" || id === "PIC")) out.picture = parseId3Picture(frame, version);
+    }
     offset = frameEnd;
   }
   return out;
@@ -616,6 +677,12 @@ export async function readMediaFileMetadata(file, { videoUrl = null, skipVideoTh
     parsed = await parseWaveMetadata(file);
   } else if (bytes.length >= 10 && decodeBytes(bytes.slice(0, 3), "iso-8859-1") === "ID3") {
     parsed = parseId3(bytes);
+    // Some taggers put an ID3 tag in front of a FLAC stream; its own tags win.
+    const after = bytes.subarray(id3TagLength(bytes));
+    if (after.length >= 4 && decodeBytes(after.subarray(0, 4), "iso-8859-1") === "fLaC") {
+      const flac = parseFlac(after);
+      parsed = { meta: { ...parsed.meta, ...flac.meta }, picture: flac.picture || parsed.picture };
+    }
   } else if (bytes.length >= 4 && decodeBytes(bytes.slice(0, 4), "iso-8859-1") === "fLaC") {
     parsed = parseFlac(bytes);
   } else if (bytes.length >= 4 && decodeBytes(bytes.slice(0, 4), "iso-8859-1") === "OggS") {
