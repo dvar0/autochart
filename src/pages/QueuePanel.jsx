@@ -15,6 +15,7 @@ import {
   exportQueue,
   getQueue,
   itemPercent,
+  queueStyle,
   queueSummary,
   removeFromQueue,
   retryQueueItem,
@@ -22,10 +23,12 @@ import {
   setQueueGenerator,
   setQueueOpen,
   setQueueSettings,
+  setQueueStyle,
   startQueue,
   stopQueue,
   subscribeQueue,
 } from "../services/generationQueue.js";
+import StyleFader, { KNOB_COLORS } from "./generate/StyleFader.jsx";
 import { activeModelInstalls, installAssets, subscribeModelInstallEvents, subscribeModelInstalls } from "../services/modelSetup.js";
 import { generatorDifficultyIds } from "../services/projectRun.js";
 import { t, tn } from "../i18n/index.js";
@@ -158,6 +161,10 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
 
   const supported = generator ? generatorDifficultyIds(generator) : [];
   const difficulties = GENERATION_DIFFICULTIES.filter((option) => supported.includes(option.id));
+  const hasKnobs = Boolean(generator?.capabilities?.descriptorKnobs);
+  const style = queueStyle(queue);
+  const allAuto = style.every(({ value }) => value === "auto");
+
   const toggleDifficulty = (id) => {
     const on = settings.difficulties.includes(id);
     if (on && settings.difficulties.length === 1) return;
@@ -338,6 +345,30 @@ export default function QueuePanel({ songs, folderGate, onOpen, onAddAll, canAdd
               <b>{t(preset.name)}</b>
             </button>
           ))}
+        </div>
+        <div className={"queue-style style-field" + (hasKnobs ? "" : " is-off")}>
+          <div className="field-line">
+            <span className="queue-style-label">{t("Style")}</span>
+            {hasKnobs ? (
+              <button type="button" className="field-link" onClick={() => setQueueStyle(null)} disabled={running || allAuto}>
+                {t("All auto")}
+              </button>
+            ) : (
+              <small>{t("Not on this model")}</small>
+            )}
+          </div>
+          <div className="style-faders" style={{ "--knob-count": style.length }}>
+            {style.map(({ knob, value }, index) => (
+              <StyleFader
+                key={knob.id}
+                knob={knob}
+                color={KNOB_COLORS[index % KNOB_COLORS.length]}
+                raw={hasKnobs ? value : "auto"}
+                disabled={running || !hasKnobs}
+                onChange={(next) => setQueueStyle(knob.key, next)}
+              />
+            ))}
+          </div>
         </div>
         <div className="queue-toggle">
           <span id="queue-save-when-done">{t("Save each to {library}", { library: GAME_LIBRARY_NAME })}</span>

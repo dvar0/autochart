@@ -6,6 +6,7 @@ import {
   SOURCE_CHART_TIMING_DETECTOR_ID,
   buildGenerationSettings,
   controlsForGenerationPreset,
+  descriptorKnobsForGenerator,
   generationVersionName,
 } from "../data/generationSettings.js";
 import { canRetryUsingCpu } from "../pages/generate/hardwareRecovery.js";
@@ -35,6 +36,7 @@ import { msg, t, tn } from "../i18n/index.js";
 // object so subscribers see the change.
 //
 // State: { open, items, settings, generator, running, stopping, saving, note }
+// Settings: { generatorId, difficulties, presetId, style, saveWhenDone }
 // Item: { songId, title, artist, durationSec, lengthKnown, separated, runs, stage,
 //         onCpu, hardwareMode, saved, saveError }
 // Run: { difficulty, status, separates, sep, beats, chart, error, canUseCpu, jobId }
@@ -61,7 +63,8 @@ const FALLBACK_SECONDS = 240;
 let state = {
   open: false,
   items: [],
-  settings: { generatorId: "", difficulties: ["expert"], presetId: "standard", saveWhenDone: false },
+  // style: knob control key -> "0".."6"; a knob left out is auto.
+  settings: { generatorId: "", difficulties: ["expert"], presetId: "standard", style: {}, saveWhenDone: false },
   generator: null,
   running: false,
   stopping: false,
@@ -137,12 +140,36 @@ function ensureLoaded() {
     state = {
       ...state,
       items,
-      settings: { ...state.settings, ...saved.settings },
+      settings: { ...state.settings, ...saved.settings, style: plainStyle(saved.settings?.style) },
       open: items.some((item) => item.runs.some((run) => run.status === "waiting")),
     };
   } catch {
     // A damaged saved queue starts empty.
   }
+}
+
+function plainStyle(style) {
+  return style && typeof style === "object" && !Array.isArray(style) ? style : {};
+}
+
+// The style knobs the queue's model has, with what each is set to.
+export function queueStyle(queue = getQueue()) {
+  return descriptorKnobsForGenerator(queue.generator).map((knob) => ({ knob, value: queue.settings.style[knob.key] ?? "auto" }));
+}
+
+// Sets one knob ("auto" or "0".."6"), or every knob back to auto with null.
+export function setQueueStyle(key, value) {
+  getQueue();
+  const style = { ...state.settings.style };
+  if (key == null) {
+    for (const { knob } of queueStyle()) delete style[knob.key];
+  } else if (value == null || value === "auto") {
+    delete style[key];
+  } else {
+    style[key] = String(value);
+  }
+  state.settings = { ...state.settings, style };
+  changed();
 }
 
 export function subscribeQueue(listener) {
@@ -380,6 +407,7 @@ export function queueJobFor(songId) {
     generatorId: state.generator?.id || "",
     generatorLabel: state.generator?.label || "",
     presetName: GENERATION_PRESETS.find((preset) => preset.id === state.settings.presetId)?.name || "",
+    style: queueStyle().filter(({ value }) => value !== "auto").map(({ knob, value }) => ({ name: knob.name, value })),
     title: item.title,
     artist: item.artist,
     events: [...seen.values()],
@@ -459,6 +487,7 @@ async function chartInput(item, run) {
     defaultTimingDetector: timingDetector,
     controls: controlsForGenerationPreset(state.settings.presetId, {
       ...DEFAULT_GENERATION_CONTROLS,
+      ...Object.fromEntries(queueStyle().map(({ knob, value }) => [knob.key, value])),
       difficulty: run.difficulty,
       timingDetector,
     }),

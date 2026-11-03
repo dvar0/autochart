@@ -89,7 +89,7 @@ async function main() {
         label: "Fretformer 2",
         setup: { ready: true },
         separation: { cacheSubdir: "htdemucs_6s", stemSet: "htdemucs_6s" },
-        capabilities: { difficulties: ["easy", "medium", "hard", "expert"] },
+        capabilities: { difficulties: ["easy", "medium", "hard", "expert"], descriptorKnobs: ["speed", "chords", "hopos", "taps", "movement"] },
       }],
     }));
     ipcMain.handle("engine:keepAwake", (_event, on) => {
@@ -180,6 +180,19 @@ async function main() {
     await waitFor(() => hasButton("Generate 3 charts"), "Generate 3 charts");
     console.log("picking: toggle and shift range passed");
 
+    // Style knobs set in the queue go to every job; the rest stay auto.
+    const knobValue = (name) => evaluate(`document.querySelector('.queue-panel .style-fader-track[aria-label=${JSON.stringify(name)}]').getAttribute("aria-valuetext")`);
+    const setKnob = async (name, value) => {
+      while ((await knobValue(name)) !== value) {
+        const before = await knobValue(name);
+        await evaluate(`document.querySelector('.queue-panel .style-fader-track[aria-label=${JSON.stringify(name)}]').dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))`);
+        await waitFor(async () => (await knobValue(name)) !== before, `${name} stepped`);
+      }
+    };
+    await setKnob("Density", "4");
+    await setKnob("Chords", "0");
+    assert.equal(await evaluate(`document.querySelectorAll(".queue-panel .style-fader").length`), 5, "queue shows the model's knobs");
+
     // One job at a time, in order, with the Generate payload's settings.
     const first = order.filter((title) => title !== "Delta");
     await click("Generate 3 charts");
@@ -193,6 +206,8 @@ async function main() {
     assert.equal(job1.payload.sourceTransform.key, "lead-in:0");
     assert.equal(job1.payload.generatorId, "autochart.fretformer.v2-onnx");
     assert.equal(job1.payload.generation.modelPicked, true);
+    assert.deepEqual(job1.payload.generation.controls.knobs, { speed: 4, chords: 0, hopos: null, taps: null, movement: null }, "queue style not in the job");
+    assert.equal(job1.payload.generation.resolved.knobsActive, true);
     send(job1, { type: "stage", stage: "demucs", status: "running", progress: 0.5 });
     await waitFor(async () => (await panelText()).includes("Separating"), "separating step shown");
     await waitFor(async () => (await percent()) > 0, "percent moved during separation");
@@ -206,6 +221,7 @@ async function main() {
     finish(job1);
     await expectJobs(2, "second song started");
     assert.equal(jobs[1].payload.audio.projectId, first[1].toLowerCase(), "songs out of order");
+    assert.equal(jobs[1].payload.generation.controls.knobs.speed, 4, "second song lost the queue style");
     console.log("sequence: one job at a time, step and percent passed");
 
     // Closing the queue leaves only the song being charted marked on its tile.

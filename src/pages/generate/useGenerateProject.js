@@ -874,7 +874,12 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         leadInSilenceMs: 0,
         leadInSeconds: 0,
         metadata: { title: job.title, artist: job.artist, charter: "Autochart", genre: "" },
-        summary: [job.generatorLabel, DIFF[job.difficulty]?.name || job.difficulty, job.presetName].filter(Boolean).join(" · "),
+        summary: [
+          job.generatorLabel,
+          DIFF[job.difficulty]?.name || job.difficulty,
+          job.presetName && t(job.presetName),
+          ...job.style.map(({ name, value }) => `${t(name)} ${value}`),
+        ].filter(Boolean).join(" · "),
       }));
       setBusyAction("generating");
       setLiveStageFocused(previewModeRef.current !== "compare" && !previewPlayingRef.current);

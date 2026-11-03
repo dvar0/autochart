@@ -1272,6 +1272,12 @@ a.brand-row, a.rail-item { text-decoration: none; }
 .queue-settings .queue-model { margin: 0; padding: 0; border: 0; }
 .queue-settings .difficulty-segments,
 .queue-settings .preset-grid { margin: 0; }
+.queue-style { display: flex; flex-direction: column; gap: 6px; }
+.queue-style-label { color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.queue-style .style-faders { background: var(--detail-tonal-2); padding: 6px 6px 4px; }
+.queue-style .style-seg-stack, .queue-style .style-fader-track { gap: 2px; }
+.queue-style .style-seg { height: 5px; }
+.queue-style .style-bay { height: 16px; }
 .queue-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); font-weight: 500; color: var(--text); }
 .queue-actions { padding-top: 12px; background: none; }
 .queue-actions .gen-cta { margin-bottom: 0; }
