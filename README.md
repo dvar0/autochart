@@ -10,11 +10,23 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/generate-dark.png" width="49%" alt="Generate page in dark mode">
-  <img src="docs/screenshots/generate-light.png" width="49%" alt="Generate page in light mode">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/compare-dark.png">
+    <img src="docs/screenshots/compare-light.png" width="49%" alt="Three takes of a song compared side by side">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/inpaint-dark.png">
+    <img src="docs/screenshots/inpaint-light.png" width="49%" alt="Inpainting one verse of a chart">
+  </picture>
   <br>
-  <img src="docs/screenshots/library-dark.png" width="49%" alt="Library in dark mode">
-  <img src="docs/screenshots/library-light.png" width="49%" alt="Library in light mode">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/stems-dark.png">
+    <img src="docs/screenshots/stems-light.png" width="49%" alt="Stems coming in while a song gets ready">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/queue-dark.png">
+    <img src="docs/screenshots/queue-light.png" width="49%" alt="A queue of songs charting one after another">
+  </picture>
 </p>
 
 Import a song, pick a difficulty, and Autochart's model writes a five-fret
@@ -24,8 +36,10 @@ and generate the difficulties it's missing.
 
 - **Generate from audio** at Easy, Medium, Hard, or Expert
 - **Fill in missing difficulties** on an existing `.chart` song, using its original timing
-- **Compare takes and edit notes** before you export
+- **Compare takes**, **inpaint** the bars you don't like, or **edit notes** by hand
+- **Chart a whole list:** pick songs in the Library and they chart one after another
 - **Keep a library** with album art and image or video backgrounds
+- **In English, Spanish, and Brazilian Portuguese**
 - **Stays on your computer.** No account, no uploads, works offline after setup
 
 > [!NOTE]
@@ -91,9 +105,10 @@ Each release includes `SHA256SUMS.txt`. Compare it against `sha256sum` (Linux),
   second or two of **Lead-in silence**. The opening often comes out cleaner.
 - **Not feeling a take? Generate another.** Every take comes out different, so
   it's worth trying two or three.
-- **The Style knobs are experimental.** Density, Chords, Technique and the rest
-  (under **Advanced**) only nudge the model. Don't expect big changes; leaving
-  them on Auto is fine.
+- **The Style faders only nudge the model.** Density, Chords, HOPOs and the
+  rest don't force anything; leaving them on Auto is fine.
+- **One part came out wrong?** Pick those bars on the **Inpaint** tab and
+  generate just them again.
 - **Adding a difficulty to an existing chart?** Leave timing on **Imported chart
   sync** so the new part lines up with the original.
 - **Check the ending of long songs.** Very long or fast songs can hit the
