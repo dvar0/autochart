@@ -25,7 +25,8 @@ Install prerequisites:
   `SDKROOT="$(xcrun --sdk macosx26.5 --show-sdk-path)" npm run release:verify -- --clean-install`.
   This affects only that command; it does not change the system's selected tools.
 - Windows: MSYS2 at `C:\msys64`, with UCRT64 packages
-  `mingw-w64-ucrt-x86_64-gcc`, `mingw-w64-ucrt-x86_64-pkgconf`, `make`, `tar`, `xz`.
+  `mingw-w64-ucrt-x86_64-gcc`, `mingw-w64-ucrt-x86_64-pkgconf`, `make`, `tar`, `xz`,
+  `perl`.
   Also install `mingw-w64-ucrt-x86_64-meson`, `mingw-w64-ucrt-x86_64-ninja`
   and `mingw-w64-ucrt-x86_64-nasm` for dav1d.
   Set `AUTOCHART_MSYS2_BASH` if its bash.exe is installed elsewhere.

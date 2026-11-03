@@ -23,6 +23,11 @@ case "$(uname -s)" in
   Linux) export CC=cc; vpx_target=x86_64-linux-gcc ;;
   *) echo 'Unsupported build host' >&2; exit 1 ;;
 esac
+# libvpx reads its assembly includes with perl. On Windows it has to be MSYS2's
+# own: another perl on PATH (Git for Windows, Strawberry) mangles the arguments.
+case "$(uname -s)" in
+  MINGW*|MSYS*|UCRT*) [[ "$(command -v perl)" == /usr/bin/perl ]] || { echo 'Install MSYS2 perl (pacman -S perl)' >&2; exit 1; } ;;
+esac
 cd "$work"
 tar -xf "$sources/libogg-1.3.6.tar.xz"
 tar -xf "$sources/libvorbis-1.3.7.tar.xz"
