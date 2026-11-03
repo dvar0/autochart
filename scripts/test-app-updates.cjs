@@ -247,7 +247,8 @@ async function main() {
     await fs.writeFile(download, BYTES);
     await replaceAppImage(download, appImage);
     assert.deepEqual(await fs.readFile(appImage), BYTES);
-    assert.equal((await fs.stat(appImage)).mode & 0o777, 0o755);
+    // Windows has no Unix permissions (stat always reports 0o666 there).
+    if (process.platform !== "win32") assert.equal((await fs.stat(appImage)).mode & 0o777, 0o755);
     assert.deepEqual((await fs.readdir(dir)).sort(), ["Autochart.AppImage", "download.AppImage"]);
   }
 

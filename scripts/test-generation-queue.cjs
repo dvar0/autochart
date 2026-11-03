@@ -369,10 +369,12 @@ async function main() {
     const lastTwo = (await tileOrder()).slice(-2);
     await pick(lastTwo[0]);
     await pick(lastTwo[1]);
+    // Counted before Generate: the first job can start before or after the
+    // tiles move (it's later on slower machines).
+    const jobsBefore = jobs.length;
     await click("Generate 4 charts");
     await waitFor(async () => (await tileOrder()).slice(0, 2).join() === [...lastTwo].reverse().join(), "picks moved up on Generate");
     const placed = await tileOrder();
-    const jobsBefore = jobs.length - 1;
     for (let done = 0; done < 4; done += 1) {
       await expectJobs(jobsBefore + done + 1, `chart ${done + 1} of the two songs started`);
       finish(jobs.at(-1));
@@ -434,7 +436,10 @@ async function main() {
   } finally {
     win?.destroy();
     testWindow = null;
-    await fs.rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    // Windows can still hold a file Electron opened; a leftover temp folder
+    // mustn't hide the test's own result.
+    await fs.rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+      .catch((error) => console.warn(`[cleanup] ${error.message}`));
   }
 }
 

@@ -233,7 +233,10 @@ async function main() {
     console.log("library folder prompt: Library and Generate saves, picker cancel/error/success, main-process refusal, focus containment, focus return, and Open Settings passed");
   } finally {
     win?.destroy();
-    await fs.rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    // Windows can still hold a file Electron opened; a leftover temp folder
+    // mustn't hide the test's own result.
+    await fs.rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+      .catch((error) => console.warn(`[cleanup] ${error.message}`));
   }
 }
 
