@@ -148,7 +148,9 @@ export function parseEditableChart(chartText, difficulty = "expert") {
 
   // Pair solo start/end markers into ranges.
   const solos = [];
-  soloMarkers.sort((a, b) => a.tick - b.tick || (a.kind === "start" ? -1 : 1));
+  // At a shared tick an end closes the previous solo before a start opens the
+  // next, so back-to-back solos both survive.
+  soloMarkers.sort((a, b) => a.tick - b.tick || (a.kind === b.kind ? 0 : a.kind === "end" ? -1 : 1));
   let openStart = null;
   for (const marker of soloMarkers) {
     if (marker.kind === "start") {

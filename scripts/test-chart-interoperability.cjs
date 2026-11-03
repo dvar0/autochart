@@ -40,7 +40,15 @@ const chartWriter = require("../shared/chartWriter.js");
   assert.equal(roundTrip.song.artist, "Artist \\\\ A");
   assert.equal(roundTrip.song.charter, "Charter \\\\ Name");
   assert.equal(roundTrip.tracks.hard.notes.length, 2);
-  console.log("chart interoperability fixtures passed (raw metadata and no C-style escapes preserved)");
+
+  // Back-to-back solos: the first ends on the tick the second starts.
+  const solos = "[Song]\n{\n  Resolution = 192\n}\n[SyncTrack]\n{\n  0 = B 120000\n}\n[ExpertSingle]\n{\n" +
+    "  0 = E solo\n  0 = N 0 0\n  768 = E soloend\n  768 = E solo\n  768 = N 1 0\n  1536 = E soloend\n}\n";
+  const twoSolos = [{ startTick: 0, endTick: 768 }, { startTick: 768, endTick: 1536 }];
+  assert.deepEqual(parser.parseChart(solos).tracks.expert.solos, twoSolos);
+  const { parseEditableChart } = await import("../src/pages/generate/edit/chartEditor.js");
+  assert.deepEqual(parseEditableChart(solos).ranges.map(({ startTick, endTick }) => ({ startTick, endTick })), twoSolos);
+  console.log("chart interoperability fixtures passed (raw metadata, no C-style escapes, back-to-back solos)");
 })().catch((error) => {
   console.error(error.stack || error.message || error);
   process.exitCode = 1;
