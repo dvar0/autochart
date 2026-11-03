@@ -163,6 +163,11 @@ export async function transcribe({
   }
   const descriptorTrained = Boolean(transcriberStage && transcriberStage.prefixConditioning);
 
+  // Silence, or a clip shorter than a beat, leaves nothing to chart.
+  const wholeBeats = beatTimes.findIndex((time) => time > audioDuration);
+  if ((wholeBeats < 0 ? beatTimes.length : wholeBeats) < 2) {
+    throw new Error("No beat was found in this audio, so there's nothing to chart. It may be silent or too short.");
+  }
   const melSession = await loadMelSession(manifest, device);
   if (onDevice) onDevice(sessionDevice(melSession, device));
   const finalSyncLines = Array.isArray(syncLines) && syncLines.length
