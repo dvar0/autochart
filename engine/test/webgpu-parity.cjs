@@ -291,7 +291,7 @@ async function greedyDecode({ encoderSession, decoderSession, beatMel, beatMask,
       nextToken = picked;
     }
   } finally {
-    onnxLib.disposeGpuTensor(pk); onnxLib.disposeGpuTensor(pv);
+    onnxLib.disposeCache({ k: pk, v: pv });
     onnxLib.disposeGpuTensor(ctx.alignedMemory); onnxLib.disposeGpuTensor(ctx.crossK);
     onnxLib.disposeGpuTensor(ctx.crossV); onnxLib.disposeGpuTensor(ctx.memInvalid);
   }
@@ -321,7 +321,7 @@ async function forcedDecode({ encoderSession, decoderSession, beatMel, beatMask,
       argmaxTokens.push(onnxLib.greedyArgmax(r.logits, nBeats, beatsEmitted));
     }
   } finally {
-    onnxLib.disposeGpuTensor(pk); onnxLib.disposeGpuTensor(pv);
+    onnxLib.disposeCache({ k: pk, v: pv });
     onnxLib.disposeGpuTensor(ctx.alignedMemory); onnxLib.disposeGpuTensor(ctx.crossK);
     onnxLib.disposeGpuTensor(ctx.crossV); onnxLib.disposeGpuTensor(ctx.memInvalid);
   }

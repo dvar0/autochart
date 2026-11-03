@@ -33,15 +33,20 @@ import {
 import {
   sampleNext, sliceCache, disposeCache, disposeGpuTensor, NEG_INF,
   inPlaceDecoder, newKv, copyKv, kvFeeds, appendKv, crossLayers,
+  layerKvDecoder, newLayerKv, copyLayerKv, disposeLayerKv, runLayerKv,
 } from "./transcribe.mjs";
 import { inPlaceDecoderGraph } from "./decoderInPlace.mjs";
+import { layerKvDecoderGraph } from "./decoderLayerKv.mjs";
 
 async function loadFimDecoderSession(manifest, device = "cpu") {
-  // On the CPU the graph is rewritten to read its cache in place.
+  // The graph is rewritten to keep its cache in place: on the CPU in host
+  // memory, on WebGPU on the device (present outputs stay unpinned there, see
+  // loadDecoderSession).
   return createSession(graphPath(manifest, "transcriber-fim-decoder"), {
     device,
     preferredOutputLocation: { present_self_k: "gpu-buffer", present_self_v: "gpu-buffer" },
     cpuGraph: { name: "inplace-kv", rewrite: inPlaceDecoderGraph },
+    gpuGraph: { name: "layer-kv", rewrite: layerKvDecoderGraph, preferredOutputLocation: {} },
   });
 }
 
@@ -51,12 +56,19 @@ function isTensorLike(v) {
 
 // One decoder history: its self-attention cache and the prefix bias it was
 // conditioned with. Every token position is its cache position. A rewritten
-// (in-place) graph keeps the cache in this.kv instead of this.k/this.v.
+// graph keeps the cache in this.kv (in place, CPU) or this.layers (per layer
+// on the device, made on the first feed) instead of this.k/this.v.
 class Stream {
   constructor(session, ctx, prefixBias, cache = null) {
     this.session = session;
     this.ctx = ctx;
     this.prefixBias = prefixBias;
+    if (layerKvDecoder(session)) {
+      this.layered = true;
+      this.layers = cache ? cache.layers : null;
+      this.length = this.layers ? this.layers.length : 0;
+      return;
+    }
     if (inPlaceDecoder(session)) {
       this.kv = cache ? cache.kv : newKv(ctx, 1);
       this.length = this.kv.length;
@@ -77,6 +89,21 @@ class Stream {
   // Feeds tokens at positions length.. and returns their logits (n x vocab).
   async feed(tokens, beatIdx) {
     const n = tokens.length;
+    if (this.layered) {
+      if (!this.layers) this.layers = await newLayerKv(this.ctx, 1);
+      const out = await runLayerKv(this.session, {
+        token_id: tensor("int64", BigInt64Array.from(tokens, BigInt), [n]),
+        step_id: tensor("int64", BigInt64Array.from({ length: n }, (_, i) => BigInt(this.length + i)), [n]),
+        beat_idx: tensor("int64", BigInt64Array.from(beatIdx, BigInt), [n]),
+        aligned_memory: this.ctx.alignedMemory,
+        prefix_bias: tensor("float32", this.prefixBias, [1, this.prefixBias.length]),
+        cross_k: this.ctx.crossK,
+        cross_v: this.ctx.crossV,
+        mem_invalid: this.ctx.memInvalid,
+      }, this.layers, n);
+      this.length = this.layers.length;
+      return Float32Array.from(await out.logits.getData());
+    }
     if (this.kv) {
       const out = await runSession(this.session, {
         token_id: tensor("int64", BigInt64Array.from(tokens, BigInt), [n]),
@@ -126,6 +153,10 @@ class Stream {
 
   // A new stream holding a copy of this one's first `keep` positions.
   async fork(keep) {
+    if (this.layered) {
+      const layers = this.layers && keep > 0 ? await copyLayerKv(this.layers, keep, this.layers.cap) : null;
+      return new Stream(this.session, this.ctx, this.prefixBias, { layers });
+    }
     if (this.kv) return new Stream(this.session, this.ctx, this.prefixBias, { kv: copyKv(this.ctx, this.kv, keep, this.kv.cap) });
     const cache = await sliceCache(
       { mode: "single", nLayers: this.ctx.nLayers, nHead: this.ctx.nHead, headDim: this.ctx.headDim, batch: 1, length: this.length, k: this.k, v: this.v },
@@ -135,8 +166,9 @@ class Stream {
   }
 
   dispose() {
+    if (this.layers) disposeLayerKv(this.layers);
     disposeCache({ k: this.k, v: this.v });
-    this.k = this.v = this.kv = null;
+    this.k = this.v = this.kv = this.layers = null;
   }
 }
 

@@ -4,6 +4,7 @@
 import { createSession, createRawSession, tensor, runSession, graphPath } from "./runtime.mjs";
 import { KV_CACHE_SLICE_ONNX_BASE64 } from "./kvCacheSliceGraph.mjs";
 import { inPlaceDecoderGraph } from "./decoderInPlace.mjs";
+import { layerKvDecoderGraph, layerKvResizeGraph } from "./decoderLayerKv.mjs";
 import {
   PAD_TOKEN,
   BOS_TOKEN,
@@ -139,7 +140,11 @@ async function loadEncoderSessions(manifest, device = "cpu") {
 }
 async function loadDecoderSession(manifest, device = "cpu") {
   // logits and mem_invalid intentionally unpinned (read on CPU every step).
-  // On the CPU the graph is rewritten to read its cache in place.
+  // On the CPU the graph is rewritten to read its cache in place; on WebGPU
+  // to write a cache per layer in place (decoderLayerKv.mjs). Its present_*
+  // outputs must stay unpinned: onnxruntime-node only writes into the cache
+  // tensors passed as fetches for outputs it doesn't pin, and allocates new
+  // ones (leaving the cache empty) for those it does.
   return createSession(graphPath(manifest, "transcriber-decoder-step"), {
     device,
     preferredOutputLocation: {
@@ -147,6 +152,7 @@ async function loadDecoderSession(manifest, device = "cpu") {
       present_self_v: "gpu-buffer",
     },
     cpuGraph: { name: "inplace-kv", rewrite: inPlaceDecoderGraph },
+    gpuGraph: { name: "layer-kv", rewrite: layerKvDecoderGraph, preferredOutputLocation: {} },
   });
 }
 
@@ -232,6 +238,110 @@ async function appendKv(ctx, kv, out, n) {
   kv.length += n;
 }
 
+// Per-layer cache on WebGPU, for decoder graphs that take each layer's cache
+// as past_key_<i>/past_value_<i> [batch, heads, cap, headDim] with the first
+// seqlens_k rows filled, and write the new row into those same tensors
+// (passed again as the present_key_<i>/present_value_<i> outputs; see
+// decoderLayerKv.mjs). A call may add several rows (the fill-in decoder).
+// The buffers stay on the device and keep spare rows; a full cache is copied
+// into a bigger one.
+const LAYER_KV_GROW = 1024;
+
+function isLayerKv(v) {
+  return v != null && v.layerKv === true;
+}
+
+function layerKvDecoder(sess) {
+  return Boolean(sess && Array.isArray(sess.inputNames) && sess.inputNames.includes("past_key_0") && sess.inputNames.includes("seqlens_k"));
+}
+
+let layerResizeSession = null;
+// Each layer's first `keep` rows in new buffers with room for `cap`.
+async function resizeLayers(k, v, keep, cap) {
+  if (!layerResizeSession) {
+    layerResizeSession = createRawSession(layerKvResizeGraph(), {
+      executionProviders: ["webgpu"],
+      preferredOutputLocation: { k_out: "gpu-buffer", v_out: "gpu-buffer" },
+    });
+  }
+  const session = await layerResizeSession;
+  const keepT = tensor("int64", BigInt64Array.from([BigInt(keep)]), [1]);
+  const extraT = tensor("int64", BigInt64Array.from([BigInt(cap - keep)]), [1]);
+  const out = { k: [], v: [] };
+  for (let i = 0; i < k.length; i += 1) {
+    const r = await runSession(session, { k: k[i], v: v[i], keep: keepT, extra: extraT });
+    out.k.push(r.k_out);
+    out.v.push(r.v_out);
+  }
+  return out;
+}
+
+async function newLayerKv(ctx, batch, cap = LAYER_KV_GROW) {
+  const { nLayers, nHead, headDim } = ctx;
+  const empty = Array(nLayers).fill(tensor("float32", new Float32Array(0), [batch, nHead, 0, headDim]));
+  return { layerKv: true, batch, cap, length: 0, ...(await resizeLayers(empty, empty, 0, cap)) };
+}
+
+// A copy of kv's first `keep` rows with room for `cap`.
+async function copyLayerKv(kv, keep, cap) {
+  return { layerKv: true, batch: kv.batch, cap, length: keep, ...(await resizeLayers(kv.k, kv.v, keep, cap)) };
+}
+
+function disposeLayerKv(kv) {
+  if (!kv.k) return;
+  for (const t of [...kv.k, ...kv.v]) disposeGpuTensor(t);
+  kv.k = kv.v = null;
+}
+
+// Frees any kind of cache: per-layer, a gpu-buffer tensor, or nothing to do.
+function freeCache(v) {
+  if (isLayerKv(v)) disposeLayerKv(v);
+  else disposeGpuTensor(v);
+}
+
+// Runs a per-layer-cache graph on feeds that add n rows to kv (growing it
+// first when they don't fit). Returns the outputs; kv now holds the rows.
+async function runLayerKv(sess, feeds, kv, n) {
+  if (kv.length + n > kv.cap) {
+    const old = { k: kv.k, v: kv.v };
+    Object.assign(kv, await copyLayerKv(kv, kv.length, Math.ceil((kv.length + n) / LAYER_KV_GROW) * LAYER_KV_GROW));
+    disposeLayerKv(old);
+  }
+  const all = {
+    ...feeds,
+    seqlens_k: tensor("int32", new Int32Array(kv.batch).fill(kv.length + n - 1), [kv.batch]),
+    total_sequence_length: tensor("int32", Int32Array.from([kv.length + n]), []),
+  };
+  const fetches = { logits: null };
+  for (let i = 0; i < kv.k.length; i += 1) {
+    all[`past_key_${i}`] = fetches[`present_key_${i}`] = kv.k[i];
+    all[`past_value_${i}`] = fetches[`present_value_${i}`] = kv.v[i];
+  }
+  const out = await runSession(sess, all, fetches);
+  kv.length += n;
+  return out;
+}
+
+async function runLayerKvStep(sess, tokenIds, stepId, beatIdx, ctx, prefixBias, kv) {
+  const batch = tokenIds.length;
+  if (!isLayerKv(kv)) {
+    const length = isTensorLike(kv) ? kv.dims[3] : kv ? kv.length : 0;
+    if (length) throw new Error("decoder: this graph needs a per-layer cache");
+    kv = await newLayerKv(ctx, batch);
+  }
+  const out = await runLayerKv(sess, {
+    token_id: tensor("int64", BigInt64Array.from(tokenIds, BigInt), [batch]),
+    step_id: tensor("int64", new BigInt64Array(batch).fill(BigInt(stepId)), [batch]),
+    beat_idx: tensor("int64", new BigInt64Array(batch).fill(BigInt(beatIdx)), [batch]),
+    aligned_memory: ctx.alignedMemory,
+    prefix_bias: tensor("float32", prefixBias, [batch, prefixBias.length / batch]),
+    cross_k: ctx.crossK,
+    cross_v: ctx.crossV,
+    mem_invalid: ctx.memInvalid,
+  }, kv, 1);
+  return { logits: Float32Array.from(await out.logits.getData()), kv };
+}
+
 // The encoder's cross keys/values as per-layer views (cross_k_<i>, cross_v_<i>).
 const crossLayerFeeds = new WeakMap();
 function crossLayers(ctx) {
@@ -277,6 +387,10 @@ async function runInPlaceStep(sess, tokenIds, stepId, beatIdx, ctx, prefixBias, 
 }
 
 async function runDecoderStep(sess, tokenId, stepId, beatIdx, ctx, prefixBias, pastK, pastV) {
+  if (layerKvDecoder(sess)) {
+    const { logits, kv } = await runLayerKvStep(sess, [tokenId], stepId, beatIdx, ctx, prefixBias, pastK);
+    return { logits, presentK: kv, presentV: kv };
+  }
   if (!isInPlaceKv(pastK) && inPlaceDecoder(sess)) pastK = kvFromCache(ctx, 1, pastK, pastV);
   if (isInPlaceKv(pastK)) {
     const logits = await runInPlaceStep(sess, [tokenId], stepId, beatIdx, ctx, prefixBias, pastK);
@@ -329,6 +443,11 @@ async function runDecoderBatchStep(sess, tokenIds, stepId, beatIdx, ctx, condPre
   const prefixBias = new Float32Array(condPrefixBias.length + uncondPrefixBias.length);
   prefixBias.set(condPrefixBias, 0);
   prefixBias.set(uncondPrefixBias, condPrefixBias.length);
+  if (layerKvDecoder(sess)) {
+    const { logits, kv } = await runLayerKvStep(sess, tokenIds, stepId, beatIdx, ctx, prefixBias, pastK);
+    const vocab = logits.length / 2;
+    return { condLogits: logits.slice(0, vocab), uncondLogits: logits.slice(vocab), presentK: kv, presentV: kv };
+  }
   if (!isInPlaceKv(pastK) && inPlaceDecoder(sess)) pastK = kvFromCache(ctx, 2, pastK, pastV);
   if (isInPlaceKv(pastK)) {
     const logits = await runInPlaceStep(sess, tokenIds, stepId, beatIdx, ctx, prefixBias, pastK);
@@ -452,21 +571,22 @@ async function generate({
     }
   }
   const inPlace = inPlaceDecoder(decoderSession);
-  if (guidanceEnabled) {
-    if (cfgTwoCall) {
-      condPastK = inPlace ? newKv(ctx, 1) : new Float32Array(emptyPastK.length);
-      condPastV = inPlace ? condPastK : new Float32Array(emptyPastK.length);
-      uncondPastK = inPlace ? newKv(ctx, 1) : new Float32Array(emptyPastK.length);
-      uncondPastV = inPlace ? uncondPastK : new Float32Array(emptyPastK.length);
-    } else {
-      batchedPastK = inPlace ? newKv(ctx, 2) : new Float32Array(0);
-      batchedPastV = inPlace ? batchedPastK : new Float32Array(0);
-    }
-  }
+  const layered = layerKvDecoder(decoderSession);
+  // An empty cache: K and V are one object for the in-place and per-layer kinds.
+  const pair = async (batch) => {
+    if (inPlace) return Array(2).fill(newKv(ctx, batch));
+    if (layered) return Array(2).fill(await newLayerKv(ctx, batch));
+    return [new Float32Array(emptyPastK.length), new Float32Array(emptyPastK.length)];
+  };
   let singlePastK = null, singlePastV = null;
-  if (!guidanceEnabled) {
-    singlePastK = inPlace ? newKv(ctx, 1) : new Float32Array(emptyPastK.length);
-    singlePastV = inPlace ? singlePastK : new Float32Array(emptyPastK.length);
+  if (!initialCache) {
+    if (!guidanceEnabled) [singlePastK, singlePastV] = await pair(1);
+    else if (cfgTwoCall) {
+      [condPastK, condPastV] = await pair(1);
+      [uncondPastK, uncondPastV] = await pair(1);
+    } else {
+      [batchedPastK, batchedPastV] = await pair(2);
+    }
   }
   if (initialCache) {
     if (cacheMode === "single") ({ k: singlePastK, v: singlePastV } = initialCache);
@@ -604,14 +724,14 @@ async function generate({
     }
   } finally {
     // Encoder outputs owned here unless encoderCtx was passed (parity isolation).
-    disposeGpuTensor(condPastK);
-    disposeGpuTensor(condPastV);
-    disposeGpuTensor(uncondPastK);
-    disposeGpuTensor(uncondPastV);
-    disposeGpuTensor(batchedPastK);
-    disposeGpuTensor(batchedPastV);
-    disposeGpuTensor(singlePastK);
-    disposeGpuTensor(singlePastV);
+    freeCache(condPastK);
+    freeCache(condPastV);
+    freeCache(uncondPastK);
+    freeCache(uncondPastV);
+    freeCache(batchedPastK);
+    freeCache(batchedPastV);
+    freeCache(singlePastK);
+    freeCache(singlePastV);
     if (!encoderCtx) {
       disposeGpuTensor(ctx.alignedMemory);
       disposeGpuTensor(ctx.crossK);
@@ -643,6 +763,8 @@ async function sliceCache(cache, keep) {
     const v = cache[vKey];
     if (isInPlaceKv(k)) {
       sliced[kKey] = sliced[vKey] = copyKv(cache, k, keep, k.cap);
+    } else if (isLayerKv(k)) {
+      sliced[kKey] = sliced[vKey] = await copyLayerKv(k, keep, k.cap);
     } else if (isTensorLike(k) && k.location === "gpu-buffer") {
       ({ k: sliced[kKey], v: sliced[vKey] } = await sliceGpuCache(k, v, keep));
     } else {
@@ -682,7 +804,7 @@ async function sliceGpuCache(k, v, keep) {
 // Free a returned or sliced cache's GPU buffers.
 function disposeCache(cache) {
   if (!cache) return;
-  for (const key of ["k", "v", "condK", "condV", "uncondK", "uncondV"]) disposeGpuTensor(cache[key]);
+  for (const key of ["k", "v", "condK", "condV", "uncondK", "uncondV"]) freeCache(cache[key]);
 }
 
 // mulberry32; not bit-compatible with numpy PCG64.
@@ -743,6 +865,11 @@ async function runEncoder(encoderSession, beatMel, beatMask, nBeats) {
 
 export {
   inPlaceDecoder,
+  layerKvDecoder,
+  newLayerKv,
+  copyLayerKv,
+  disposeLayerKv,
+  runLayerKv,
   newKv,
   copyKv,
   kvFeeds,

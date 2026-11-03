@@ -586,10 +586,11 @@ async function main() {
       "scripts/smoke-generate.cjs",
       [...smokeArgs({ ...options, cleanInstall: false }), "--generator", "autochart.fretformer.v1-onnx"]
     );
-    await runNode("Engine gate 1/4: ONNX generation smoke", "engine/test/generate-onnx-smoke.cjs", engineGateArgs(options));
-    await runNode("Engine gate 2/4: CFG batch parity", "engine/test/transcribe-cfg-batch-parity.cjs", engineGateArgs(options));
-    await runNode("Engine gate 3/4: in-place decoder parity", "engine/test/decoder-inplace-parity.cjs", engineGateArgs(options));
-    await runNode("Engine gate 4/4: WebGPU parity", "engine/test/webgpu-parity.cjs", engineGateArgs(options));
+    await runNode("Engine gate 1/5: ONNX generation smoke", "engine/test/generate-onnx-smoke.cjs", engineGateArgs(options));
+    await runNode("Engine gate 2/5: CFG batch parity", "engine/test/transcribe-cfg-batch-parity.cjs", engineGateArgs(options));
+    await runNode("Engine gate 3/5: in-place decoder parity", "engine/test/decoder-inplace-parity.cjs", engineGateArgs(options));
+    await runNode("Engine gate 4/5: WebGPU parity", "engine/test/webgpu-parity.cjs", engineGateArgs(options));
+    await runNode("Engine gate 5/5: WebGPU per-layer decoder parity", "engine/test/decoder-layerkv-parity.cjs", engineGateArgs(options));
 
     if (target.platform === "linux") {
       const noDriver = path.join(options.isolationRoot, "no-vulkan-driver.json");

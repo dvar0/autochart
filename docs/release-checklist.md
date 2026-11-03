@@ -157,7 +157,7 @@ Expected result:
 - Hardware mode is selected correctly, with WebGPU or CUDA falling back to CPU when provider initialization fails.
 - Generation emits at least one `partial_chart` event with note lines.
 - The final generated chart has note lines and a readable report path.
-- All three direct engine gates run. A WebGPU-less runner may emit the gate's
+- All five direct engine gates run. A WebGPU-less runner may emit the gate's
   explicit `SKIP` result; the verifier itself never silently omits the gate.
 
 ## Manual App QA

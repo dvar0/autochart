@@ -4,9 +4,10 @@
 // before running a stage; stages reach the runtime only through these calls.
 //
 // A host provides:
-//   createSession(source, { device, preferredOutputLocation, cpuGraph, log }) -> session
+//   createSession(source, { device, preferredOutputLocation, cpuGraph, gpuGraph, log }) -> session
 //     (cpuGraph { name, rewrite(bytes) }: a CPU session loads rewrite's graph
-//     when it returns one)
+//     when it returns one; gpuGraph { name, rewrite(bytes), preferredOutputLocation }
+//     the same for a WebGPU session, where the host supports it)
 //   createRawSession(source, sessionOptions) -> session, with no device policy
 //   tensor(type, data, dims) -> ort.Tensor
 //   sessionDevice(session, fallback) -> "cpu" | "webgpu" | ...
@@ -40,8 +41,10 @@ export function tensor(type, data, dims) {
   return current().tensor(type, data, dims);
 }
 
-export function runSession(session, inputs) {
-  return session.run(inputs);
+// fetches (optional): output tensors to write into, by name (null lets the
+// session allocate that output).
+export function runSession(session, inputs, fetches = null) {
+  return fetches ? session.run(inputs, fetches) : session.run(inputs);
 }
 
 export function sessionDevice(session, fallback = null) {

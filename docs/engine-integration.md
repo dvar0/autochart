@@ -55,8 +55,32 @@ cache in place from a buffer with spare rows that `transcribe.mjs` keeps, and
 returns only the new rows. On a 4-minute song the decode took 13.5 s instead
 of 80 s (25 s instead of 211 s with style knobs), and one 4-bar Inpaint hole
 7 s instead of 44 s, with the same tokens. A graph the rewrite doesn't
-recognize loads as is, and WebGPU keeps the exported graphs.
-`engine/test/decoder-inplace-parity.cjs` checks the two against each other.
+recognize loads as is. `engine/test/decoder-inplace-parity.cjs` checks the two
+against each other.
+
+On WebGPU, `decoder_step` is rewritten too (`decoderLayerKv.mjs`, through the
+`gpuGraph` session option; the desktop host takes it, the browser host keeps
+the exported graph). Each layer's cache comes in and goes out as its own
+tensor (`past_key_<i>`/`present_key_<i>`) with spare rows, and the
+self-attention runs as one `com.microsoft` GroupQueryAttention that writes the
+new row into that tensor in place (`transcribe.mjs` passes the same tensors as
+inputs and outputs, and grows them 1024 rows at a time), so a token no longer
+copies the whole cache in and out. Every weight matmul is also split along its
+inner dimension into blocks of 64 (Reshape, batched MatMul, ReduceSum), and
+the query, key and value projections that read the same input run as one:
+ONNX Runtime's WebGPU kernels run a one-row matmul on too few threads, and the
+split form takes about half the time. A token takes about 4.4 ms instead of
+7 ms at any chart length. On a 5-minute song the decode took 14 s instead of
+25 s and the whole generation 24 s instead of 34 s, with about 700 MB less GPU
+memory and the same chart. The cache stays on the device; `sliceCache` cuts it
+there for Force a solo. Inpaint's fill-in decoder, which takes several tokens of one
+stream per call, is rewritten the same way (its matmuls split with the blocks
+as the batch, so a 512-token prefill chunk still runs as a few large
+matmuls): two 4-bar spans with 4 tries each took 4.5 s instead of 7.3 s on a
+5-minute song, with the same fills. `engine/test/decoder-layerkv-parity.cjs`
+checks both rewrites against the exported graphs on WebGPU. The browser keeps
+the exported graphs: in Chrome a token takes about 7 ms either way, as each
+run there costs a few microseconds per graph node whatever the node does.
 
 ### Browser engine
 
