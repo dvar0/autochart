@@ -880,7 +880,7 @@ export default {
 
   // Rail, dialogs, updates and what's new
   "Already downloaded {file}": "Já baixado: {file}",
-  "A new model that charts more like a person, with solos and sections.": "Um modelo novo que faz charts mais parecidos com os de uma pessoa, com solos e seções.",
+  "Better charts that follow the melody, with solos and sections. Up to 4× faster.": "Charts melhores que seguem a melodia, com solos e seções. Até 4× mais rápido.",
   "Autochart closes, then drag it to Applications.": "O Autochart fecha; depois arraste-o para Aplicativos.",
   "Autochart — {page}": "Autochart — {page}",
   "Autochart {version} is out": "Saiu o Autochart {version}",

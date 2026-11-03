@@ -17,7 +17,7 @@ export const WHATS_NEW = Object.freeze([
   {
     version: "0.2.0",
     headline: msg("Fretformer 2 is here"),
-    sub: msg("A new model that charts more like a person, with solos and sections."),
+    sub: msg("Better charts that follow the melody, with solos and sections. Up to 4× faster."),
     features: [
       { icon: "spark", title: msg("Inpaint"), text: msg("Pick some bars and generate just those again.") },
       { icon: "pencil", title: msg("Edit by hand"), text: msg("Move, add and delete notes on the Edit tab.") },
