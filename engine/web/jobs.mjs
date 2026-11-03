@@ -7,7 +7,7 @@ import { demucsOrchestration } from "../lib/onnx/manifest.mjs";
 import { beatOrchestration, medianBpm } from "../lib/onnx/beatDetect.mjs";
 import {
   separateStems, detectTiming, transcribe, transcriberChannels, needsStems, chartFromTokens, prefixBiasMaker,
-  makeMelTables, melTableSpec,
+  makeMelTables, melTableSpec, chartLengthWarnings,
 } from "../lib/onnx/pipeline.mjs";
 import { encodeMelTables, decodeMelTables, tablesMatch } from "../lib/onnx/melTables.mjs";
 import { sessionDevice } from "../lib/onnx/runtime.mjs";
@@ -323,6 +323,10 @@ export async function runGenerate(job, emit, runtime) {
   await releaseSessions();
   const { tokens, structure, forceSolo, forcedSolo, nBeats, descNames, bins, useCfg } = transcription;
   emit({ type: "stage", stage: "transcription", status: "completed", backend: BACKEND, device: transcriberProvider, nTokens: tokens.length });
+  const { warnings: chartWarnings, chartedUntil } = chartLengthWarnings({
+    manifest, tokens, nBeats, beatTimes: Float64Array.from(beats.beatTimes), audioDuration,
+  });
+  for (const message of chartWarnings) emit({ type: "log", stage: "transcription", stream: "stderr", message: `warning: ${message}` });
 
   emit({ type: "stage", stage: "chart", status: "running", backend: BACKEND });
   const chart = chartFromTokens({
@@ -420,6 +424,9 @@ export async function runGenerate(job, emit, runtime) {
       eventCount: report.event_count,
       noteLineCount: report.note_line_count,
       timing: report.timing,
+      ...(chartWarnings.length ? {
+        chartValidation: { note_line_count: report.note_line_count, event_count: report.event_count, warnings: chartWarnings, charted_until_seconds: chartedUntil },
+      } : {}),
     },
     audioSha256: job.audioSha256,
     sourceTransform: job.sourceTransform || null,

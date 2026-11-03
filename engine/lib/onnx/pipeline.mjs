@@ -315,6 +315,30 @@ export async function transcribe({
   };
 }
 
+// Where a chart stops short of the song: the model reads at most maxBeats
+// beats and writes at most maxTokens tokens. Returns the warnings for the
+// take's chart validation (none when the whole song was charted) and, when
+// short, the audio second the chart ends at.
+export function chartLengthWarnings({ manifest, tokens, nBeats, beatTimes, audioDuration }) {
+  const maxTokens = Number(transcriberStageOf(manifest).modelConfig?.maxTokens || 8192);
+  const beatsInAudio = beatTimes.findIndex((time) => time > audioDuration);
+  const songBeats = (beatsInAudio < 0 ? beatTimes.length : beatsInAudio) - 1;
+  let decodedBeats = 0;
+  for (const token of tokens) if (token === stream.BEAT_TOKEN) decodedBeats += 1;
+  const outOfTokens = tokens.length >= maxTokens && tokens[tokens.length - 1] !== stream.EOS_TOKEN && decodedBeats < nBeats;
+  const chartedBeats = outOfTokens ? decodedBeats : nBeats;
+  if (!(chartedBeats < songBeats)) return { warnings: [], chartedUntil: null };
+  const chartedUntil = beatTimes[chartedBeats];
+  const clock = `${Math.floor(chartedUntil / 60)}:${String(Math.floor(chartedUntil % 60)).padStart(2, "0")}`;
+  return {
+    warnings: [
+      `Only the first ${chartedBeats} of ${songBeats} beats were charted (to ${clock}): ` +
+      (outOfTokens ? `the model writes at most ${maxTokens} tokens.` : `the model reads at most ${nBeats} beats.`),
+    ],
+    chartedUntil,
+  };
+}
+
 // Tokens -> .chart text on the transcription's tempo map.
 export function chartFromTokens({ tokens, structure, nBeats, resolution, syncLines, offset = 0, metadata, difficulty }) {
   const { events, issues } = stream.decodeTokens(tokens);

@@ -50,6 +50,9 @@ const installListeners = new Set();
 // repository's download count file, the same one the desktop installer asks
 // for, so Hugging Face counts it (scripts/prepare-huggingface.py).
 function modelDownloaded(generatorId) {
+  // The model's status is "downloaded" from now on, so the next run doesn't
+  // count as a first download again.
+  generatorStatusCache = null;
   count("model_downloaded", { model: modelName(generatorId) });
   fetch(new URL("meta.yaml", MODELS_BASE), { method: "HEAD", cache: "no-store" }).catch(() => {});
 }
