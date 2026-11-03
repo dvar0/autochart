@@ -55,7 +55,21 @@ function spawnCommand(command, args = [], options = {}) {
   return spawn(comspec, ["/d", "/c", commandLine], { ...options, windowsVerbatimArguments: true });
 }
 
-async function probeNvidia() {
+// The model scan, settings reads and each run's start all probe the
+// hardware, often several times a second; nvidia-smi can take a good part of
+// a second on Windows. Its answer is kept briefly (and shared while running).
+const NVIDIA_PROBE_TTL_MS = 30_000;
+let nvidiaProbe = null;
+
+function probeNvidia() {
+  const now = Date.now();
+  if (!nvidiaProbe || now - nvidiaProbe.at > NVIDIA_PROBE_TTL_MS) {
+    nvidiaProbe = { at: now, result: probeNvidiaNow() };
+  }
+  return nvidiaProbe.result;
+}
+
+async function probeNvidiaNow() {
   const result = await execFileText("nvidia-smi", [
     "--query-gpu=name,memory.total",
     "--format=csv,noheader,nounits",
