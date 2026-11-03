@@ -189,11 +189,31 @@ function next() {
   );
 }
 
+// Jobs still reading their audio, before they reach the worker's queue, and
+// the ones of those that were stopped meanwhile (as the desktop engine's
+// pending cancels).
+const preparing = new Set();
+const stoppedWhilePreparing = new Set();
+
 function runJob(kind, id, job, transfer = []) {
+  preparing.delete(id);
+  if (stoppedWhilePreparing.delete(id)) return Promise.reject(canceledError());
   return new Promise((resolve, reject) => {
     queue.push({ id, kind, job, transfer, resolve, reject, stage: "queued" });
     next();
   });
+}
+
+// Runs `work` as job `jobId`'s preparation: a stop before it reaches the
+// worker ends the job there.
+async function preparingJob(jobId, work) {
+  preparing.add(jobId);
+  try {
+    return await work();
+  } finally {
+    preparing.delete(jobId);
+    stoppedWhilePreparing.delete(jobId);
+  }
 }
 
 function canceledError() {
@@ -208,13 +228,20 @@ async function cancelJob({ jobId } = {}) {
     emit(jobId, { type: "canceled" });
     return { ok: true, jobId, status: "canceled" };
   }
-  if (active?.id !== jobId) return { ok: true, jobId, status: "idle" };
-  // A run can't be interrupted mid-inference: drop the worker (and its models).
-  worker?.terminate();
-  worker = null;
-  emit(jobId, { type: "canceled" });
-  finish(canceledError());
-  return { ok: true, jobId, status: "canceled" };
+  if (active?.id === jobId) {
+    // A run can't be interrupted mid-inference: drop the worker (and its models).
+    worker?.terminate();
+    worker = null;
+    emit(jobId, { type: "canceled" });
+    finish(canceledError());
+    return { ok: true, jobId, status: "canceled" };
+  }
+  if (preparing.has(jobId)) {
+    stoppedWhilePreparing.add(jobId);
+    emit(jobId, { type: "canceled" });
+    return { ok: true, jobId, status: "canceling" };
+  }
+  return { ok: true, jobId, status: "idle" };
 }
 
 // ----- shared steps -----
@@ -380,8 +407,12 @@ function countFailure(event, jobId, payload, err) {
   count(event, { ...runFields(jobId, payload), stage: stageName(err?.stage || "prepare"), reason: failureReason(err) });
 }
 
-async function generateChart(payload = {}) {
+function generateChart(payload = {}) {
   const jobId = payload.jobId || crypto.randomUUID();
+  return preparingJob(jobId, () => generateChartJob(jobId, payload));
+}
+
+async function generateChartJob(jobId, payload) {
   const startedAt = Date.now();
   const { model, difficulty } = runFields(jobId, payload);
   count("generate_started", { model, difficulty });
@@ -445,8 +476,12 @@ async function generateChart(payload = {}) {
   }
 }
 
-async function prepareDemucs(payload = {}) {
+function prepareDemucs(payload = {}) {
   const jobId = payload.jobId || crypto.randomUUID();
+  return preparingJob(jobId, () => prepareDemucsJob(jobId, payload));
+}
+
+async function prepareDemucsJob(jobId, payload) {
   try {
     const { job, generator, transfer } = await baseJob(jobId, payload);
     const separationId = String(payload.separationId || DEFAULT_DEMUCS_ID);
@@ -482,8 +517,12 @@ async function prepareDemucs(payload = {}) {
   }
 }
 
-async function inpaintChart(payload = {}) {
+function inpaintChart(payload = {}) {
   const jobId = payload.jobId || crypto.randomUUID();
+  return preparingJob(jobId, () => inpaintChartJob(jobId, payload));
+}
+
+async function inpaintChartJob(jobId, payload) {
   if (!payload.inpaint) throw new Error(t("Inpaint needs bars to rewrite."));
   const startedAt = Date.now();
   const { model } = runFields(jobId, payload);
