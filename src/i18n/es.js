@@ -1076,4 +1076,12 @@ export default {
   // Rail, dialogs, updates and what's new
   "Now in Spanish and Portuguese": "Ahora en español y portugués",
   "Pick a language in Settings, or let it follow your computer.": "Elige el idioma en Configuración o deja que siga el de tu computadora.",
+  // Song packages (.sng / .zip)
+  "{name} is cut short.": "{name} está incompleto.",
+  "{name} isn't a zip that can be opened.": "{name} no es un zip que se pueda abrir.",
+  "{name} is too large or damaged to open here. Unzip it and open the folder.": "{name} es demasiado grande o está dañado para abrirlo aquí. Descomprímelo y abre la carpeta.",
+  "{name} is damaged.": "{name} está dañado.",
+  "{name} uses a kind of compression that can't be opened here. Unzip it and open the folder.": "{name} usa un tipo de compresión que no se puede abrir aquí. Descomprímelo y abre la carpeta.",
+  "{name} is password protected.": "{name} está protegido con contraseña.",
+  "{name} couldn't be opened.": "No se pudo abrir {name}.",
 };

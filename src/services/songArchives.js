@@ -5,6 +5,7 @@
 
 import { SngHeadTooShort, readSngIndex, sngMetadataToIni, unmaskSngFile } from "../../shared/sng.js";
 import { mimeFromFile } from "./songLibrary.js";
+import { t } from "../i18n/index.js";
 
 const SONG_FILES = new Set(["notes.chart", "notes.mid", "notes.midi", "song.ini"]);
 
@@ -49,14 +50,14 @@ async function sngFolder(file) {
       break;
     } catch (error) {
       if (!(error instanceof SngHeadTooShort) || length >= file.size) {
-        throw error instanceof SngHeadTooShort ? new Error(`${file.name} is cut short.`) : error;
+        throw error instanceof SngHeadTooShort ? new Error(t("{name} is cut short.", { name: file.name })) : error;
       }
       length = Math.min(file.size, length * 4);
     }
   }
   const files = [new File([sngMetadataToIni(index.metadata)], "song.ini", { type: "text/plain" })];
   for (const entry of index.files) {
-    if (entry.offset + entry.size > file.size) throw new SongArchiveError(`${file.name} is cut short.`);
+    if (entry.offset + entry.size > file.size) throw new SongArchiveError(t("{name} is cut short.", { name: file.name }));
     const bytes = unmaskSngFile(await bytesOf(file.slice(entry.offset, entry.offset + entry.size)), index.mask);
     files.push(songFile(bytes, entry.name));
   }
@@ -81,11 +82,11 @@ async function zipEntries(file) {
       break;
     }
   }
-  if (end === -1) throw new SongArchiveError(`${file.name} isn't a zip that can be opened.`);
+  if (end === -1) throw new SongArchiveError(t("{name} isn't a zip that can be opened.", { name: file.name }));
   const count = tailView.getUint16(end + 10, true);
   const size = tailView.getUint32(end + 12, true);
   const offset = tailView.getUint32(end + 16, true);
-  if (offset === 0xffffffff || offset + size > file.size) throw new SongArchiveError(`${file.name} is too large or damaged to open here. Unzip it and open the folder.`);
+  if (offset === 0xffffffff || offset + size > file.size) throw new SongArchiveError(t("{name} is too large or damaged to open here. Unzip it and open the folder.", { name: file.name }));
   const directory = await bytesOf(file.slice(offset, offset + size));
   const view = new DataView(directory.buffer);
   const utf8 = new TextDecoder();
@@ -93,7 +94,7 @@ async function zipEntries(file) {
   const entries = [];
   let at = 0;
   for (let i = 0; i < count; i += 1) {
-    if (at + 46 > directory.length || view.getUint32(at, true) !== DIRECTORY_ENTRY) throw new SongArchiveError(`${file.name} is damaged.`);
+    if (at + 46 > directory.length || view.getUint32(at, true) !== DIRECTORY_ENTRY) throw new SongArchiveError(t("{name} is damaged.", { name: file.name }));
     const flags = view.getUint16(at + 8, true);
     const method = view.getUint16(at + 10, true);
     const compressed = view.getUint32(at + 20, true);
@@ -111,7 +112,7 @@ async function zipEntries(file) {
 
 async function zipEntryFile(file, entry) {
   const local = new DataView(await file.slice(entry.localOffset, entry.localOffset + 30).arrayBuffer());
-  if (local.getUint32(0, true) !== LOCAL_HEADER) throw new SongArchiveError(`${file.name} is damaged.`);
+  if (local.getUint32(0, true) !== LOCAL_HEADER) throw new SongArchiveError(t("{name} is damaged.", { name: file.name }));
   const start = entry.localOffset + 30 + local.getUint16(26, true) + local.getUint16(28, true);
   const data = file.slice(start, start + entry.compressed);
   if (entry.method === 0) return songFile(data, entry.name);
@@ -119,13 +120,13 @@ async function zipEntryFile(file, entry) {
     const inflated = await new Response(data.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
     return songFile(inflated, entry.name);
   }
-  throw new SongArchiveError(`${file.name} uses a kind of compression that can't be opened here. Unzip it and open the folder.`);
+  throw new SongArchiveError(t("{name} uses a kind of compression that can't be opened here. Unzip it and open the folder.", { name: file.name }));
 }
 
 async function zipFolders(file) {
   const entries = (await zipEntries(file)).filter((entry) =>
     !entry.name.endsWith("/") && !entry.name.startsWith("__MACOSX/") && !baseName(entry.name).startsWith("._"));
-  if (entries.some((entry) => entry.encrypted)) throw new SongArchiveError(`${file.name} is password protected.`);
+  if (entries.some((entry) => entry.encrypted)) throw new SongArchiveError(t("{name} is password protected.", { name: file.name }));
   // Each folder in the zip that holds a song is one song; a .sng inside opens too.
   const byFolder = new Map();
   for (const entry of entries) {
@@ -156,6 +157,6 @@ export async function songFoldersFromArchive(file) {
     // Our own reasons (and the .sng reader's) say what's wrong; anything
     // else is a file the browser couldn't read or unpack.
     const ours = error instanceof SongArchiveError || error?.constructor === Error;
-    throw new SongArchiveError(ours ? error.message : `${file.name} couldn't be opened.`);
+    throw new SongArchiveError(ours ? error.message : t("{name} couldn't be opened.", { name: file.name }));
   }
 }
