@@ -45,6 +45,19 @@ where the core keeps ONNX Runtime's default threads; up to 8 on a GPU); a host
 without workers, or a worker that fails, leaves the rest to the calling thread.
 `engine/test/stft-workers-parity.cjs` checks both against each other.
 
+On the CPU the transcriber's decoders (`decoder_step` and Inpaint's
+`fim_decoder`) are rewritten as they load (`decoderInPlace.mjs`, through the
+`cpuGraph` session option both hosts take); the model files stay as they are.
+The exported graphs take the whole self-attention cache and return it with
+the new rows appended, so every token copied the whole cache several times and
+decoding slowed down as the chart grew. The rewritten graph reads each layer's
+cache in place from a buffer with spare rows that `transcribe.mjs` keeps, and
+returns only the new rows. On a 4-minute song the decode took 13.5 s instead
+of 80 s (25 s instead of 211 s with style knobs), and one 4-bar Inpaint hole
+7 s instead of 44 s, with the same tokens. A graph the rewrite doesn't
+recognize loads as is, and WebGPU keeps the exported graphs.
+`engine/test/decoder-inplace-parity.cjs` checks the two against each other.
+
 ### Browser engine
 
 `engine/web/` runs the same pipeline in a Web Worker: `audio.mjs` (decode +
