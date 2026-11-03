@@ -105,7 +105,6 @@ function importedVersionFromRecord(record) {
     settings: {
       difficulty: settings.difficulty || meta.difficulty || "expert",
       model: "",
-      ...(settings.generation ? { generation: settings.generation } : {}),
     },
     meta: {
       noteCount: meta.noteCount ?? 0,
@@ -130,6 +129,11 @@ export function normalizeVersions(record) {
           id: "generated",
           name: record.settings?.model || "Generated Chart",
           source: "generated",
+          // A project's only chart was its run's, so the run's settings are its.
+          settings: {
+            ...imported.settings,
+            ...(record.settings?.generation ? { generation: record.settings.generation } : {}),
+          },
         });
       }
     } else {

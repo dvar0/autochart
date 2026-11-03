@@ -14,8 +14,11 @@ async function persistGeneratedTake(context, projectId, result, input = {}) {
     let versions = record.versions || [];
     if (record.source === "imported-chart" && record.chart?.text &&
         !versions.some(version => version.source === "imported-chart" && version.chart?.text)) {
-      versions = [{ id: "imported", name: "Imported chart", source: "imported-chart",
-        status: "charted", chart: { text: record.chart.text }, settings: record.settings || {},
+      // The project's settings hold the latest run's; the imported chart keeps
+      // only its difficulty (see importedVersionFromRecord in songSchema.js).
+      versions = [{ id: "imported", name: "Imported Clone Hero", source: "imported-chart",
+        status: "charted", chart: { text: record.chart.text },
+        settings: { difficulty: record.settings?.difficulty || record.meta?.difficulty || "expert", model: "" },
       }, ...versions];
     }
     savedVersion = versions.find(version =>

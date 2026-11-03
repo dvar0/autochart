@@ -76,11 +76,29 @@ const { persistGeneratedTake } = require("../electron/generatedTake.cjs");
     const audioSaved = await persistGeneratedTake(context, "audio", { status: "completed", jobId: "audio_take", chartText: expert }, { difficulty: "expert" });
     assert.equal((await library.getSong(context, "audio")).arrangements[0].slots.expert, audioSaved.savedVersion.id);
     // Legacy imports without versions must persist the imported version they assign.
-    await library.saveSong(context, { record: { id: "legacy", source: "imported-chart", meta: {}, settings: {}, chart: { text: expert } } });
+    // It mustn't take the project's latest run settings: their lead-in would
+    // move the imported chart on export.
+    const latestRun = { generatorId: "x", sourceTransform: { key: "lead-in:2000", leadInSilenceMs: 2000 } };
+    await library.saveSong(context, { record: { id: "legacy", source: "imported-chart", meta: {},
+      settings: { difficulty: "expert", generation: latestRun }, chart: { text: expert } } });
     const easy = writeChartText([[0, 1, 0]], { difficulty: "easy", syncLines: ["0 = B 120000"] }).text;
     await persistGeneratedTake(context, "legacy", { status: "completed", jobId: "legacy_take", chartText: easy }, { difficulty: "easy" });
     const legacy = await library.getSong(context, "legacy");
     assert.ok(legacy.versions.some(version => version.id === legacy.arrangements[0].slots.expert));
+    const legacyImported = legacy.versions.find(version => version.source === "imported-chart");
+    assert.equal(legacyImported.settings.generation, undefined, "imported take must not carry the latest run's settings");
+    assert.equal(legacyImported.settings.difficulty, "expert");
+    {
+      const { migrateRecord } = await import("../src/services/songSchema.js");
+      const { versionLeadInMs } = await import("../shared/projectFile.js");
+      const migrated = migrateRecord({ id: "unsaved", source: "imported-chart", chart: { text: expert },
+        settings: { difficulty: "expert", generation: latestRun } });
+      assert.equal(migrated.versions[0].settings.generation, undefined);
+      assert.equal(versionLeadInMs(migrated.versions[0]), 0, "imported chart keeps its own timing");
+      const onlyRun = migrateRecord({ id: "run", source: "generated", chart: { text: expert },
+        settings: { difficulty: "expert", generation: latestRun } });
+      assert.deepEqual(onlyRun.versions[0].settings.generation, latestRun, "a legacy run's only chart keeps its run settings");
+    }
     for (const explicit of [false, true]) {
       const id = explicit ? "assigned" : "unassigned";
       await library.saveSong(context, { record: { id, source: "imported-chart", meta: {}, settings: {},
