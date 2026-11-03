@@ -4,7 +4,9 @@
 // before running a stage; stages reach the runtime only through these calls.
 //
 // A host provides:
-//   createSession(source, { device, preferredOutputLocation, log }) -> session
+//   createSession(source, { device, preferredOutputLocation, cpuGraph, log }) -> session
+//     (cpuGraph { name, rewrite(bytes) }: a CPU session loads rewrite's graph
+//     when it returns one)
 //   createRawSession(source, sessionOptions) -> session, with no device policy
 //   tensor(type, data, dims) -> ort.Tensor
 //   sessionDevice(session, fallback) -> "cpu" | "webgpu" | ...

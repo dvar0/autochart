@@ -3,6 +3,7 @@
 
 import { createSession, createRawSession, tensor, runSession, graphPath } from "./runtime.mjs";
 import { KV_CACHE_SLICE_ONNX_BASE64 } from "./kvCacheSliceGraph.mjs";
+import { inPlaceDecoderGraph } from "./decoderInPlace.mjs";
 import {
   PAD_TOKEN,
   BOS_TOKEN,
@@ -138,12 +139,14 @@ async function loadEncoderSessions(manifest, device = "cpu") {
 }
 async function loadDecoderSession(manifest, device = "cpu") {
   // logits and mem_invalid intentionally unpinned (read on CPU every step).
+  // On the CPU the graph is rewritten to read its cache in place.
   return createSession(graphPath(manifest, "transcriber-decoder-step"), {
     device,
     preferredOutputLocation: {
       present_self_k: "gpu-buffer",
       present_self_v: "gpu-buffer",
     },
+    cpuGraph: { name: "inplace-kv", rewrite: inPlaceDecoderGraph },
   });
 }
 
@@ -157,7 +160,128 @@ function isTensorLike(v) {
   return v != null && typeof v === "object" && typeof v.location === "string" && typeof v.getData === "function";
 }
 
+// In-place self-attention cache, for decoder graphs that read each layer's
+// cache as past_k_<i>/past_v_<i> [batch, heads, cap, headDim] (see
+// decoderInPlace.mjs). The cache keeps spare rows past `length`; self_mask
+// hides them, and each call writes only its own rows (new_self_k/new_self_v).
+// The old graph instead copies the whole cache in and out on every token.
+const KV_GROW = 256;
+
+function isInPlaceKv(v) {
+  return v != null && v.inPlace === true;
+}
+
+function inPlaceDecoder(sess) {
+  return Boolean(sess && Array.isArray(sess.inputNames) && sess.inputNames.includes("past_k_0"));
+}
+
+function newKv(ctx, batch, cap = KV_GROW) {
+  const { nLayers, nHead, headDim } = ctx;
+  const size = nLayers * batch * nHead * cap * headDim;
+  return {
+    inPlace: true, batch, cap, length: 0,
+    k: new Float32Array(size), v: new Float32Array(size),
+    mask: new Float32Array(cap).fill(NEG_INF),
+  };
+}
+
+// A copy of kv's first `keep` rows with room for `cap`.
+function copyKv(ctx, kv, keep, cap) {
+  const { nLayers, nHead, headDim } = ctx;
+  const out = newKv(ctx, kv.batch, cap);
+  const rows = nLayers * kv.batch * nHead;
+  const n = keep * headDim;
+  for (let r = 0; r < rows; r += 1) {
+    out.k.set(kv.k.subarray(r * kv.cap * headDim, r * kv.cap * headDim + n), r * cap * headDim);
+    out.v.set(kv.v.subarray(r * kv.cap * headDim, r * kv.cap * headDim + n), r * cap * headDim);
+  }
+  out.mask.fill(0, 0, keep);
+  out.length = keep;
+  return out;
+}
+
+// The cache feeds for a call that adds n rows (growing the cache first if needed).
+function kvFeeds(ctx, kv, n) {
+  const { nLayers, nHead, headDim } = ctx;
+  if (kv.length + n > kv.cap) {
+    Object.assign(kv, copyKv(ctx, kv, kv.length, Math.ceil((kv.length + n) / KV_GROW) * KV_GROW + KV_GROW));
+  }
+  const feeds = { self_mask: tensor("float32", kv.mask, [kv.cap]) };
+  const layerSize = kv.batch * nHead * kv.cap * headDim;
+  const dims = [kv.batch, nHead, kv.cap, headDim];
+  for (let i = 0; i < nLayers; i += 1) {
+    feeds[`past_k_${i}`] = tensor("float32", kv.k.subarray(i * layerSize, (i + 1) * layerSize), dims);
+    feeds[`past_v_${i}`] = tensor("float32", kv.v.subarray(i * layerSize, (i + 1) * layerSize), dims);
+  }
+  return feeds;
+}
+
+// Writes a call's new rows ([layers, batch, heads, n, headDim]) after the cache's.
+async function appendKv(ctx, kv, out, n) {
+  const { nLayers, nHead, headDim } = ctx;
+  const newK = await out.new_self_k.getData();
+  const newV = await out.new_self_v.getData();
+  const rows = nLayers * kv.batch * nHead;
+  const size = n * headDim;
+  const at = kv.length * headDim;
+  for (let r = 0; r < rows; r += 1) {
+    kv.k.set(newK.subarray(r * size, (r + 1) * size), r * kv.cap * headDim + at);
+    kv.v.set(newV.subarray(r * size, (r + 1) * size), r * kv.cap * headDim + at);
+  }
+  kv.mask.fill(0, kv.length, kv.length + n);
+  kv.length += n;
+}
+
+// The encoder's cross keys/values as per-layer views (cross_k_<i>, cross_v_<i>).
+const crossLayerFeeds = new WeakMap();
+function crossLayers(ctx) {
+  let feeds = crossLayerFeeds.get(ctx.crossK);
+  if (feeds) return feeds;
+  const { nLayers } = ctx;
+  feeds = {};
+  for (const [name, t] of [["cross_k", ctx.crossK], ["cross_v", ctx.crossV]]) {
+    const [, heads, nBeats, headDim] = t.dims;
+    const size = heads * nBeats * headDim;
+    for (let i = 0; i < nLayers; i += 1) {
+      feeds[`${name}_${i}`] = tensor("float32", t.data.subarray(i * size, (i + 1) * size), [heads, nBeats, headDim]);
+    }
+  }
+  crossLayerFeeds.set(ctx.crossK, feeds);
+  return feeds;
+}
+
+// An in-place cache holding a plain [layers, batch, heads, length, headDim] one.
+function kvFromCache(ctx, batch, k, v) {
+  const { nLayers, nHead, headDim } = ctx;
+  const kData = isTensorLike(k) ? k.data : k;
+  const vData = isTensorLike(v) ? v.data : v;
+  const length = kData.length / (nLayers * batch * nHead * headDim);
+  return copyKv(ctx, { batch, cap: length, k: kData, v: vData }, length, length + KV_GROW);
+}
+
+async function runInPlaceStep(sess, tokenIds, stepId, beatIdx, ctx, prefixBias, kv) {
+  const batch = tokenIds.length;
+  const feeds = {
+    token_id: tensor("int64", BigInt64Array.from(tokenIds, BigInt), [batch]),
+    step_id: tensor("int64", new BigInt64Array(batch).fill(BigInt(stepId)), [batch]),
+    beat_idx: tensor("int64", new BigInt64Array(batch).fill(BigInt(beatIdx)), [batch]),
+    aligned_memory: ctx.alignedMemory,
+    prefix_bias: tensor("float32", prefixBias, [batch, prefixBias.length / batch]),
+    mem_invalid: ctx.memInvalid,
+    ...kvFeeds(ctx, kv, 1),
+    ...crossLayers(ctx),
+  };
+  const out = await runSession(sess, feeds);
+  await appendKv(ctx, kv, out, 1);
+  return Float32Array.from(await out.logits.getData());
+}
+
 async function runDecoderStep(sess, tokenId, stepId, beatIdx, ctx, prefixBias, pastK, pastV) {
+  if (!isInPlaceKv(pastK) && inPlaceDecoder(sess)) pastK = kvFromCache(ctx, 1, pastK, pastV);
+  if (isInPlaceKv(pastK)) {
+    const logits = await runInPlaceStep(sess, [tokenId], stepId, beatIdx, ctx, prefixBias, pastK);
+    return { logits, presentK: pastK, presentV: pastK };
+  }
   const { nLayers, nHead, headDim } = ctx;
   let pastKTensor, pastVTensor;
   if (isTensorLike(pastK)) {
@@ -202,6 +326,15 @@ async function runDecoderStep(sess, tokenId, stepId, beatIdx, ctx, prefixBias, p
 // in gpu-buffer just like the single-stream path.
 async function runDecoderBatchStep(sess, tokenIds, stepId, beatIdx, ctx, condPrefixBias, uncondPrefixBias, pastK, pastV) {
   const { nLayers, nHead, headDim } = ctx;
+  const prefixBias = new Float32Array(condPrefixBias.length + uncondPrefixBias.length);
+  prefixBias.set(condPrefixBias, 0);
+  prefixBias.set(uncondPrefixBias, condPrefixBias.length);
+  if (!isInPlaceKv(pastK) && inPlaceDecoder(sess)) pastK = kvFromCache(ctx, 2, pastK, pastV);
+  if (isInPlaceKv(pastK)) {
+    const logits = await runInPlaceStep(sess, tokenIds, stepId, beatIdx, ctx, prefixBias, pastK);
+    const vocab = logits.length / 2;
+    return { condLogits: logits.slice(0, vocab), uncondLogits: logits.slice(vocab), presentK: pastK, presentV: pastK };
+  }
   let pastKTensor, pastVTensor;
   if (isTensorLike(pastK)) {
     pastKTensor = pastK;
@@ -212,9 +345,6 @@ async function runDecoderBatchStep(sess, tokenIds, stepId, beatIdx, ctx, condPre
     pastKTensor = tensor("float32", pastK, pastKDims);
     pastVTensor = tensor("float32", pastV, pastKDims);
   }
-  const prefixBias = new Float32Array(condPrefixBias.length + uncondPrefixBias.length);
-  prefixBias.set(condPrefixBias, 0);
-  prefixBias.set(uncondPrefixBias, condPrefixBias.length);
   const tokenIdArr = new BigInt64Array([BigInt(tokenIds[0]), BigInt(tokenIds[1])]);
   const stepIdArr = new BigInt64Array([BigInt(stepId), BigInt(stepId)]);
   const beatIdxArr = new BigInt64Array([BigInt(beatIdx), BigInt(beatIdx)]);
@@ -321,21 +451,22 @@ async function generate({
       throw new Error("generate: initialCache must hold part of the prefix");
     }
   }
+  const inPlace = inPlaceDecoder(decoderSession);
   if (guidanceEnabled) {
     if (cfgTwoCall) {
-      condPastK = new Float32Array(emptyPastK.length);
-      condPastV = new Float32Array(emptyPastK.length);
-      uncondPastK = new Float32Array(emptyPastK.length);
-      uncondPastV = new Float32Array(emptyPastK.length);
+      condPastK = inPlace ? newKv(ctx, 1) : new Float32Array(emptyPastK.length);
+      condPastV = inPlace ? condPastK : new Float32Array(emptyPastK.length);
+      uncondPastK = inPlace ? newKv(ctx, 1) : new Float32Array(emptyPastK.length);
+      uncondPastV = inPlace ? uncondPastK : new Float32Array(emptyPastK.length);
     } else {
-      batchedPastK = new Float32Array(0);
-      batchedPastV = new Float32Array(0);
+      batchedPastK = inPlace ? newKv(ctx, 2) : new Float32Array(0);
+      batchedPastV = inPlace ? batchedPastK : new Float32Array(0);
     }
   }
   let singlePastK = null, singlePastV = null;
   if (!guidanceEnabled) {
-    singlePastK = new Float32Array(emptyPastK.length);
-    singlePastV = new Float32Array(emptyPastK.length);
+    singlePastK = inPlace ? newKv(ctx, 1) : new Float32Array(emptyPastK.length);
+    singlePastV = inPlace ? singlePastK : new Float32Array(emptyPastK.length);
   }
   if (initialCache) {
     if (cacheMode === "single") ({ k: singlePastK, v: singlePastV } = initialCache);
@@ -510,7 +641,9 @@ async function sliceCache(cache, keep) {
   for (const [kKey, vKey] of CACHE_PAIRS[cache.mode]) {
     const k = cache[kKey];
     const v = cache[vKey];
-    if (isTensorLike(k) && k.location === "gpu-buffer") {
+    if (isInPlaceKv(k)) {
+      sliced[kKey] = sliced[vKey] = copyKv(cache, k, keep, k.cap);
+    } else if (isTensorLike(k) && k.location === "gpu-buffer") {
       ({ k: sliced[kKey], v: sliced[vKey] } = await sliceGpuCache(k, v, keep));
     } else {
       sliced[kKey] = sliceCacheData(cache, isTensorLike(k) ? k.data : k, keep);
@@ -609,6 +742,12 @@ async function runEncoder(encoderSession, beatMel, beatMask, nBeats) {
 }
 
 export {
+  inPlaceDecoder,
+  newKv,
+  copyKv,
+  kvFeeds,
+  appendKv,
+  crossLayers,
   loadEncoderSessions,
   loadDecoderSession,
   generate,

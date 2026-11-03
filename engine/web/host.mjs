@@ -169,7 +169,11 @@ function providers(device) {
 
 async function createSession(source, options = {}) {
   const device = await resolveDevice(options.device);
-  const key = `${source}|${device}|${JSON.stringify(options.preferredOutputLocation || {})}`;
+  // options.cpuGraph { name, rewrite(bytes) -> bytes | null }: a CPU session
+  // loads the rewritten graph, or the file itself when there is none or it
+  // fails to load.
+  const cpuGraph = device === "webgpu" ? null : options.cpuGraph || null;
+  const key = `${source}|${device}|${JSON.stringify(options.preferredOutputLocation || {})}${cpuGraph ? `|${cpuGraph.name}` : ""}`;
   if (sessions.has(key)) return sessions.get(key);
   const sessionOptions = {
     executionProviders: providers(device),
@@ -183,9 +187,17 @@ async function createSession(source, options = {}) {
   const t0 = performance.now();
   const bytes = await fetchModelFile(source);
   if (log) log(`    read ${file} (${Math.round(bytes.length / 1e6)} MB) in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+  const rewritten = cpuGraph ? cpuGraph.rewrite(bytes) : null;
   let session;
   try {
-    session = await ort.InferenceSession.create(bytes, sessionOptions);
+    if (rewritten) {
+      try {
+        session = await ort.InferenceSession.create(rewritten, sessionOptions);
+      } catch (err) {
+        if (log) log(`    ${file}: ${cpuGraph.name} graph failed to load (${String(err?.message || err).split("\n")[0]}); using the graph as is`);
+      }
+    }
+    if (!session) session = await ort.InferenceSession.create(bytes, sessionOptions);
     session.__resolvedDevice = device;
   } catch (err) {
     if (device !== "webgpu") throw err;

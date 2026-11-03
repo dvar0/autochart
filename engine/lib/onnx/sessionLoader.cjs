@@ -6,6 +6,7 @@
 
 const ort = require("onnxruntime-node");
 const os = require("os");
+const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 const { Worker } = require("worker_threads");
@@ -187,8 +188,26 @@ async function resolveDevice(requested, probeGraphPath, opts = {}) {
 
 const sessionCache = new Map();
 
-function cacheKey(onnxPath, resolvedDevice, preferredOutputLocation) {
-  return `${onnxPath}|${resolvedDevice}|${JSON.stringify(preferredOutputLocation || {})}`;
+function cacheKey(onnxPath, resolvedDevice, preferredOutputLocation, cpuGraph = null) {
+  const variant = resolvedDevice === "cpu" && cpuGraph ? `|${cpuGraph.name}` : "";
+  return `${onnxPath}|${resolvedDevice}|${JSON.stringify(preferredOutputLocation || {})}${variant}`;
+}
+
+// options.cpuGraph { name, rewrite(bytes) -> bytes | null }: a CPU session
+// loads the rewritten graph, or the file itself when there is none or it
+// fails to load.
+async function createCpuSession(onnxPath, sessionOptions, options) {
+  const rewritten = options.cpuGraph ? options.cpuGraph.rewrite(await fs.promises.readFile(onnxPath)) : null;
+  if (rewritten) {
+    try {
+      return await ort.InferenceSession.create(rewritten, sessionOptions);
+    } catch (err) {
+      if (options.log) options.log(`[sessionLoader] ${path.basename(onnxPath)}: ${options.cpuGraph.name} graph failed to load (${String(err && err.message || err).split("\n")[0]}); using the graph as is`);
+    }
+  } else if (options.cpuGraph && options.log) {
+    options.log(`[sessionLoader] ${path.basename(onnxPath)}: no ${options.cpuGraph.name} rewrite; using the graph as is`);
+  }
+  return ort.InferenceSession.create(onnxPath, sessionOptions);
 }
 function isAcceleratedDevice(device) {
   return device === "webgpu" || device === "cuda";
@@ -214,7 +233,7 @@ function latchRuntimeFallback(device, reason, log) {
 async function createSession(onnxPath, options = {}) {
   const requestedDevice = normalizeDevice(options.device);
   const resolvedDevice = await resolveDevice(requestedDevice, onnxPath, { log: options.log || null });
-  const key = cacheKey(onnxPath, resolvedDevice, options.preferredOutputLocation);
+  const key = cacheKey(onnxPath, resolvedDevice, options.preferredOutputLocation, options.cpuGraph);
   const cached = sessionCache.get(key);
   if (cached) return cached;
 
@@ -227,16 +246,18 @@ async function createSession(onnxPath, options = {}) {
   }
   let session;
   try {
-    session = await ort.InferenceSession.create(onnxPath, sessionOptions);
+    session = resolvedDevice === "cpu"
+      ? await createCpuSession(onnxPath, sessionOptions, options)
+      : await ort.InferenceSession.create(onnxPath, sessionOptions);
   } catch (err) {
     if (isAcceleratedDevice(resolvedDevice)) {
       const reason = err && err.message ? String(err.message).split("\n")[0] : String(err);
       latchRuntimeFallback(resolvedDevice, reason, options.log || null);
-      const cpuKey = cacheKey(onnxPath, "cpu", options.preferredOutputLocation);
+      const cpuKey = cacheKey(onnxPath, "cpu", options.preferredOutputLocation, options.cpuGraph);
       const cachedCpu = sessionCache.get(cpuKey);
       if (cachedCpu) return cachedCpu;
       const cpuOptions = { ...sessionOptions, executionProviders: ["cpu"] };
-      session = await ort.InferenceSession.create(onnxPath, cpuOptions);
+      session = await createCpuSession(onnxPath, cpuOptions, options);
       sessionCache.set(cpuKey, session);
       try { session.__resolvedDevice = "cpu"; } catch { /* ignore */ }
       return session;
@@ -253,7 +274,7 @@ async function createSession(onnxPath, options = {}) {
     );
     return createSession(onnxPath, { ...options, device: "cpu" });
   }
-  const actualKey = cacheKey(onnxPath, actualDevice, options.preferredOutputLocation);
+  const actualKey = cacheKey(onnxPath, actualDevice, options.preferredOutputLocation, options.cpuGraph);
   sessionCache.set(actualKey, session);
   try {
     session.__resolvedDevice = actualDevice;
