@@ -67,7 +67,11 @@ if [[ "$(uname -s)" == Darwin && -n "${SDKROOT:-}" ]]; then
   chmod +x "$work/sdk-xcrun/xcrun"
   vpx_path="$work/sdk-xcrun:$PATH"
 fi
-PATH="$vpx_path" ./configure --prefix="$prefix" --target="$vpx_target" --enable-runtime-cpu-detect --disable-shared \
+# On x64, use the NASM the build requires: libvpx prefers any yasm on PATH, and
+# some hosts carry one whose dependency output breaks the build.
+vpx_as=()
+[[ "$vpx_target" == x86_64-* ]] && vpx_as=(--as=nasm)
+PATH="$vpx_path" ./configure --prefix="$prefix" --target="$vpx_target" ${vpx_as[@]+"${vpx_as[@]}"} --enable-runtime-cpu-detect --disable-shared \
   --enable-static --enable-pic --disable-examples --disable-tools \
   --disable-docs --disable-unit-tests --disable-vp9 --disable-vp8-decoder
 make -j"$jobs"
