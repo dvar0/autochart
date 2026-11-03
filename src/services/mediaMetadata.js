@@ -354,17 +354,58 @@ function parseFlac(bytes) {
   return out;
 }
 
-function parseOgg(bytes) {
-  const signature = new Uint8Array([3, 118, 111, 114, 98, 105, 115]);
-  let packet = -1;
-  outer: for (let i = 0; i + signature.length < bytes.length; i += 1) {
-    for (let j = 0; j < signature.length; j += 1) {
-      if (bytes[i + j] !== signature[j]) continue outer;
+// The comment header is the second packet of the first logical stream. It
+// usually spans many Ogg pages when it carries cover art, so it is rebuilt from
+// the page segments instead of read as one contiguous run of bytes.
+function oggCommentPacket(bytes) {
+  const parts = [];
+  let serial = null;
+  let packetIndex = 0;
+  let offset = 0;
+  while (offset + 27 <= bytes.length && decodeBytes(bytes.subarray(offset, offset + 4), "iso-8859-1") === "OggS") {
+    const segments = bytes[offset + 26];
+    const tableEnd = offset + 27 + segments;
+    if (tableEnd > bytes.length) break;
+    const pageSerial = uint32le(bytes, offset + 14);
+    let dataOffset = tableEnd;
+    const pageEnd = tableEnd + bytes.subarray(offset + 27, tableEnd).reduce((sum, size) => sum + size, 0);
+    if (serial === null) serial = pageSerial;
+    if (pageSerial === serial) {
+      for (let i = 0; i < segments; i += 1) {
+        const size = bytes[offset + 27 + i];
+        if (packetIndex === 1) parts.push(bytes.subarray(dataOffset, Math.min(dataOffset + size, bytes.length)));
+        dataOffset += size;
+        if (size < 255) {
+          packetIndex += 1;
+          if (packetIndex > 1) break;
+        }
+      }
+      if (packetIndex > 1) break;
     }
-    packet = i + signature.length;
-    break;
+    offset = pageEnd;
   }
-  return packet === -1 ? { meta: {}, picture: null } : parseVorbisComments(bytes, packet, bytes.length);
+  if (!parts.length) return null;
+  const packet = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    packet.set(part, at);
+    at += part.length;
+  }
+  return packet;
+}
+
+function parseOgg(bytes) {
+  const empty = { meta: {}, picture: null };
+  const packet = oggCommentPacket(bytes);
+  if (!packet) return empty;
+  // Vorbis: "\x03vorbis"; Opus: "OpusTags". Both are followed by Vorbis comments.
+  if (packet.length >= 7 && packet[0] === 3 && decodeBytes(packet.subarray(1, 7), "iso-8859-1") === "vorbis") {
+    return parseVorbisComments(packet, 7, packet.length);
+  }
+  if (packet.length >= 8 && decodeBytes(packet.subarray(0, 8), "iso-8859-1") === "OpusTags") {
+    return parseVorbisComments(packet, 8, packet.length);
+  }
+  return empty;
 }
 
 function atomType(bytes, offset) {

@@ -54,6 +54,46 @@ const smallFile = (name, ...parts) => {
   return sparseFile(name, bytes.length, [[0, bytes]]);
 };
 
+// Minimal Ogg muxer (CRC left zero; the reader doesn't check it). Packets are
+// laced into pages of at most 255 segments, so a large comment spans pages.
+function oggStream(packets, serial = 0x1234) {
+  const pages = [];
+  let sequence = 0;
+  let segments = [];
+  let body = [];
+  const flush = (continued) => {
+    const header = Buffer.alloc(27);
+    header.write("OggS", 0, "latin1");
+    header[5] = (continued ? 1 : 0) | (sequence === 0 ? 2 : 0);
+    header.writeUInt32LE(serial, 14);
+    header.writeUInt32LE(sequence++, 18);
+    header[26] = segments.length;
+    pages.push(header, Buffer.from(segments), ...body);
+    segments = [];
+    body = [];
+  };
+  for (const packet of packets) {
+    let continued = false;
+    for (let at = 0; ; at += 255) {
+      const size = Math.min(255, packet.length - at);
+      segments.push(size);
+      body.push(packet.subarray(at, at + size));
+      if (segments.length === 255) { flush(continued); continued = true; }
+      if (size < 255) break;
+    }
+    if (segments.length) flush(continued);
+  }
+  return Buffer.concat(pages);
+}
+const vorbisComments = (prefix, fields) => {
+  const u32le = (value) => { const b = Buffer.alloc(4); b.writeUInt32LE(value); return b; };
+  const entries = fields.map((field) => Buffer.from(field));
+  return Buffer.concat([prefix, u32le(6), Buffer.from("vendor"), u32le(entries.length),
+    ...entries.flatMap((entry) => [u32le(entry.length), entry])]);
+};
+const flacPicture = (mime, data) => Buffer.concat([u32(3), u32(mime.length), Buffer.from(mime), u32(5), Buffer.from("Cover"),
+  u32(0), u32(0), u32(0), u32(0), u32(data.length), data]);
+
 (async () => {
   const { readMediaFileMetadata, MAX_METADATA_SCAN_BYTES } = await import("../src/services/mediaMetadata.js");
   const { buildSourceReplacementRecord } = await import("../src/pages/generate/sourceReplacement.js");
@@ -137,6 +177,22 @@ const smallFile = (name, ...parts) => {
   assert.equal(mp3.meta.artist, artist);
 
   const source = smallFile("unrelated-filename.mov", ftyp, legacy);
+
+  // Ogg Opus (.opus/.ogx) and Ogg Vorbis: cover art large enough to span pages.
+  const oggArt = Buffer.concat([Buffer.from([255, 216, 255, 224]), Buffer.alloc(120000, 7), Buffer.from([255, 217])]);
+  const oggFields = [`TITLE=${title}`, `ARTIST=${artist}`, "ALBUM=Puchito", "DATE=2024",
+    `METADATA_BLOCK_PICTURE=${flacPicture("image/jpeg", oggArt).toString("base64")}`];
+  const audioPacket = Buffer.alloc(400, 1);
+  for (const [name, head, prefix] of [
+    ["track.ogx", Buffer.from("OpusHead\x01\x02\x38\x01\x80\xbb\x00\x00\x00\x00\x00", "latin1"), Buffer.from("OpusTags")],
+    ["track.opus", Buffer.from("OpusHead\x01\x02\x38\x01\x80\xbb\x00\x00\x00\x00\x00", "latin1"), Buffer.from("OpusTags")],
+    ["track.ogg", Buffer.from("\x01vorbis", "latin1"), Buffer.from("\x03vorbis", "latin1")],
+  ]) {
+    const info = await read(smallFile(name, oggStream([head, vorbisComments(prefix, oggFields), audioPacket])));
+    assert.deepEqual(info.meta, expected, `${name} tags`);
+    assert.equal(info.albumBlob?.type, "image/jpeg", `${name} embedded cover`);
+    assert.deepEqual(Buffer.from(await info.albumBlob.arrayBuffer()), oggArt, `${name} cover bytes`);
+  }
   const record = buildSourceReplacementRecord({ file: source, mediaInfo: await read(source), backgroundType: "video" });
   assert.equal(record.meta.title, title, "embedded title punctuation must survive project creation");
   assert.equal(record.meta.artist, artist);
@@ -151,5 +207,5 @@ const smallFile = (name, ...parts) => {
     assert.ok(info.raw.meta.title, "real file title missing");
     console.log(path.basename(sourcePath), JSON.stringify(info.meta));
   }
-  console.log("Media metadata: QuickTime, iTunes, mdta, trailing tags, bounded reads, malformed files, ID3, and project metadata passed.");
+  console.log("Media metadata: QuickTime, iTunes, mdta, trailing tags, bounded reads, malformed files, ID3, Ogg Opus/Vorbis, and project metadata passed.");
 })().catch((error) => { console.error(error); process.exitCode = 1; });
