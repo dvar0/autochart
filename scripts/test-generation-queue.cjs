@@ -149,7 +149,9 @@ async function main() {
     const tileOrder = () => evaluate('[...document.querySelectorAll(".tile-select")].map(b => b.getAttribute("aria-label").split(" by ")[0])');
     const panelText = () => evaluate(`document.querySelector(".queue-panel").innerText`);
     const song = (id) => library.getSong(context, id);
-    const finish = (job) => job.resolve({ jobId: job.payload.jobId, status: "completed", chartText: chartFor(job.payload.difficulty) });
+    // As the engine's result: it names the generator the take came from.
+    const finish = (job) => job.resolve({ jobId: job.payload.jobId, status: "completed", chartText: chartFor(job.payload.difficulty),
+      generatorId: "autochart.fretformer.v2-onnx", generatorLabel: "Fretformer 2" });
     const send = (job, event) => job.sender.send("engine:jobEvent", { jobId: job.payload.jobId, ...event });
     const expectJobs = (count, label) => waitFor(() => jobs.length === count, label);
 
