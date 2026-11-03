@@ -822,11 +822,15 @@ function makeRng(seed) {
     choice(probs) {
       let r = this.nextFloat();
       let acc = 0;
+      // When rounding leaves the sum just under r, the last token that can be
+      // drawn, never a masked (zero-probability) one.
+      let last = probs.length - 1;
       for (let i = 0; i < probs.length; i += 1) {
+        if (probs[i] > 0) last = i;
         acc += probs[i];
         if (r < acc) return i;
       }
-      return probs.length - 1;
+      return last;
     },
     choiceFromIndices(keptIndices, probs) {
       let r = this.nextFloat();

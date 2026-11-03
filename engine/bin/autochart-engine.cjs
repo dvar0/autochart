@@ -1197,6 +1197,21 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
       }),
     });
     const { tokens, structure, forceSolo, forcedSolo, syncLines, nBeats, descNames, bins, useCfg } = transcription;
+    // The model reads at most maxBeats beats and writes at most maxTokens
+    // tokens; a chart that hits either stops there.
+    const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+    const beatsInAudio = beatTimes.findIndex((time) => time > audioDuration);
+    const songBeats = (beatsInAudio < 0 ? beatTimes.length : beatsInAudio) - 1;
+    const maxTokens = Number(manifest.stages?.transcriber?.modelConfig?.maxTokens || 8192);
+    const decodedBeats = tokens.filter((token) => token === onnxLib.BEAT_TOKEN).length;
+    const outOfTokens = tokens.length >= maxTokens && tokens[tokens.length - 1] !== onnxLib.EOS_TOKEN && decodedBeats < nBeats;
+    const chartedBeats = outOfTokens ? decodedBeats : nBeats;
+    const chartedUntil = chartedBeats < songBeats ? beatTimes[chartedBeats] : null;
+    const chartWarnings = chartedUntil == null ? [] : [
+      `Only the first ${chartedBeats} of ${songBeats} beats were charted (to ${clock(chartedUntil)}): ` +
+      (outOfTokens ? `the model writes at most ${maxTokens} tokens.` : `the model reads at most ${nBeats} beats.`),
+    ];
+    for (const message of chartWarnings) emit({ type: "log", stage: "transcription", stream: "stderr", message: `warning: ${message}` });
     const decoderSettings = {
       difficulty: settings.difficulty,
       temperature: settings.temperature,
@@ -1291,6 +1306,7 @@ async function generateOnnx(job, jobPath, { lifecycle = createGenerationLifecycl
         chart_path: chartPath,
         note_line_count: noteLineCount,
         event_count: events.length,
+        ...(chartWarnings.length ? { warnings: chartWarnings, charted_until_seconds: chartedUntil } : {}),
       },
       timing: {
         detector: beatStage.beats.detector || "beat_this_ft_v4_onnx",
