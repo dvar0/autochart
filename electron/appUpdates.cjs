@@ -471,13 +471,17 @@ function freshAppImageEnv(env) {
 // no_new_privs, and an AppImage needs setuid fusermount to mount itself.
 // Chromium leaves some files open across exec, so they're closed first;
 // otherwise the new app would hold the old mount (and old file) until it quits.
-function relaunchAppImage(appImagePath, args = [], { pid = process.pid, env = process.env, start = spawn } = {}) {
+// Bash can close any inherited file; a plain sh like dash only handles fds
+// 0-9 (and exits on the rest), so there the loop stops at 9.
+function relaunchAppImage(appImagePath, args = [], {
+  pid = process.pid, env = process.env, start = spawn, shell = fsSync.existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh",
+} = {}) {
   const waitThenOpen = [
-    'for fd in /proc/self/fd/*; do fd=${fd##*/}; [ "$fd" -gt 2 ] 2>/dev/null && eval "exec $fd>&-"; done',
+    'for fd in /proc/self/fd/*; do fd=${fd##*/}; [ "$fd" -gt 2 ] 2>/dev/null && { [ -n "$BASH_VERSION" ] || [ "$fd" -le 9 ]; } && eval "exec $fd>&-"; done',
     'i=0; while [ "$i" -lt 100 ] && kill -0 "$0" 2>/dev/null; do i=$((i+1)); sleep 0.1; done',
     'exec "$@"',
   ].join("\n");
-  const child = start("/bin/sh", ["-c", waitThenOpen, String(pid), appImagePath, ...args], {
+  const child = start(shell, ["-c", waitThenOpen, String(pid), appImagePath, ...args], {
     detached: true,
     stdio: "ignore",
     env: freshAppImageEnv(env),
