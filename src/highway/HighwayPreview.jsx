@@ -161,13 +161,16 @@ function HighwayPreview(
   const syncVideo = useCallback((time, shouldPlay) => {
     const video = videoRef.current;
     if (!video) return;
-    const mediaTime = Math.max(0, time - videoOffsetRef.current);
+    // The song clock is chart time (the chart's Offset taken off the audio's);
+    // the video goes with the audio.
+    const audioTime = time + (Number(engineRef.current?.chartOffset) || 0);
+    const mediaTime = Math.max(0, audioTime - videoOffsetRef.current);
     // Playing, a little drift is fine and seeking would stutter. Paused, the
     // frame should be the one at the playhead.
     if (Math.abs(video.currentTime - mediaTime) > (shouldPlay ? 0.3 : 0.05)) {
       try { video.currentTime = mediaTime; } catch { /* metadata not ready */ }
     }
-    if (shouldPlay && time >= videoOffsetRef.current) video.play().catch(() => {});
+    if (shouldPlay && audioTime >= videoOffsetRef.current) video.play().catch(() => {});
     else video.pause();
   }, []);
   const resizePreview = useCallback(() => {

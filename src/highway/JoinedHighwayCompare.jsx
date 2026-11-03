@@ -286,7 +286,10 @@ function JoinedHighwayCompare(
   const syncVideo = useCallback((time, play) => {
     const video = videoRef.current;
     if (!video) return;
-    const mediaTime = Math.max(0, time - resolvedVideoOffset);
+    // The song clock is chart time (the chart's Offset taken off the audio's);
+    // the video goes with the audio.
+    const audioTime = time + (Number(engineRef.current?.chartOffset) || 0);
+    const mediaTime = Math.max(0, audioTime - resolvedVideoOffset);
     // Playing, a little drift is fine and seeking would stutter. Paused, the
     // frame should be the one at the playhead.
     if (Math.abs(video.currentTime - mediaTime) > (play ? 0.3 : 0.05)) {
@@ -296,7 +299,7 @@ function JoinedHighwayCompare(
         // Metadata may not be ready yet.
       }
     }
-    if (play && time >= resolvedVideoOffset) video.play().catch(() => {});
+    if (play && audioTime >= resolvedVideoOffset) video.play().catch(() => {});
     else video.pause();
   }, [resolvedVideoOffset]);
 
