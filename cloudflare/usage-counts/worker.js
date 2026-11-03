@@ -25,8 +25,10 @@ export default {
 // The count's fields, checked and in a fixed order, or null when it isn't
 // one we take.
 export function countFields(body) {
-  const allowed = USAGE_EVENTS[body?.event];
-  if (!allowed) return null;
+  // Own events only: "constructor" or "toString" isn't one.
+  const event = body?.event;
+  if (typeof event !== "string" || !Object.hasOwn(USAGE_EVENTS, event)) return null;
+  const allowed = USAGE_EVENTS[event];
   const fields = {};
   for (const key of [...COMMON_FIELDS, ...allowed].sort()) {
     const value = body[key];

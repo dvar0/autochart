@@ -13,4 +13,6 @@ assert.equal(countFields({ event: "song_title", browser: "chrome" }), null);
 assert.equal(countFields({ event: "exported", format: "My Song.sng" }), null);
 assert.equal(countFields({ event: "exported", format: 3 }), null);
 assert.equal(countFields(null), null);
+// Inherited names aren't events.
+for (const event of ["constructor", "toString", "__proto__", "hasOwnProperty"]) assert.equal(countFields({ event, browser: "chrome" }), null);
 console.log("usage counts worker: passed");
