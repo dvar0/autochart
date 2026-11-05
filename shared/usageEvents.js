@@ -7,8 +7,8 @@ export const COMMON_FIELDS = Object.freeze(["browser", "device", "version"]);
 
 export const USAGE_EVENTS = Object.freeze({
   generate_started: ["model", "difficulty"],
-  generate_finished: ["model", "difficulty", "engine", "minutes", "length"],
-  generate_failed: ["model", "difficulty", "engine", "stage", "reason"],
+  generate_finished: ["model", "difficulty", "engine", "minutes", "length", "os"],
+  generate_failed: ["model", "difficulty", "engine", "stage", "reason", "format", "os"],
   inpaint_finished: ["model", "engine", "minutes"],
   inpaint_failed: ["model", "engine", "stage", "reason"],
   run_interrupted: ["kind", "model", "stage", "how"],

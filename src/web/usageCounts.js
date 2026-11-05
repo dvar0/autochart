@@ -25,12 +25,24 @@ export async function countsEnabled() {
   return settings.shareUsageCounts !== false;
 }
 
-// Browser family only: no versions, no OS.
+// Browser family only: no versions.
 function browserFamily(ua = navigator.userAgent) {
   if (/Edg\//.test(ua)) return "edge";
   if (/Firefox\/|FxiOS\//.test(ua)) return "firefox";
   if (/Chrome\/|CriOS\//.test(ua)) return "chrome";
   if (/Safari\//.test(ua)) return "safari";
+  return "other";
+}
+
+// Operating system family only, for runs: whether WebGPU is on by default
+// depends on it. "windows", "mac", "linux", "chromeos", "android", "ios".
+function osFamily(ua = navigator.userAgent) {
+  if (/iPhone|iPad|iPod/.test(ua) || navigator.maxTouchPoints > 1 && /Macintosh/.test(ua)) return "ios";
+  if (/Android/.test(ua)) return "android";
+  if (/CrOS/.test(ua)) return "chromeos";
+  if (/Windows/.test(ua)) return "windows";
+  if (/Macintosh|Mac OS X/.test(ua)) return "mac";
+  if (/Linux|X11/.test(ua)) return "linux";
   return "other";
 }
 
@@ -91,8 +103,9 @@ export function count(event, fields = {}) {
   void countsEnabled().then((enabled) => {
     if (!enabled) return;
     const body = { event, browser: browserFamily(), device: deviceKind(), ...(VERSION ? { version: VERSION } : {}) };
+    const filled = allowed.includes("os") ? { os: osFamily(), ...fields } : fields;
     for (const key of allowed) {
-      const value = String(fields[key] ?? "").toLowerCase();
+      const value = String(filled[key] ?? "").toLowerCase();
       if (FIELD_VALUE.test(value)) body[key] = value;
     }
     const text = JSON.stringify(body);

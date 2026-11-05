@@ -69,7 +69,8 @@ function mpegFrame(bytes, p) {
 }
 
 // MPEG audio or ADTS AAC, after any ID3 tags: the first frame whose next
-// frame is where its length says, so stray sync bytes don't count.
+// frame is where its length says, so stray sync bytes don't count. Its rate
+// and kind ("mp3" or "aac"), or null.
 function sniffFrames(bytes) {
   let p = 0;
   while (p + 10 <= bytes.length && ascii(bytes, p, 3) === "ID3") {
@@ -84,14 +85,14 @@ function sniffFrames(bytes) {
       const length = ((bytes[p + 3] & 3) << 11) | (bytes[p + 4] << 3) | (bytes[p + 5] >> 5);
       const next = p + length;
       if (index < AAC_RATES.length && length > 7 && (next + 2 > bytes.length || (bytes[next] === 0xff && (bytes[next + 1] & 0xf6) === 0xf0))) {
-        return AAC_RATES[index];
+        return { rate: AAC_RATES[index], kind: "aac" };
       }
       continue;
     }
     const frame = mpegFrame(bytes, p);
     if (!frame) continue;
     const next = p + frame.length;
-    if (next + 4 > bytes.length || mpegFrame(bytes, next)?.rate === frame.rate) return frame.rate;
+    if (next + 4 > bytes.length || mpegFrame(bytes, next)?.rate === frame.rate) return { rate: frame.rate, kind: "mp3" };
   }
   return null;
 }
@@ -278,10 +279,33 @@ export function sniffSampleRate(input) {
     if (tag === "OggS") return sniffOgg(bytes, dv);
     if (ascii(bytes, 4, 4) === "ftyp" || ["moov", "mdat", "wide", "free", "skip"].includes(ascii(bytes, 4, 4))) return sniffMp4(bytes, dv);
     if (dv.getUint32(0) === 0x1a45dfa3) return sniffMatroska(bytes, dv);
-    return sniffFrames(bytes);
+    return sniffFrames(bytes)?.rate ?? null;
   } catch {
     // A damaged header: let the browser pick the rate.
     return null;
+  }
+}
+
+// The kind of file, from its header alone: "mp3", "aac", "wav", "flac",
+// "ogg", "mp4", "matroska", "aiff", "wma", "ac3" or "unknown". Used to count
+// which formats fail to decode; nothing else about the file is read.
+export function audioContainer(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (bytes.length < 12) return "unknown";
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tag = ascii(bytes, 0, 4);
+  if (tag === "RIFF" && ascii(bytes, 8, 4) === "WAVE") return "wav";
+  if (tag === "fLaC") return "flac";
+  if (tag === "OggS") return "ogg";
+  if (tag === "FORM" && /^AIF[FC]$/.test(ascii(bytes, 8, 4))) return "aiff";
+  if (["ftyp", "moov", "mdat", "wide", "free", "skip"].includes(ascii(bytes, 4, 4))) return "mp4";
+  if (dv.getUint32(0) === 0x1a45dfa3) return "matroska";
+  if (dv.getUint32(0) === 0x3026b275 && dv.getUint32(4) === 0x8e66cf11) return "wma";
+  if (bytes[0] === 0x0b && bytes[1] === 0x77) return "ac3";
+  try {
+    return sniffFrames(bytes)?.kind || "unknown";
+  } catch {
+    return "unknown";
   }
 }
 

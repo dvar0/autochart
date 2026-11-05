@@ -6,7 +6,7 @@
 
 import engineManifest from "../../engine/manifest.json";
 import { t } from "../i18n/index.js";
-import { decodeAudioFile } from "../../engine/web/audio.mjs";
+import { audioContainer, decodeAudioFile, unsupportedAudioFormat } from "../../engine/web/audio.mjs";
 import { unsupportedSongMessage } from "../services/browserAudio.js";
 import {
   cachedModelSummary, clearModelCache, ensureModelFiles, fitsInRoom, loadModelManifest, modelFolderStatus,
@@ -263,7 +263,9 @@ async function prepareAudio(jobId, payload) {
     audio = await decodeAudioFile(bytes);
   } catch {
     const message = (await unsupportedSongMessage(blob)) || t("This browser can't decode that file. Try an MP3, OGG, FLAC or WAV.");
-    throw Object.assign(new Error(message), { code: "decode_failed" });
+    // The kind of file, such as "mp4" or "alac", is counted with the failure.
+    const format = (await unsupportedAudioFormat(blob)) || audioContainer(new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 65536)));
+    throw Object.assign(new Error(message), { code: "decode_failed", format });
   }
   return { audio, audioSha256, sourceTransform: sourceTransformFrom(payload.sourceTransform || payload.generation?.controls) };
 }
@@ -409,7 +411,9 @@ function runFields(jobId, payload) {
 
 function countFailure(event, jobId, payload, err) {
   if (err?.code === "CANCELED") return;
-  count(event, { ...runFields(jobId, payload), stage: stageName(err?.stage || "prepare"), reason: failureReason(err) });
+  const reason = failureReason(err);
+  const format = reason === "decode_failed" ? err?.format || "unknown" : "";
+  count(event, { ...runFields(jobId, payload), stage: stageName(err?.stage || "prepare"), reason, format });
 }
 
 function generateChart(payload = {}) {

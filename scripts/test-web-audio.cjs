@@ -4,7 +4,8 @@
 // The browser engine decodes a song at the rate its header names, so the
 // browser never resamples it. A wrong rate makes the browser resample, and a
 // low one throws away the top of the song. Formats no browser decodes are
-// named when the song is picked. Fixtures come from the ffmpeg on PATH (or
+// named when the song is picked, and a file that fails to decode is counted
+// by its kind. Fixtures come from the ffmpeg on PATH (or
 // $FFMPEG).
 
 const assert = require("node:assert/strict");
@@ -12,7 +13,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { sniffSampleRate, unsupportedAudioFormat } = require("../engine/web/audio.mjs");
+const { audioContainer, sniffSampleRate, unsupportedAudioFormat } = require("../engine/web/audio.mjs");
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "autochart-audio-rates-"));
@@ -96,6 +97,26 @@ async function main() {
     assert.equal(await unsupportedAudioFormat(blob), expected, name);
   }
   assert.equal(await unsupportedAudioFormat(new Blob([])), null, "empty file");
+
+  // A failed decode is counted by the file's kind, read from its header.
+  const kinds = [
+    ["mp3.mp3", ["-c:a", "libmp3lame"], "mp3"],
+    ["mp3-no-id3.mp3", ["-c:a", "libmp3lame", "-id3v2_version", "0", "-write_xing", "0"], "mp3"],
+    ["adts.aac", ["-c:a", "aac"], "aac"],
+    ["aac.m4a", ["-c:a", "aac"], "mp4"],
+    ["wav.wav", [], "wav"],
+    ["flac.flac", [], "flac"],
+    ["vorbis.ogg", ["-c:a", "libvorbis"], "ogg"],
+    ["opus.webm", ["-c:a", "libopus"], "matroska"],
+    ["aiff.aiff", ["-c:a", "pcm_s16be"], "aiff"],
+    ["wma.wma", ["-c:a", "wmav2"], "wma"],
+    ["raw.ac3", ["-c:a", "ac3"], "ac3"],
+  ];
+  for (const [name, args, expected] of kinds) {
+    assert.equal(audioContainer(make(`kind-${name}`, 44100, args)), expected, name);
+  }
+  assert.equal(audioContainer(Buffer.from("not a song at all, just some text here")), "unknown", "text");
+  assert.equal(audioContainer(Buffer.alloc(0)), "unknown", "empty");
 
   console.log("web audio checks passed");
 }

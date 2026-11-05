@@ -67,7 +67,7 @@ The events, and what each one adds:
 
 | Event | Also sends |
 | --- | --- |
-| A chart started, finished or failed | the model, the difficulty; once it runs, WebGPU or CPU. Finished runs add the time taken and the song's length as ranges (such as 2–5 minutes). Failed runs add the step it failed at and a fixed reason (out of memory, GPU lost, no WebGPU, download failed, file couldn't be decoded, engine crashed, storage full, other) |
+| A chart started, finished or failed | the model, the difficulty; once it runs, WebGPU or CPU. Finished and failed runs add the operating system family (windows, mac, linux, chromeos, android, ios or other; no version), since whether WebGPU is on depends on it. Finished runs add the time taken and the song's length as ranges (such as 2–5 minutes). Failed runs add the step it failed at and a fixed reason (out of memory, GPU lost, no WebGPU, download failed, file couldn't be decoded, engine crashed, storage full, other); when the file couldn't be decoded, the kind of file read from its header (such as mp3, mp4, wav, flac or alac), never its name |
 | An Inpaint finished or failed | the model, WebGPU or CPU; the time as a range, or the step and reason |
 | A run was cut short | generate or Inpaint, the model, the step, and whether the tab was closed or crashed |
 | A song was exported | .sng, .zip or a songs folder |

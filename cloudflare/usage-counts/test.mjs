@@ -6,6 +6,11 @@ assert.deepEqual(
   countFields({ event: "generate_finished", browser: "chrome", device: "desktop", version: "0.2.0", model: "fretformer.v2-onnx", difficulty: "expert", engine: "webgpu", minutes: "2-5", length: "3-5" }),
   { browser: "chrome", device: "desktop", difficulty: "expert", engine: "webgpu", length: "3-5", minutes: "2-5", model: "fretformer.v2-onnx", version: "0.2.0" },
 );
+// A failed decode carries the file's kind, and runs carry the OS family.
+assert.deepEqual(
+  countFields({ event: "generate_failed", browser: "chrome", device: "desktop", version: "0.2.0", model: "fretformer.v2-onnx", difficulty: "expert", stage: "prepare", reason: "decode_failed", format: "mp4", os: "linux" }),
+  { browser: "chrome", device: "desktop", difficulty: "expert", format: "mp4", model: "fretformer.v2-onnx", os: "linux", reason: "decode_failed", stage: "prepare", version: "0.2.0" },
+);
 // Fields the event doesn't list are dropped, not stored.
 assert.deepEqual(countFields({ event: "exported", format: "sng", title: "some song", browser: "firefox" }), { browser: "firefox", format: "sng" });
 // Unknown events and odd values are refused.
