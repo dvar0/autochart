@@ -17,6 +17,7 @@ const CHOOSE_ACCEPT = MEDIA_ACCEPT && [MEDIA_ACCEPT, ".sng", ".zip"].join(",");
 import { importSongFolder, saveImportedSong } from "../services/songImport.js";
 import { getSongRecord, recordToImported } from "../services/songLibrary.js";
 import { electronHardware } from "../services/runtimeBridge.js";
+import { unsupportedSongMessage } from "../services/browserAudio.js";
 import { t } from "../i18n/index.js";
 
 // The browser version's home: where a project starts. There is no library on
@@ -484,6 +485,19 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
     void confirmCloseSong().then((ok) => { if (ok) openFolder(folders[0].files); });
   };
 
+  // A song file the browser can't decode is turned away here, before its project opens.
+  const openSong = (file) => unsupportedSongMessage(file).then((message) => {
+    if (message) {
+      setOpenError(message);
+      return undefined;
+    }
+    return confirmCloseSong().then((ok) => {
+      if (!ok) return;
+      setOpenError("");
+      onSong(file);
+    });
+  });
+
   const handleDrop = (event) => {
     event.preventDefault();
     setHot(false);
@@ -492,11 +506,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
       if (folders.length || directories || archives || songs.length > 1) {
         openSongFolders(songs.length > 1 ? songs : folders, noSong());
       } else if (file) {
-        return confirmCloseSong().then((ok) => {
-          if (!ok) return;
-          setOpenError("");
-          onSong(file);
-        });
+        return openSong(file);
       }
       return undefined;
     }).catch((error) => setOpenError(error instanceof SongArchiveError ? error.message : t("That drop couldn't be read. Try Open a Clone Hero song instead.")));
@@ -538,7 +548,7 @@ export default function Start({ onSong, onOpenChart, onOpenSettings, confirmClos
               return;
             }
             event.target.value = "";
-            if (file) void confirmCloseSong().then((ok) => { if (ok) onSong(file); });
+            if (file) void openSong(file);
           }}
         />
         {CAN_PICK_FOLDERS

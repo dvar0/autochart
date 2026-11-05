@@ -1084,4 +1084,6 @@ export default {
   "{name} uses a kind of compression that can't be opened here. Unzip it and open the folder.": "{name} usa un tipo de compresión que no se puede abrir aquí. Descomprímelo y abre la carpeta.",
   "{name} is password protected.": "{name} está protegido con contraseña.",
   "{name} couldn't be opened.": "No se pudo abrir {name}.",
+  "Browsers can't play {format} audio. Convert the song to MP3, FLAC or WAV, or open it in the desktop app.": "Los navegadores no pueden reproducir audio {format}. Convierte la canción a MP3, FLAC o WAV, o ábrela en la app de escritorio.",
+  "Autochart can't read {format} audio. Convert the song to MP3, FLAC or WAV first.": "Autochart no puede leer audio {format}. Convierte la canción a MP3, FLAC o WAV primero.",
 };

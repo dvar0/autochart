@@ -68,6 +68,7 @@ export function failureReason(error) {
   const code = String(error?.code || "");
   const text = `${error?.name || ""} ${error?.message || error || ""}`;
   if (code === "storage_full" || /quota/i.test(text)) return "storage_full";
+  if (code === "decode_failed") return "decode_failed";
   if (/out of memory|allocation failed|bad_alloc|RangeError|OOM/i.test(text)) return "out_of_memory";
   if (/device (was )?lost|lost the device|GPUDevice|context lost/i.test(text)) return "gpu_lost";
   if (/no usable WebGPU|WebGPU is not|webgpu.*(unavailable|not supported)/i.test(text)) return "no_webgpu";

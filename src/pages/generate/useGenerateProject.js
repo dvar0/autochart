@@ -77,6 +77,7 @@ import {
   subscribeGenerationEvents,
 } from "../../services/generation.js";
 import { isVideoMedia, makeVideoThumbnail, readMediaFileMetadata } from "../../services/mediaMetadata.js";
+import { unsupportedSongMessage } from "../../services/browserAudio.js";
 import { resolveVideoBackground } from "../../services/videoPreview.js";
 import useLibraryFolderGate, { isMissingLibraryFolderError } from "../../hooks/useLibraryFolderGate.js";
 import {
@@ -1082,6 +1083,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // run: its projects live in the tab, and a save counts as unexported work.
   const handleMediaFile = async (f) => {
     if (!f) return;
+    const unsupported = await unsupportedSongMessage(f);
+    if (unsupported) {
+      setStatusMsg(unsupported);
+      return;
+    }
     const saveNow = Boolean(songId) || !isWebApp();
     // A new project's read can be superseded (StrictMode mounts it twice);
     // only the latest request saves.

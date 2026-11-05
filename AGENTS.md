@@ -15,6 +15,7 @@
 - `npm run test:v010:frontend` / `test:v010:backend` — v0.1.0 UI and backend regression contracts
 - `npm run test:source-chart-timing` / `test:source-chart-stage` — imported-sync beat-grid math and real timing-stage/cache regression checks
 - `npm run test:live-score` — the song map behind the live board: engine levels and the board's state
+- `npm run test:web-audio` — the browser engine's audio checks: each song's sample rate read from its header (MP3, ADTS, MP4/MOV, Matroska/WebM, Ogg, FLAC, WAV) so the browser never resamples it, and the formats no browser decodes (AIFF, Apple Lossless, WMA, AC-3, ADPCM) caught when a song is picked; fixtures need `ffmpeg` on PATH
 - `npm run test:i18n` — translation check: every `t()`/`tn()`/`msg()` text has a Spanish and Brazilian Portuguese entry, placeholders match, no unused entries
 - `npm run test:imported-final-chart` — imported difficulty preservation, final-chart assembly, and durable slot-save checks
 - `npm run test:clone-hero-export` — real export/media compatibility checks using the bundled FFmpeg; see `docs/clone-hero-compatibility.md` for the audit and in-game checklist

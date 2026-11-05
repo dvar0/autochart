@@ -7,6 +7,7 @@
 import engineManifest from "../../engine/manifest.json";
 import { t } from "../i18n/index.js";
 import { decodeAudioFile } from "../../engine/web/audio.mjs";
+import { unsupportedSongMessage } from "../services/browserAudio.js";
 import {
   cachedModelSummary, clearModelCache, ensureModelFiles, fitsInRoom, loadModelManifest, modelFolderStatus,
   removeModelFolder, storageRoom,
@@ -261,7 +262,8 @@ async function prepareAudio(jobId, payload) {
   try {
     audio = await decodeAudioFile(bytes);
   } catch {
-    throw new Error(t("This browser can't decode that file. Try an MP3, OGG, FLAC or WAV."));
+    const message = (await unsupportedSongMessage(blob)) || t("This browser can't decode that file. Try an MP3, OGG, FLAC or WAV.");
+    throw Object.assign(new Error(message), { code: "decode_failed" });
   }
   return { audio, audioSha256, sourceTransform: sourceTransformFrom(payload.sourceTransform || payload.generation?.controls) };
 }
