@@ -67,17 +67,18 @@ The events, and what each one adds:
 
 | Event | Also sends |
 | --- | --- |
-| A chart started, finished or failed | the model, the difficulty; once it runs, WebGPU or CPU. Finished and failed runs add the operating system family (windows, mac, linux, chromeos, android, ios or other; no version), since whether WebGPU is on depends on it. Finished runs add the time taken and the song's length as ranges (such as 2–5 minutes). Failed runs add the step it failed at and a fixed reason (out of memory, GPU lost, no WebGPU, download failed, file couldn't be decoded, engine crashed, storage full, other); when the file couldn't be decoded, the kind of file read from its header (such as mp3, mp4, wav, flac or alac), never its name |
+| A chart started, finished or failed | the model, the difficulty; once it runs, WebGPU or CPU. Finished and failed runs add the operating system family (windows, mac, linux, chromeos, android, ios or other; no version), since whether WebGPU is on depends on it. Finished runs add the time taken (not counting waiting for another run or downloading the model) and the song's length as ranges (such as 2–5 minutes). Failed runs add the step it failed at and a fixed reason (out of memory, GPU lost, no WebGPU, download failed, file couldn't be decoded, engine crashed, storage full, other); when the file couldn't be decoded, the kind of file read from its header (such as mp3, mp4, wav, flac or alac), never its name |
 | An Inpaint finished or failed | the model, WebGPU or CPU; the time as a range, or the step and reason |
-| A run was cut short | generate or Inpaint, the model, the step, and whether the tab was closed or crashed |
+| A run was cut short | generate or Inpaint, the model, the step, and whether it was stopped, the tab was closed or it crashed; once known, WebGPU or CPU and the song's length as a range |
 | A song was exported | .sng, .zip or a songs folder |
 | A model was downloaded | which model |
 | Fretformer 2 Lite was offered, taken or declined | nothing else |
 
 Error messages are never sent: they can name your file. To count runs a
-crashed tab cut short, a run keeps a small note in this browser's local
-storage (the run kind, model and step) and deletes it when it ends. A note
-still there on the next visit is counted once and deleted.
+crashed or closed tab cut short, each run keeps a small note in this
+browser's local storage (what the count would send) and deletes it when it
+ends. A note left behind is counted once and deleted, the next time the
+browser version is open.
 
 The number of charts made in the browser may be shown on autochart.org.
 

@@ -17,11 +17,12 @@ SELECT json_extract(fields, '$.reason') AS reason, json_extract(fields, '$.stage
 FROM counts WHERE event IN ('generate_failed', 'inpaint_failed')
 GROUP BY reason, stage ORDER BY n DESC;
 
--- Runs cut short: closed by the user, or the tab crashed (likely out of memory).
+-- Runs cut short: stopped, the tab closed, or the tab crashed (likely out of memory).
 SELECT json_extract(fields, '$.how') AS how, json_extract(fields, '$.stage') AS stage,
-  json_extract(fields, '$.device') AS device, SUM(n) AS n
+  json_extract(fields, '$.device') AS device, json_extract(fields, '$.engine') AS engine,
+  json_extract(fields, '$.length') AS length, SUM(n) AS n
 FROM counts WHERE event = 'run_interrupted'
-GROUP BY how, stage, device ORDER BY n DESC;
+GROUP BY how, stage, device, engine, length ORDER BY n DESC;
 
 -- WebGPU or CPU, phone or desktop, by browser, for finished runs.
 SELECT json_extract(fields, '$.browser') AS browser, json_extract(fields, '$.device') AS device,

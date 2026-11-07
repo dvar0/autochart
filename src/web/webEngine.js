@@ -22,7 +22,7 @@ import { MODEL_FAMILIES } from "../data/modelFamilies.js";
 import { LITE_FAMILY, browserNeedsLite } from "../pages/generate/liteOffer.js";
 import { deviceFromProbe } from "../components/DeviceFacts.jsx";
 import {
-  count, failureReason, minutesRange, modelName, runEnded, runStage, runStarted, songLengthRange, stageName,
+  count, failureReason, minutesRange, modelName, runEnded, runStarted, runUpdate, songLengthRange, stageName,
 } from "./usageCounts.js";
 
 const DEFAULT_DEMUCS_ID = "demucs_default";
@@ -142,6 +142,26 @@ let active = null; // { id, resolve, reject, stage }
 const queue = [];
 // "webgpu" or "cpu" for each running job, for its usage count.
 const jobEngines = new Map();
+// Each job's working time, for its usage count: from the moment it reaches
+// the worker, leaving out any model download shown on the progress card.
+const jobClocks = new Map();
+
+function clockDownload(jobId, downloading) {
+  const clock = jobClocks.get(jobId);
+  if (!clock) return;
+  const now = Date.now();
+  if (downloading && !clock.downloadSince) clock.downloadSince = now;
+  if (!downloading && clock.downloadSince) {
+    clock.downloadMs += now - clock.downloadSince;
+    clock.downloadSince = 0;
+  }
+}
+
+function workMinutes(jobId) {
+  clockDownload(jobId, false);
+  const clock = jobClocks.get(jobId);
+  return clock ? minutesRange((Date.now() - clock.startedAt - clock.downloadMs) / 1000) : "unknown";
+}
 
 function startWorker() {
   worker = new Worker(new URL("../../engine/web/engine.worker.mjs", import.meta.url), { type: "module" });
@@ -154,11 +174,13 @@ function startWorker() {
         const threads = event.crossOriginIsolated ? "multithreaded CPU" : "single-threaded CPU";
         emit(active.id, { type: "log", stage: "queued", stream: "stdout", message: `Browser engine: ${gpu}, ${threads} (${browserName(event.userAgent)})` });
         jobEngines.set(active.id, event.webgpu ? "webgpu" : "cpu");
+        runUpdate(active.id, { engine: jobEngines.get(active.id) });
         return;
       }
+      if (event.type === "stage") clockDownload(active.id, event.status === "running" && event.downloading === true);
       if (event.type === "stage" && event.status === "running") {
         active.stage = event.stage;
-        runStage(event.stage);
+        runUpdate(active.id, { stage: event.stage });
       }
       emit(active.id, event);
     } else if (data.type === "result") {
@@ -185,6 +207,7 @@ function next() {
   if (active || !queue.length) return;
   const job = queue.shift();
   active = job;
+  jobClocks.set(job.id, { startedAt: Date.now(), downloadMs: 0, downloadSince: 0 });
   if (!worker) startWorker();
   worker.postMessage(
     { type: "job", id: job.id, kind: job.kind, job: job.job, wasmPaths: WASM_BASE },
@@ -422,13 +445,13 @@ function generateChart(payload = {}) {
 }
 
 async function generateChartJob(jobId, payload) {
-  const startedAt = Date.now();
   const { model, difficulty } = runFields(jobId, payload);
   count("generate_started", { model, difficulty });
-  runStarted({ kind: "generate", model });
+  runStarted(jobId, { kind: "generate", model });
   try {
     const { job, generator, transfer } = await baseJob(jobId, payload);
     const songSeconds = job.audio.left.length / job.audio.sampleRate;
+    runUpdate(jobId, { length: songLengthRange(songSeconds) });
     const sourceChartText = String(payload.sourceChart?.text || "");
     if (sourceChartText.trim()) {
       job.sourceChartText = sourceChartText;
@@ -441,6 +464,7 @@ async function generateChartJob(jobId, payload) {
     const analysisAudioPath = await storeAnalysisAudio(jobId, payload.audio.blob, job.audio, job.audioSha256, job.sourceTransform);
     const firstDownload = keepModelsIfDownloading(generator);
     const result = await runJob("generate", jobId, job, transfer);
+    const minutes = workMinutes(jobId);
     if (await firstDownload) modelDownloaded(generator.id);
     const stems = await separationStemSets(job.audioSha256, job.sourceTransform, job.separationId);
     const base = result.sourceSeparation || job.demucsSeparation || null;
@@ -457,7 +481,7 @@ async function generateChartJob(jobId, payload) {
     emit(jobId, { type: "stage", stage: "saved", status: "completed" });
     count("generate_finished", {
       ...runFields(jobId, payload),
-      minutes: minutesRange((Date.now() - startedAt) / 1000),
+      minutes,
       length: songLengthRange(songSeconds),
     });
     return {
@@ -474,14 +498,18 @@ async function generateChartJob(jobId, payload) {
       sourceSeparation,
     };
   } catch (err) {
-    if (err?.code === "CANCELED") return { jobId, status: "canceled" };
+    if (err?.code === "CANCELED") {
+      runEnded(jobId, { stopped: true });
+      return { jobId, status: "canceled" };
+    }
     countFailure("generate_failed", jobId, payload, err);
     emit(jobId, { type: "error", message: err?.message || String(err) });
     throw failedMessage(err, "Generation");
   } finally {
     songsInUse.delete(jobId);
     jobEngines.delete(jobId);
-    runEnded();
+    jobClocks.delete(jobId);
+    runEnded(jobId);
   }
 }
 
@@ -533,27 +561,32 @@ function inpaintChart(payload = {}) {
 
 async function inpaintChartJob(jobId, payload) {
   if (!payload.inpaint) throw new Error(t("Inpaint needs bars to rewrite."));
-  const startedAt = Date.now();
   const { model } = runFields(jobId, payload);
-  runStarted({ kind: "inpaint", model });
+  runStarted(jobId, { kind: "inpaint", model });
   try {
     const { job, generator, transfer } = await baseJob(jobId, payload);
+    runUpdate(jobId, { length: songLengthRange(job.audio.left.length / job.audio.sampleRate) });
     if (!generator.capabilities?.inpaint) throw new Error(t("{model} can't redo part of a chart.", { model: generator.label }));
     job.inpaint = payload.inpaint;
     const firstDownload = keepModelsIfDownloading(generator);
     const result = await runJob("inpaint", jobId, job, transfer);
+    const minutes = workMinutes(jobId);
     if (await firstDownload) modelDownloaded(generator.id);
     const { engine } = runFields(jobId, payload);
-    count("inpaint_finished", { model, engine, minutes: minutesRange((Date.now() - startedAt) / 1000) });
+    count("inpaint_finished", { model, engine, minutes });
     return { jobId, status: result.status, chartText: result.chartText, inpaint: result.inpaint };
   } catch (err) {
-    if (err?.code === "CANCELED") return { jobId, status: "canceled" };
+    if (err?.code === "CANCELED") {
+      runEnded(jobId, { stopped: true });
+      return { jobId, status: "canceled" };
+    }
     countFailure("inpaint_failed", jobId, payload, err);
     throw failedMessage(err, "Inpaint");
   } finally {
     songsInUse.delete(jobId);
     jobEngines.delete(jobId);
-    runEnded();
+    jobClocks.delete(jobId);
+    runEnded(jobId);
   }
 }
 

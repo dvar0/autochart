@@ -120,84 +120,136 @@ export function count(event, fields = {}) {
 }
 
 // ----- runs that never finished -----
-// A run leaves a small note in this browser while it works, so a run that a
-// crashed or closed tab cut short is counted on the next visit. The note
-// holds only what the count sends, and is deleted once counted.
+// Each run leaves a small note in this browser while it works, so a run that
+// a crashed or closed tab cut short is counted later, by this tab or the next
+// one. A run stopped with Stop is counted at once. The note holds only what
+// the count sends, and is deleted once counted.
 
-const RUN_KEY = "autochart.run";
+const RUN_PREFIX = "autochart.run.";
+const OLD_RUN_KEY = "autochart.run";
 const BEAT_MS = 10_000;
-// Another tab's run keeps its note fresh; only a stale one was cut short.
-const STALE_MS = 3 * BEAT_MS;
+// A live tab keeps its notes fresh; only a stale one was cut short. Generous,
+// since a hidden tab's timers can run as rarely as once a minute.
+const STALE_MS = 3 * 60_000;
 
-let running = null;
+// This page's runs, by job id.
+const runs = new Map();
 let beat = null;
 
-function writeRun() {
-  if (!running) return;
+function storage() {
   try {
-    localStorage.setItem(RUN_KEY, JSON.stringify({ ...running, at: Date.now() }));
+    return window.localStorage;
   } catch {
-    // Storage blocked: interrupted runs just aren't counted.
+    return null; // Storage blocked: interrupted runs just aren't counted.
   }
 }
 
-export function runStarted({ kind, model }) {
-  running = { kind, model, stage: "queued", closed: false };
-  writeRun();
-  clearInterval(beat);
-  beat = setInterval(writeRun, BEAT_MS);
-}
-
-export function runStage(stage) {
-  if (!running) return;
-  running.stage = stageName(stage);
-  writeRun();
-}
-
-export function runEnded() {
-  running = null;
-  clearInterval(beat);
-  beat = null;
+function writeRun(jobId) {
+  const note = runs.get(jobId);
+  if (!note) return;
   try {
-    localStorage.removeItem(RUN_KEY);
+    storage()?.setItem(RUN_PREFIX + jobId, JSON.stringify({ ...note, at: Date.now() }));
+  } catch {
+    // Storage full or blocked.
+  }
+}
+
+function writeRuns() {
+  for (const jobId of runs.keys()) writeRun(jobId);
+}
+
+function forgetRun(jobId) {
+  runs.delete(jobId);
+  try {
+    storage()?.removeItem(RUN_PREFIX + jobId);
   } catch {
     // Nothing to clean up.
   }
+  if (!runs.size) {
+    clearInterval(beat);
+    beat = null;
+  }
 }
 
-function countLastRun() {
-  let note = null;
-  try {
-    note = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
-  } catch {
-    note = null;
-  }
-  if (!note || Date.now() - Number(note.at || 0) < STALE_MS) return;
-  try {
-    localStorage.removeItem(RUN_KEY);
-  } catch {
-    return;
-  }
+function countInterrupted(note, how) {
   count("run_interrupted", {
     kind: note.kind === "inpaint" ? "inpaint" : "generate",
     model: note.model,
     stage: stageName(note.stage),
-    how: note.closed ? "closed" : "crashed",
+    engine: note.engine,
+    length: note.length,
+    how,
   });
+}
+
+// Counts the notes no live run is keeping fresh, once each.
+function countStaleRuns() {
+  const store = storage();
+  if (!store) return;
+  let keys = [];
+  try {
+    keys = Array.from({ length: store.length }, (_, index) => store.key(index));
+  } catch {
+    return;
+  }
+  for (const key of keys) {
+    if (key !== OLD_RUN_KEY && !key?.startsWith(RUN_PREFIX)) continue;
+    if (runs.has(key.slice(RUN_PREFIX.length))) continue;
+    let note = null;
+    try {
+      note = JSON.parse(store.getItem(key) || "null");
+    } catch {
+      note = null;
+    }
+    if (note && Date.now() - Number(note.at || 0) < STALE_MS) continue;
+    try {
+      store.removeItem(key);
+    } catch {
+      continue;
+    }
+    if (note) countInterrupted(note, note.closed ? "closed" : "crashed");
+  }
+}
+
+export function runStarted(jobId, { kind, model }) {
+  runs.set(jobId, { kind, model, stage: "queued", engine: "", length: "", closed: false });
+  writeRun(jobId);
+  countStaleRuns();
+  beat ??= setInterval(() => {
+    writeRuns();
+    countStaleRuns();
+  }, BEAT_MS);
+}
+
+// What's known about a run so far: its stage, then WebGPU or CPU, the song's length.
+export function runUpdate(jobId, { stage, engine, length } = {}) {
+  const note = runs.get(jobId);
+  if (!note) return;
+  if (stage) note.stage = stageName(stage);
+  if (engine) note.engine = engine;
+  if (length) note.length = length;
+  writeRun(jobId);
+}
+
+// A run that ended. One stopped with Stop counts as cut short.
+export function runEnded(jobId, { stopped = false } = {}) {
+  const note = runs.get(jobId);
+  if (note && stopped) countInterrupted(note, "stopped");
+  forgetRun(jobId);
 }
 
 // A tab closed on purpose fires pagehide first; one the browser killed doesn't.
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
-    if (!running) return;
-    running.closed = true;
-    writeRun();
+    for (const note of runs.values()) note.closed = true;
+    writeRuns();
   });
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted && running) {
-      running.closed = false;
-      writeRun();
-    }
+    if (!event.persisted) return;
+    for (const note of runs.values()) note.closed = false;
+    writeRuns();
   });
-  countLastRun();
+  countStaleRuns();
+  // A note left by a crash just before this load is still fresh now.
+  setTimeout(countStaleRuns, STALE_MS + BEAT_MS);
 }

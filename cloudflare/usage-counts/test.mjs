@@ -11,6 +11,11 @@ assert.deepEqual(
   countFields({ event: "generate_failed", browser: "chrome", device: "desktop", version: "0.2.0", model: "fretformer.v2-onnx", difficulty: "expert", stage: "prepare", reason: "decode_failed", format: "mp4", os: "linux" }),
   { browser: "chrome", device: "desktop", difficulty: "expert", format: "mp4", model: "fretformer.v2-onnx", os: "linux", reason: "decode_failed", stage: "prepare", version: "0.2.0" },
 );
+// A run cut short says how, and what it was running on, once known.
+assert.deepEqual(
+  countFields({ event: "run_interrupted", browser: "chrome", device: "mobile", version: "0.2.0", kind: "generate", model: "fretformer.v2-onnx", stage: "demucs", engine: "webgpu", length: "3-5", how: "stopped" }),
+  { browser: "chrome", device: "mobile", engine: "webgpu", how: "stopped", kind: "generate", length: "3-5", model: "fretformer.v2-onnx", stage: "demucs", version: "0.2.0" },
+);
 // Fields the event doesn't list are dropped, not stored.
 assert.deepEqual(countFields({ event: "exported", format: "sng", title: "some song", browser: "firefox" }), { browser: "firefox", format: "sng" });
 // Unknown events and odd values are refused.

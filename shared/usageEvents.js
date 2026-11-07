@@ -11,7 +11,7 @@ export const USAGE_EVENTS = Object.freeze({
   generate_failed: ["model", "difficulty", "engine", "stage", "reason", "format", "os"],
   inpaint_finished: ["model", "engine", "minutes"],
   inpaint_failed: ["model", "engine", "stage", "reason"],
-  run_interrupted: ["kind", "model", "stage", "how"],
+  run_interrupted: ["kind", "model", "stage", "engine", "length", "how"],
   exported: ["format"],
   model_downloaded: ["model"],
   lite_offered: [],
