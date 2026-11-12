@@ -6,6 +6,8 @@
 export const COMMON_FIELDS = Object.freeze(["browser", "device", "version"]);
 
 export const USAGE_EVENTS = Object.freeze({
+  // Once per browser per UTC day, when the browser version is open.
+  active: [],
   generate_started: ["model", "difficulty"],
   generate_finished: ["model", "difficulty", "engine", "minutes", "length", "os"],
   generate_failed: ["model", "difficulty", "engine", "stage", "reason", "format", "os"],

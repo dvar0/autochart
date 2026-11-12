@@ -2,6 +2,11 @@
 --   npx wrangler d1 execute autochart-usage --remote --command "<query>"
 -- or paste it into the D1 console in the Cloudflare dashboard.
 
+-- Browsers that had the browser version open, per day (DNT and opted-out browsers aren't in it).
+SELECT day, SUM(n) AS browsers FROM counts
+WHERE event = 'active' AND day >= date('now', '-30 days')
+GROUP BY day ORDER BY day;
+
 -- Charts made per day, last two weeks.
 SELECT day, SUM(n) AS charts FROM counts
 WHERE event = 'generate_finished' AND day >= date('now', '-14 days')

@@ -119,6 +119,27 @@ export function count(event, fields = {}) {
   }).catch(() => {});
 }
 
+// ----- days the browser version was open -----
+// One "active" count per browser per UTC day (the server's days are UTC too),
+// so the totals give how many browsers used it each day. The only thing kept
+// here is the last day counted.
+
+const ACTIVE_KEY = "autochart.activeDay";
+
+async function countActiveDay() {
+  if (!(await countsEnabled().catch(() => false))) return;
+  const store = storage();
+  if (!store) return;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    if (store.getItem(ACTIVE_KEY) === today) return;
+    store.setItem(ACTIVE_KEY, today);
+  } catch {
+    return; // Storage blocked: without the note this browser would count every load.
+  }
+  count("active");
+}
+
 // ----- runs that never finished -----
 // Each run leaves a small note in this browser while it works, so a run that
 // a crashed or closed tab cut short is counted later, by this tab or the next
@@ -250,6 +271,11 @@ if (typeof window !== "undefined") {
     writeRuns();
   });
   countStaleRuns();
+  void countActiveDay();
+  // A tab left open past midnight counts the new day when it's looked at again.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void countActiveDay();
+  });
   // A note left by a crash just before this load is still fresh now.
   setTimeout(countStaleRuns, STALE_MS + BEAT_MS);
 }

@@ -22,9 +22,10 @@ nothing else.
 
 Once a day, Autochart downloads a small signed file from the latest GitHub
 release to see whether a newer version is out, and the release's picture when
-it has one. The request carries nothing
-about you, your songs or this computer beyond what any download sends (the
-connection's IP address and the requested URL). Turn it off with **Check for
+it has one. The request carries nothing about you, your songs or this computer
+beyond what any download sends (the connection's IP address and the requested
+URL). GitHub counts downloads of release files publicly; we read that count to
+estimate how many copies are opened each day. Turn it off with **Check for
 updates** in Settings; the update sheet's **Check now** still checks when you
 ask. An update only downloads when you choose **Download update**, and its file
 must match the signed checksum before it can install.
@@ -67,6 +68,7 @@ The events, and what each one adds:
 
 | Event | Also sends |
 | --- | --- |
+| The browser version was open that day (once per browser per day) | nothing else |
 | A chart started, finished or failed | the model, the difficulty; once it runs, WebGPU or CPU. Finished and failed runs add the operating system family (windows, mac, linux, chromeos, android, ios or other; no version), since whether WebGPU is on depends on it. Finished runs add the time taken (not counting waiting for another run or downloading the model) and the song's length as ranges (such as 2–5 minutes). Failed runs add the step it failed at and a fixed reason (out of memory, GPU lost, no WebGPU, download failed, file couldn't be decoded, engine crashed, storage full, other); when the file couldn't be decoded, the kind of file read from its header (such as mp3, mp4, wav, flac or alac), never its name |
 | An Inpaint finished or failed | the model, WebGPU or CPU; the time as a range, or the step and reason |
 | A run was cut short | generate or Inpaint, the model, the step, and whether it was stopped, the tab was closed or it crashed; once known, WebGPU or CPU and the song's length as a range |
@@ -78,7 +80,8 @@ Error messages are never sent: they can name your file. To count runs a
 crashed or closed tab cut short, each run keeps a small note in this
 browser's local storage (what the count would send) and deletes it when it
 ends. A note left behind is counted once and deleted, the next time the
-browser version is open.
+browser version is open. To count each day once, the browser also keeps the
+date it last counted.
 
 The number of charts made in the browser may be shown on autochart.org.
 
