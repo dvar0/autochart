@@ -9,6 +9,7 @@
 // `--report` also lists JSX text that isn't translated yet.
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "src");
@@ -137,7 +138,7 @@ function tokens(text) {
 (async () => {
   let missingTotal = 0;
   for (const [language, file] of Object.entries(LANGUAGES)) {
-    const dictionary = (await import(path.join(ROOT, file))).default;
+    const dictionary = (await import(pathToFileURL(path.join(ROOT, file)).href)).default;
     const missing = [];
     for (const [key, where] of used) {
       const entry = dictionary[key];

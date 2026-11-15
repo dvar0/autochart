@@ -12,6 +12,7 @@ const { pathToFileURL } = require("url");
 const { execFileSync } = require("child_process");
 const { app } = require("electron");
 const esbuild = require("esbuild");
+const viteWorkers = require("./esbuild-vite-workers.cjs");
 const libraryStore = require("../electron/libraryStore.cjs");
 const videoPreviews = require("../electron/videoPreview.cjs");
 const { prepareVideoPreview } = videoPreviews;
@@ -116,7 +117,7 @@ async function main() {
         const host = document.createElement('div'); host.id = 'video-test'; document.body.appendChild(host);
         window.videoTestRoot = createRoot(host); window.videoTestRoot.render(<Harness />);
       ` },
-      bundle: true, format: "iife", jsx: "automatic", write: false,
+      bundle: true, format: "iife", jsx: "automatic", write: false, plugins: [viteWorkers],
       alias: { "@autochart/chart-writer": path.join(__dirname, "..", "shared", "chartWriter.js") },
       define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "false" },
     });

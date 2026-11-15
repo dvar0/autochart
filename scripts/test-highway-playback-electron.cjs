@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 const { build } = require('esbuild');
+const viteWorkers = require('./esbuild-vite-workers.cjs');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // Let main's cleanup finish and report failures before exiting.
@@ -114,6 +115,7 @@ async function main() {
       },
       alias: { "@autochart/chart-writer": path.resolve(__dirname, "../shared/chartWriter.js") },
       bundle: true,
+      plugins: [viteWorkers],
       outfile: path.join(temp, 'app.js'),
       format: 'iife', platform: 'browser', jsx: 'automatic',
       define: { 'process.env.NODE_ENV': '"development"', 'import.meta.env.DEV': 'true' },
