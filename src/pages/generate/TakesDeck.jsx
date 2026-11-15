@@ -178,7 +178,7 @@ function RecipeValue({ row }) {
 
 // The stem channels a separation's tables hold (null until read).
 // Each stem's loudness over the song (see loadStemLevels), or null while it loads.
-function useStemLevels(tablesPath, rowIds) {
+function useStemLevels(tablesPath, rowIds, onGone) {
   const [levels, setLevels] = useState(null);
   const key = rowIds.join(",");
   useEffect(() => {
@@ -189,7 +189,9 @@ function useStemLevels(tablesPath, rowIds) {
       .then((next) => {
         if (!cancelled) setLevels(next);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) onGone?.();
+      });
     return () => {
       cancelled = true;
     };
@@ -228,9 +230,9 @@ function StemLanes({ rows, levels }) {
 // One lead-in's separation. Separating the same song again gives the same
 // stems, so a lead-in has one; it only needs redoing when it's missing a stem
 // this model has now (piano).
-function SeparationCard({ row, rows, stemSetId, onStage, separating, busy, canSeparate, showing, onView, onSeparate }) {
+function SeparationCard({ row, rows, stemSetId, onStage, separating, busy, canSeparate, showing, onView, onSeparate, onGone }) {
   const tablesPath = row.artifact?.stemSets?.[stemSetId]?.melTables?.path || "";
-  const levels = useStemLevels(row.separated ? tablesPath : "", rows.map((stem) => stem.id));
+  const levels = useStemLevels(row.separated ? tablesPath : "", rows.map((stem) => stem.id), onGone);
   const missing = levels ? rows.filter((stem) => !levels[stem.id]) : [];
   const name = leadInText(row.transform.label);
   const viewable = row.separated && !separating;
@@ -267,8 +269,8 @@ function SeparationCard({ row, rows, stemSetId, onStage, separating, busy, canSe
         <StemLanes rows={rows} levels={levels} />
       ) : (
         <div className="sep-card-empty">
-          <b>{t("Not separated yet")}</b>
-          <span>{t("Its first chart separates it.")}</span>
+          <b>{row.cleared ? t("Separation files cleared") : t("Not separated yet")}</b>
+          <span>{row.cleared ? t("The next chart separates it again.") : t("Its first chart separates it.")}</span>
         </div>
       )}
       <div className="sep-card-foot">
@@ -354,6 +356,7 @@ function DemucsPanel({ project, showing }) {
             showing={showing}
             onView={() => setDemucsViewId(row.artifact.id)}
             onSeparate={() => separate(row)}
+            onGone={() => project.noteTablesGone(row.artifact, stemSetId)}
           />
         ))}
       </div>

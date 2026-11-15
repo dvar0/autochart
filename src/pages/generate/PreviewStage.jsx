@@ -284,6 +284,7 @@ function DemucsAuditionStage({ project }) {
     demucsAuditionMode,
     selectedGenerator,
     listenLive,
+    noteTablesGone,
     stopDemucsAudition,
     songBytes,
     demucsViewId,
@@ -408,7 +409,10 @@ function DemucsAuditionStage({ project }) {
       .then((next) => {
         if (!cancelled) setGraphs({ ...next, path: melTablesPath });
       })
-      .catch((err) => console.warn("[separation] Stem graphs unavailable:", err));
+      .catch((err) => {
+        console.warn("[separation] Stem graphs unavailable:", err);
+        if (!cancelled) noteTablesGone?.(activeArtifact, stemSetId);
+      });
     return () => {
       cancelled = true;
     };

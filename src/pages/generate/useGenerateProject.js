@@ -327,6 +327,12 @@ function demucsArtifactFromResult(result, fallback = {}) {
   };
 }
 
+// A separation's stored tables file as it was when saved.
+function tablesKey(artifact, stemSetId) {
+  const tables = artifact?.stemSets?.[stemSetId]?.melTables;
+  return tables?.path ? `${tables.path}|${JSON.stringify(tables.identity || null)}` : "";
+}
+
 function sourceVariantKeyFromArtifact(artifact = null) {
   return artifact?.sourceVariantKey || artifact?.sourceTransform?.key || "lead-in:0";
 }
@@ -712,6 +718,10 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // The saved cover was taken off (the generated one shows); the next save
   // removes it from the project.
   const [albumCleared, setAlbumCleared] = useState(false);
+  // Separations whose stored tables can't be read any more (the cache was
+  // cleared since). They show as not separated; the next chart separates the
+  // song again. Keyed by file identity, so a fresh separation counts again.
+  const [goneTables, setGoneTables] = useState(() => new Set());
   const [background, setBackground] = useState(null);
   const [pendingBgFile, setPendingBgFile] = useState(null);
   const [pendingBgFromAudio, setPendingBgFromAudio] = useState(false);
@@ -2337,8 +2347,13 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
 
   // The Separation tab: one row per lead-in the selected model has stems for,
   // plus the current lead-in's (charts use it; it may not be separated yet).
+  const noteTablesGone = (artifact, stemSetId) => {
+    const key = tablesKey(artifact, stemSetId);
+    if (key) setGoneTables((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  };
   const separationLeadIns = (() => {
     const stemSetId = generatorStemSetId(selectedGenerator);
+    const usable = (artifact) => hasSeparation(artifact, stemSetId) && !goneTables.has(tablesKey(artifact, stemSetId));
     const keys = new Set([currentSourceTransform.key]);
     for (const artifact of demucsArtifacts) {
       if (hasSeparation(artifact, stemSetId)) keys.add(sourceVariantKeyFromArtifact(artifact));
@@ -2365,7 +2380,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
           key,
           transform: current ? currentSourceTransform : sourceTransformFromKey(key),
           artifact,
-          separated: hasSeparation(artifact, stemSetId),
+          separated: usable(artifact),
+          cleared: hasSeparation(artifact, stemSetId) && !usable(artifact),
           current,
           takes: takesBy.get(key) || 0,
         };
@@ -3015,6 +3031,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setDemucsAuditionMode,
     demucsViewId,
     separationLeadIns,
+    noteTablesGone,
     setDemucsViewId,
     loadDemucsStem,
     auditionDemucsStem,

@@ -1078,6 +1078,8 @@ export default {
   "Not in this separation": "Não está nesta separação",
   "Not separated yet": "Ainda não separada",
   "Its first chart separates it.": "O primeiro chart a separa.",
+  "Separation files cleared": "Arquivos da separação apagados",
+  "The next chart separates it again.": "O próximo chart a separa de novo.",
   "Made before {stems} had its own stem": "Feita antes de {stems} ter sua própria faixa",
   "New charts use": "Os charts novos usam",
   "Stems ready ({leadIn}).": "Faixas prontas ({leadIn}).",
