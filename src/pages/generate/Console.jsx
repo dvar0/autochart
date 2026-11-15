@@ -313,7 +313,7 @@ export default function Console({ project }) {
               <I.gear />
               <span className="more-settings-text">
                 <b>{t("More settings")}</b>
-                <small title={changed.join(" · ")}>{changed.length ? changed.join(" · ") : t("Separation, timing, solos, sampling")}</small>
+                <small title={changed.join(" · ")}>{changed.length ? changed.join(" · ") : t("Timing, solos, sampling")}</small>
               </span>
               <I.chevRight />
             </button>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DensityStrip from "../../highway/DensityStrip.jsx";
 import { DIFF } from "../../data/difficultyMetadata.js";
 import {
@@ -22,35 +22,14 @@ import { I } from "../../icons.jsx";
 import { FINAL_SLOT_ORDER, getVersionDifficulty } from "../../services/finalChart.js";
 import { LiveGenerationTakeCard } from "./LiveGeneration.jsx";
 import { modelName, takeCardName } from "./takeNames.js";
-import { StageSignal } from "./StageAnimations.jsx";
 import {
-  demucsAuditionKey,
   generatorStemSetId,
-  hasSeparation,
   MIN_COMPARE_CHARTS,
-  separationStemSet,
 } from "./useGenerateProject.js";
-import { leadInText, separationName } from "./separationNames.js";
-import { formatDate, msg, t, tn } from "../../i18n/index.js";
-
-const STEM_OPTIONS = [
-  { id: "other", label: msg("Other") },
-  { id: "drums", label: msg("Drums") },
-  { id: "bass", label: msg("Bass") },
-  { id: "vocals", label: msg("Vocals") },
-];
-
-// htdemucs_6s stems (piano is folded into other). The six-stem models use these.
-const SIX_STEM_OPTIONS = [
-  { id: "guitar", label: msg("Guitar") },
-  ...STEM_OPTIONS,
-];
-
-// The stem sets a separation card can list, one per separation model.
-const STEM_SETS = [
-  { id: "htdemucs", stems: STEM_OPTIONS },
-  { id: "htdemucs_6s", stems: SIX_STEM_OPTIONS },
-];
+import { leadInText } from "./separationNames.js";
+import { stemRowsFor } from "./stemSets.js";
+import { loadStemLevels } from "./stemMelGraphs.js";
+import { t, tn } from "../../i18n/index.js";
 
 const SLOT_LETTERS = { easy: "E", medium: "M", hard: "H", expert: "X" };
 
@@ -76,40 +55,6 @@ function leadInTag(version) {
   const seconds = ms / 1000;
   const label = Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(2).replace(/0+$/g, "").replace(/\.$/, "");
   return { text: `+${label}s`, title: t("Lead-in silence: {seconds} seconds", { seconds: label }), mod: true };
-}
-
-function sourceVariantTag(artifact) {
-  const ms = Number(artifact?.sourceTransform?.leadInSilenceMs || 0);
-  if (!Number.isFinite(ms) || ms <= 0) return "0s";
-  const seconds = ms / 1000;
-  return `+${Number.isInteger(seconds) ? seconds : seconds.toFixed(2).replace(/0+$/g, "").replace(/\.$/, "")}s`;
-}
-
-function baseSeparationName(name = "") {
-  return String(name || "Default separation").replace(/\s*\([^)]*lead-in[^)]*\)\s*$/i, "").trim();
-}
-
-function compactSeparationName(name = "", variant = "0s") {
-  const base = baseSeparationName(name);
-  const suffix = variant === "0s" ? "" : ` · ${variant}`;
-  if (/^default separation$/i.test(base)) return `${t("Default")}${suffix}`;
-  const regenerated = base.match(/^regenerated separation\s*(.*)$/i);
-  if (regenerated) return `${regenerated[1] ? t("Remake {number}", { number: regenerated[1].trim() }) : t("Remake")}${suffix}`;
-  return `${base.replace(/\s+separation$/i, " sep")}${suffix}`;
-}
-
-function separationKindTag(name = "") {
-  return /^regenerated separation/i.test(baseSeparationName(name)) ? t("remade") : null;
-}
-
-function separationCardName(artifact) {
-  const base = baseSeparationName(artifact?.name);
-  const variant = sourceVariantTag(artifact);
-  const suffix = variant === "0s" ? "" : ` · ${variant}`;
-  if (/^default separation$/i.test(base)) return `${t("Default")}${suffix}`;
-  const regenerated = base.match(/^regenerated separation\s*(.*)$/i);
-  if (regenerated) return `${regenerated[1] ? t("Remake {number}", { number: regenerated[1].trim() }) : t("Remake")}${suffix}`;
-  return `${base}${suffix}`;
 }
 
 const KNOB_COLORS = ["var(--fret-g)", "var(--fret-r)", "var(--fret-y)", "var(--fret-b)", "var(--fret-o)"];
@@ -192,7 +137,6 @@ function takeRecipe(version, generators = []) {
     ? knobs.map((knob) => `${knob.name} ${knob.value ?? t("auto")}`).join(" · ") + (setKnobs.length && guidance != null ? ` · ${t("strength {value}", { value: guidance })}` : "")
     : t("This model has no style controls");
 
-  const demucsName = version.meta?.demucsName || version.provenance?.sourceSeparation?.name || "";
   // Models that read only the full mix (Lite) never used a separation.
   const generatorId = version.meta?.generatorId || generation.generatorId || "";
   const fullMix = generators.find((item) => item.id === generatorId)?.capabilities?.usesStemCache === false;
@@ -203,10 +147,7 @@ function takeRecipe(version, generators = []) {
     { key: "timing", label: t("Timing"), ...timing },
     fullMix
       ? { key: "audio", label: t("Audio"), value: t("Full mix"), title: t("Reads the full mix, no separation") }
-      : {
-        key: "audio", label: t("Audio"), value: demucsName ? compactSeparationName(demucsName) : t("Default"),
-        title: t("Separation: {name}", { name: separationName(demucsName) }),
-      },
+      : { key: "audio", label: t("Audio"), value: t("Stems"), title: t("Reads the separated stems") },
     { key: "sampling", label: t("Sampling"), full: true, compare: `${presetName}|${temperature}|${topP}`, ...sampling },
     {
       key: "style", label: t("Style"), full: true, title: styleTitle, compare: styleTitle,
@@ -235,240 +176,186 @@ function RecipeValue({ row }) {
   );
 }
 
-function versionDemucsId(version) {
-  return version?.meta?.demucsId || version?.provenance?.sourceSeparation?.id || version?.settings?.demucsSeparation?.id || "";
+// The stem channels a separation's tables hold (null until read).
+// Each stem's loudness over the song (see loadStemLevels), or null while it loads.
+function useStemLevels(tablesPath, rowIds) {
+  const [levels, setLevels] = useState(null);
+  const key = rowIds.join(",");
+  useEffect(() => {
+    setLevels(null);
+    if (!tablesPath) return undefined;
+    let cancelled = false;
+    loadStemLevels(tablesPath, rowIds)
+      .then((next) => {
+        if (!cancelled) setLevels(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tablesPath, key]);
+  return levels;
 }
 
-function artifactReady(artifact) {
-  return STEM_SETS.some((stemSet) => hasSeparation(artifact, stemSet.id));
+// A separation's stems as small lanes, one per stem in its color, so the card
+// shows what the stage will play. A stem the separation lacks is an empty lane.
+function StemLanes({ rows, levels }) {
+  return (
+    <div className="sep-lanes">
+      {rows.map((stem) => {
+        const level = levels?.[stem.id];
+        const gone = levels && !level;
+        return (
+          <div
+            key={stem.id}
+            className={"sep-lane" + (gone ? " is-missing" : "")}
+            style={{ "--stem": stem.color }}
+          >
+            <span className="sep-lane-name" title={gone ? t("Not in this separation") : undefined}>{t(stem.label)}</span>
+            <svg className="sep-lane-bars" viewBox={`0 0 ${level?.length || 1} 2`} preserveAspectRatio="none" aria-hidden="true">
+              {level && Array.from(level, (v, x) => {
+                const h = Math.max(0.06, v * 2);
+                return <rect key={x} x={x + 0.15} y={1 - h / 2} width={0.7} height={h} />;
+              })}
+            </svg>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
-function fmtArtifactDate(value) {
-  if (!value) return t("on demand");
-  return formatDate(value, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+// One lead-in's separation. Separating the same song again gives the same
+// stems, so a lead-in has one; it only needs redoing when it's missing a stem
+// this model has now (piano).
+function SeparationCard({ row, rows, stemSetId, onStage, separating, busy, canSeparate, showing, onView, onSeparate }) {
+  const tablesPath = row.artifact?.stemSets?.[stemSetId]?.melTables?.path || "";
+  const levels = useStemLevels(row.separated ? tablesPath : "", rows.map((stem) => stem.id));
+  const missing = levels ? rows.filter((stem) => !levels[stem.id]) : [];
+  const name = leadInText(row.transform.label);
+  const viewable = row.separated && !separating;
+  const action = separating ? null : !row.separated ? t("Separate now") : missing.length ? t("Separate again") : null;
+  return (
+    <div
+      className={
+        "sep-card" +
+        (onStage && viewable ? " selected" : "") +
+        (row.current ? " is-current" : "") +
+        (viewable ? "" : " is-empty")
+      }
+      onClick={viewable ? onView : undefined}
+      role={viewable ? "button" : undefined}
+      aria-pressed={viewable ? onStage : undefined}
+      tabIndex={viewable && showing ? 0 : -1}
+      onKeyDown={(e) => {
+        if (viewable && e.key === "Enter") {
+          e.preventDefault();
+          onView();
+        }
+      }}
+    >
+      <div className="sep-card-top">
+        <b>{name}</b>
+        {row.current && <span className="sep-card-use" title={t("New charts use this. It follows the Lead-in silence setting.")}>{t("In use")}</span>}
+      </div>
+      {separating ? (
+        <div className="sep-card-empty" aria-live="polite">
+          <div className="gen-progressbar sm" aria-hidden="true"><i className="indeterminate" /></div>
+          <span>{t("Separating stems…")}</span>
+        </div>
+      ) : row.separated ? (
+        <StemLanes rows={rows} levels={levels} />
+      ) : (
+        <div className="sep-card-empty">
+          <b>{t("Not separated yet")}</b>
+          <span>{t("Its first chart separates it.")}</span>
+        </div>
+      )}
+      <div className="sep-card-foot">
+        <span className={"sep-card-takes" + (row.takes ? "" : " faint")}>{tn(row.takes, "{count} take", "{count} takes")}</span>
+        {action && (
+          <button
+            type="button"
+            className="take-action"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSeparate();
+            }}
+            disabled={busy || !canSeparate}
+            tabIndex={showing ? 0 : -1}
+            title={
+              !canSeparate
+                ? t("Choose media first")
+                : row.separated
+                  ? t("Made before {stems} had its own stem", { stems: missing.map((stem) => t(stem.label)).join(", ") })
+                  : undefined
+            }
+          >
+            {action}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function DemucsPanel({ project }) {
+function DemucsPanel({ project, showing }) {
   const {
     busy,
     busyAction,
-    demucsArtifacts,
-    activeDemucsId,
+    demucsViewId,
+    setDemucsViewId,
     demucsAudition,
-    demucsAuditionLoadingKey,
-    auditionDemucsStem,
+    activeDemucsId,
     prepareDemucsSeparation,
-    selectDemucsSeparation,
-    selectedSingleVersion,
+    separationLeadIns,
     sourceAudioFile,
-    currentSourceVariantKey,
-    currentSourceVariantLabel,
     selectedGenerator,
-    generatorForStemSet,
   } = project;
   const [error, setError] = useState("");
-  const selectedStemSetId = generatorStemSetId(selectedGenerator);
-  const stemSetLabel = (stemSetId) =>
-    generatorForStemSet?.(stemSetId)?.label || (stemSetId === "htdemucs" ? "Fretformer 1" : stemSetId);
+  const [separatingKey, setSeparatingKey] = useState("");
+  const stemSetId = generatorStemSetId(selectedGenerator);
+  const rows = stemRowsFor(stemSetId);
+  const separated = separationLeadIns.filter((row) => row.separated);
+  const shownId = [demucsViewId, demucsAudition?.id, activeDemucsId]
+    .find((id) => id && separated.some((row) => row.artifact.id === id)) || separated[0]?.artifact.id;
+  const separatingNow = busyAction === "separating";
 
-  const playStem = async (artifact, stem, stemSetId) => {
+  const separate = async (row) => {
     setError("");
-    try {
-      await auditionDemucsStem(artifact, stem, stemSetId);
-    } catch (err) {
-      setError(err.message || t("Could not play that stem."));
-    }
-  };
-
-  // Separate an existing separation (same lead-in) with another model's Demucs.
-  const separateFor = async (artifact, stemSetId) => {
-    setError("");
+    setSeparatingKey(row.key);
     try {
       await prepareDemucsSeparation({
-        id: artifact.id,
-        name: artifact.name,
-        makeActive: artifact.id === activeDemucsId,
-        sourceTransform: artifact.sourceTransform || null,
-        generator: generatorForStemSet?.(stemSetId) || selectedGenerator,
+        id: row.artifact?.id || "",
+        name: row.artifact?.name || "",
+        makeActive: row.current,
+        sourceTransform: row.transform,
       });
     } catch (err) {
       setError(err.message || t("Separation failed."));
+    } finally {
+      setSeparatingKey("");
     }
   };
-
-  const regenerate = async () => {
-    setError("");
-    try {
-      await prepareDemucsSeparation({ makeActive: true });
-    } catch (err) {
-      setError(err.message || t("Separation failed."));
-    }
-  };
-
-  const selectedDemucsId = versionDemucsId(selectedSingleVersion);
-  const separating = busyAction === "separating";
-  const separationsNewestFirst = [...demucsArtifacts].reverse();
 
   return (
     <>
-      <div className="takes-row demucs-row">
-        {separating && (
-          <div className="take-card ghost live-take-card is-separating" aria-live="polite">
-            <div className="take-card-top">
-              <span className="live-dot" aria-hidden="true"><i /></span>
-              <span className="take-name">{t("Separating stems…")}</span>
-            </div>
-            <div className="live-take-viewport">
-              <StageSignal size="strip" mode="split" />
-            </div>
-            <div className="gen-progressbar sm live-take-progress" aria-hidden="true">
-              <i className="indeterminate" />
-            </div>
-            <div className="take-meta">{t("Vocals, guitar, bass, drums")}</div>
-          </div>
-        )}
-
-        {separationsNewestFirst.map((artifact, index) => {
-          const compatible = (artifact.sourceVariantKey || "lead-in:0") === currentSourceVariantKey;
-          const active = compatible && artifact.id === activeDemucsId;
-          const usedByPreview = selectedDemucsId && selectedDemucsId === artifact.id;
-          const ready = artifactReady(artifact);
-          // v1's set is listed while v1 is installed (it separates on first play, as
-          // before); any set is listed once it exists or while its model is selected.
-          const stemSets = STEM_SETS.filter((stemSet) =>
-            (stemSet.id === "htdemucs" && generatorForStemSet?.("htdemucs"))
-            || stemSet.id === selectedStemSetId
-            || hasSeparation(artifact, stemSet.id)
-          );
-          const labelStemSets = stemSets.length > 1;
-          const badgeIndex = demucsArtifacts.length - 1 - index;
-          const displayName = separationCardName(artifact);
-          const kindTag = separationKindTag(artifact.name);
-          return (
-            <div
-              key={artifact.id}
-              className={
-                "take-card demucs-card" +
-                (labelStemSets ? " multi" : "") +
-                (active ? " selected" : "") +
-                (usedByPreview && !active ? " is-highlight" : "")
-              }
-            >
-              <div className="take-card-top">
-                <span className="version-badge">{badgeIndex + 1}</span>
-                <span className="take-name" title={separationName(artifact.name)}>{displayName}</span>
-              </div>
-              <div className="take-meta">
-                {!artifact.profile || artifact.profile === "Standard Demucs" ? t("Standard Demucs") : artifact.profile} · {ready ? fmtArtifactDate(artifact.updatedAt || artifact.createdAt) : t("runs on first play")}
-              </div>
-              <div className="take-tags">
-                <span className="take-tag mod" title={t("Lead-in silence: {seconds}", { seconds: sourceVariantTag(artifact) })}>{sourceVariantTag(artifact)}</span>
-                {kindTag && <span className="take-tag secondary" title={separationName(artifact.name)}>{kindTag}</span>}
-                {usedByPreview && <span className="take-tag">{t("in current chart")}</span>}
-                {!compatible && <span className="take-tag secondary">{t("not current")}</span>}
-              </div>
-              {stemSets.map((stemSet) => {
-                const label = stemSetLabel(stemSet.id);
-                const heading = labelStemSets && (
-                  <div className="demucs-set-label">{label} · {tn(stemSet.stems.length, "{count} stem", "{count} stems")}</div>
-                );
-                if (stemSet.id !== "htdemucs" && !hasSeparation(artifact, stemSet.id)) {
-                  return (
-                    <div className="demucs-set" key={stemSet.id}>
-                      {heading}
-                      <div
-                        className="demucs-set-missing"
-                        title={t("{model} separates this audio itself. Its first chart on this separation makes these stems, or separate now.", { model: label })}
-                      >
-                        <span>{t("Not separated yet")}</span>
-                        <button
-                          type="button"
-                          className="take-pip wide"
-                          onClick={() => separateFor(artifact, stemSet.id)}
-                          disabled={busy || !sourceAudioFile}
-                          title={sourceAudioFile ? t("Run the {model} separation now", { model: label }) : t("Choose media first")}
-                        >
-                          {t("Separate now")}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="demucs-set" key={stemSet.id}>
-                    {heading}
-                    <div
-                      className={"demucs-stem-grid" + (labelStemSets ? " compact" : "")}
-                      style={labelStemSets ? { "--stem-cols": stemSet.stems.length } : undefined}
-                    >
-                      {stemSet.stems.map((stem) => {
-                        const key = demucsAuditionKey(artifact.id, stemSet.id, stem.id);
-                        const loading = demucsAuditionLoadingKey === key;
-                        const auditioning = demucsAudition?.id === artifact.id && demucsAudition?.stem === stem.id &&
-                          (demucsAudition?.stemSet || "htdemucs") === stemSet.id;
-                        return (
-                          <button
-                            key={stem.id}
-                            className={auditioning ? "active" : ""}
-                            onClick={() => playStem(artifact, stem.id, stemSet.id)}
-                            disabled={busy || loading || !sourceAudioFile}
-                            title={
-                              !sourceAudioFile
-                                ? t("Choose media first")
-                                : separationStemSet(artifact, stemSet.id)[stem.id]?.path
-                                  ? t("Play the {stem} stem on the stage", { stem: t(stem.label).toLowerCase() })
-                                  : t("Separates this song again to play the {stem} stem", { stem: t(stem.label).toLowerCase() })
-                            }
-                          >
-                            {loading ? <span className="cta-spinner" aria-hidden="true" /> : !labelStemSets && <I.play />}
-                            {t(stem.label)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="demucs-card-actions">
-                <button
-                  className={"take-pip wide use-pip" + (active ? " on" : "")}
-                  onClick={() => selectDemucsSeparation(artifact.id)}
-                  disabled={busy || active || !compatible}
-                  title={
-                    !compatible
-                      ? t("Switch lead-in to {seconds} to use this separation", { seconds: sourceVariantTag(artifact) })
-                      : active
-                        ? t("New charts use this separation")
-                        : t("Use this separation for new charts")
-                  }
-                >
-                  {active ? t("In use") : t("Use for charts")}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        <button
-          className="take-card placeholder demucs-new-card"
-          onClick={regenerate}
-          disabled={busy || !sourceAudioFile}
-          title={sourceAudioFile ? t("Separate the song again and keep both") : t("Choose media first")}
-        >
-          <div className="take-card-top">
-            <span className="version-badge">+</span>
-            <span className="take-name">{t("New separation")}</span>
-          </div>
-          <div className="take-meta">
-            {t("Separate again for {leadIn}", { leadIn: leadInText(currentSourceVariantLabel) })}
-            {selectedStemSetId !== "htdemucs" ? ` ${t("({model} stems)", { model: stemSetLabel(selectedStemSetId) })}` : ""}
-          </div>
-        </button>
+      <div className="sep-list">
+        {separationLeadIns.map((row) => (
+          <SeparationCard
+            key={row.key}
+            row={row}
+            rows={rows}
+            stemSetId={stemSetId}
+            onStage={row.artifact?.id === shownId}
+            separating={separatingNow && (separatingKey ? separatingKey === row.key : row.current)}
+            busy={busy}
+            canSeparate={Boolean(sourceAudioFile)}
+            showing={showing}
+            onView={() => setDemucsViewId(row.artifact.id)}
+            onSeparate={() => separate(row)}
+          />
+        ))}
       </div>
       {error && <div className="demucs-error">{error}</div>}
     </>
@@ -504,8 +391,6 @@ export default function TakesDeck({ project }) {
     selectedPreset,
     deckTab,
     setDeckTab,
-    demucsArtifacts,
-    activeDemucsArtifact,
     demucsAuditionMode,
     setDemucsAuditionMode,
     reuseVersionSettings,
@@ -534,6 +419,50 @@ export default function TakesDeck({ project }) {
   const fallbackDuration = importedSong?.meta?.durationSec || 0;
   const showingDemucs = deckTab === "demucs";
   const takesNewestFirst = [...candidateVersions].reverse();
+
+  // Export and Save with nothing assigned show where the final chart is
+  // picked: the viewed take (else the newest) scrolls into view, then its
+  // E M H X pips and the Final strip pulse.
+  const rowRef = useRef(null);
+  const cardRefs = useRef(new Map());
+  const [nudgedId, setNudgedId] = useState("");
+  const nudgeRun = useRef(0);
+  useEffect(() => () => { nudgeRun.current += 1; }, []);
+  const assignableTakes = takesNewestFirst.filter((v) => v.chart?.text);
+  const finalBlocked = busy || !songId || Boolean(finalTimingIssue) || (!finalFilledCount && !assignableTakes.length);
+  const showWhereToAssign = () => {
+    const viewed = previewMode === "single" && !showingLiveStage ? selectedSingleVersion : null;
+    const target = assignableTakes.find((v) => v.id === viewed?.id) || assignableTakes[0];
+    if (!target) return;
+    project.setStatusMsg(t("Pick E, M, H or X on a take to put it in the final chart."));
+    const run = ++nudgeRun.current;
+    setNudgedId("");
+    const pulse = () => {
+      if (run !== nudgeRun.current) return;
+      requestAnimationFrame(() => {
+        if (run !== nudgeRun.current) return;
+        setNudgedId(target.id);
+        setTimeout(() => run === nudgeRun.current && setNudgedId(""), 1700);
+      });
+    };
+    const card = cardRefs.current.get(target.id);
+    const row = rowRef.current;
+    if (!card || !row) return pulse();
+    const box = card.getBoundingClientRect();
+    const view = row.getBoundingClientRect();
+    if (box.left >= view.left - 1 && box.right <= view.right + 1) return pulse();
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      row.removeEventListener("scrollend", finish);
+      pulse();
+    };
+    row.addEventListener("scrollend", finish);
+    setTimeout(finish, 1200);
+    card.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    return undefined;
+  };
   const recipesById = new Map(
     takesNewestFirst.map((v) => [v.id, takeRecipe(v, project.generators || [])])
   );
@@ -569,13 +498,13 @@ export default function TakesDeck({ project }) {
             role="tab"
             aria-selected={showingDemucs}
           >
-            {t("Separation")} <span>{demucsArtifacts.length}</span>
+            {t("Separation")} <span>{project.separationLeadIns.filter((row) => row.separated).length}</span>
           </button>
         </div>
 
         {!showingDemucs ? (
           <>
-            <div className="final-strip" title={t("Final chart · {count} assigned", { count: finalReadyLabel })}>
+            <div className={"final-strip" + (nudgedId ? " is-nudged" : "")} title={t("Final chart · {count} assigned", { count: finalReadyLabel })}>
               <span className="final-strip-label">{t("Final")}</span>
               {FINAL_SLOT_ORDER.map((difficulty) => {
                 const assigned = finalSlotVersions[difficulty];
@@ -612,7 +541,7 @@ export default function TakesDeck({ project }) {
                 (savingLibrary ? " is-saving" : "") +
                 (justSavedLibrary ? " just-saved" : "")
               }
-              onClick={handleSaveFinalToLibrary}
+              onClick={finalFilledCount ? handleSaveFinalToLibrary : showWhereToAssign}
               aria-label={
                 savingLibrary
                   ? t("Saving final chart to {library}", { library: GAME_LIBRARY_NAME })
@@ -620,7 +549,7 @@ export default function TakesDeck({ project }) {
                     ? t("Saved final chart to {library}", { library: GAME_LIBRARY_NAME })
                     : t("Save final chart to {library}", { library: GAME_LIBRARY_NAME })
               }
-              disabled={busy || !songId || !finalFilledCount || Boolean(finalTimingIssue)}
+              disabled={finalBlocked}
               title={
                 !songId
                   ? t("Import and save a song first")
@@ -646,8 +575,8 @@ export default function TakesDeck({ project }) {
 
             <button
               className="deck-export"
-              onClick={handleExportFinal}
-              disabled={busy || !songId || !finalFilledCount || Boolean(finalTimingIssue)}
+              onClick={finalFilledCount ? handleExportFinal : showWhereToAssign}
+              disabled={finalBlocked}
               title={
                 !songId
                   ? t("Import and save a song first")
@@ -677,8 +606,8 @@ export default function TakesDeck({ project }) {
         ) : (
           <>
             <div className="demucs-headline">
-              <span>{t("In use")}</span>
-              <b>{separationName(activeDemucsArtifact?.name)}</b>
+              <span>{t("New charts use")}</span>
+              <b>{leadInText(project.separationLeadIns.find((row) => row.current)?.transform.label)}</b>
             </div>
             <button
               className={"deck-compare-btn" + (demucsAuditionMode === "compare" ? " active" : "")}
@@ -694,7 +623,7 @@ export default function TakesDeck({ project }) {
 
       <div className="deck-body">
         <div className={"deck-pane" + (deckTab === "takes" ? " active" : "")} aria-hidden={showingDemucs}>
-          <div className="takes-row">
+          <div className="takes-row" ref={rowRef}>
             {generating && project.track && (
               <LiveGenerationTakeCard
                 project={project}
@@ -720,6 +649,10 @@ export default function TakesDeck({ project }) {
               return (
                 <div
                   key={v.id}
+                  ref={(node) => {
+                    if (node) cardRefs.current.set(v.id, node);
+                    else cardRefs.current.delete(v.id);
+                  }}
                   className={
                     "take-card" +
                     (finalTone ? ` is-final tone-${finalTone}` : "") +
@@ -831,7 +764,7 @@ export default function TakesDeck({ project }) {
                         <I.reuse /> {t("Use settings")}
                       </button>
                     </div>
-                    <div className="take-pips" onClick={(e) => e.stopPropagation()}>
+                    <div className={"take-pips" + (nudgedId === v.id ? " is-nudged" : "")} onClick={(e) => e.stopPropagation()}>
                       {FINAL_SLOT_ORDER.map((difficulty) => {
                         const tone = slotTone(difficulty);
                         const on = cleanedFinalSlots[difficulty] === v.id;
@@ -874,7 +807,7 @@ export default function TakesDeck({ project }) {
         </div>
 
         <div className={"deck-pane" + (showingDemucs ? " active" : "")} aria-hidden={!showingDemucs}>
-          <DemucsPanel project={project} />
+          <DemucsPanel project={project} showing={showingDemucs} />
         </div>
       </div>
     </section>

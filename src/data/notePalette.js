@@ -9,3 +9,14 @@ export const FRET_COLORS = Object.freeze([
 ]);
 
 export const OPEN_NOTE_COLOR = "#a66be3";
+
+// Each stem's color wherever stems are drawn (the live board, the Separation
+// stage's stem graphs), from the fret colors.
+export const STEM_COLORS = Object.freeze({
+  vocals: FRET_COLORS[1],
+  guitar: FRET_COLORS[4],
+  other: FRET_COLORS[2],
+  bass: FRET_COLORS[0],
+  drums: FRET_COLORS[3],
+});
+export const MIX_GRAPH_COLOR = "#c3cbe6";

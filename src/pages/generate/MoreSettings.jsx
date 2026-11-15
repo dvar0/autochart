@@ -8,7 +8,6 @@ import {
 } from "../../data/generationSettings.js";
 import { I } from "../../icons.jsx";
 import { t } from "../../i18n/index.js";
-import { separationName } from "./separationNames.js";
 
 const forceSoloInfo = () => t(
   "Only acts when the model places no solo on its own. It then starts one where it came closest to starting one and charts the rest of the song again from there, so generation takes longer for those songs. A forced solo can be less convincing than one the model found itself.",
@@ -17,17 +16,6 @@ const forceSoloInfo = () => t(
 function sameNumber(value, target) {
   const number = Number(value);
   return !Number.isFinite(number) || Math.abs(number - target) < 0.000001;
-}
-
-function separationLabel(artifact) {
-  const name = String(artifact?.name || "Default separation").replace(/\s*\([^)]*lead-in[^)]*\)\s*$/i, "").trim();
-  const regenerated = name.match(/^regenerated separation\s*(.*)$/i);
-  if (regenerated) return regenerated[1] ? t("Remake {number}", { number: regenerated[1].trim() }) : t("Remake");
-  return /^default separation$/i.test(name) ? t("Default") : name;
-}
-
-function isDefaultSeparation(artifact) {
-  return !artifact || separationLabel(artifact) === t("Default");
 }
 
 // Short labels for every More-settings value that differs from its default,
@@ -39,10 +27,8 @@ export function changedSettingsSummary(project) {
     selectedGenerator,
     usesSourceChartSync,
     projectDefaultTimingDetector,
-    activeDemucsArtifact,
   } = project;
   const items = [];
-  if (!isDefaultSeparation(activeDemucsArtifact)) items.push(t("{name} separation", { name: separationLabel(activeDemucsArtifact) }));
   if (projectDefaultTimingDetector && c.timingDetector !== projectDefaultTimingDetector) {
     items.push(timingDetectorLabel(c.timingDetector, { short: true }));
   }
@@ -110,8 +96,6 @@ export default function MoreSettings({ project }) {
     hasSourceChartSync,
     usesSourceChartSync,
     projectDefaultTimingDetector,
-    activeDemucsArtifact,
-    setDeckTab,
     setAdvancedSettingsOpen,
   } = project;
   const panelRef = useRef(null);
@@ -167,26 +151,6 @@ export default function MoreSettings({ project }) {
       </header>
 
       <div className="ms-body">
-        <div className="ms-group">
-          <h3>{t("Audio separation")}</h3>
-          <p className="ms-group-note">
-            {t("Splits the song so the model hears the guitar on its own. If a chart misses parts, try another one.")}
-          </p>
-          <Row label={t("New takes use")} hint={separationName(activeDemucsArtifact?.name)}>
-            <button
-              type="button"
-              className="ms-link-btn"
-              onClick={() => {
-                close();
-                setDeckTab("demucs");
-              }}
-              disabled={busy}
-            >
-              {separationLabel(activeDemucsArtifact)} <I.chevRight />
-            </button>
-          </Row>
-        </div>
-
         <div className="ms-group">
           <h3>{t("Timing")}</h3>
           <Row label={t("Beat map")} hint={usesSourceChartSync ? t("Taken from the imported chart") : t("Found from the audio")}>

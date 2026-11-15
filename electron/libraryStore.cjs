@@ -548,13 +548,14 @@ async function saveSongUnlocked(context, payload, options = {}) {
 
     // Missing upload bytes preserve media; an explicit null declaration removes it.
     const clearBackground = !assets.background && record.assets?.background === null;
+    const clearAlbumArt = !assets.albumArt && record.assets?.albumArt === null;
     const mergedAssets = {
       audio: assets.audio
         ? names.audioFile
         : existing?.assets?.audio || record.assets?.audio || null,
       albumArt: assets.albumArt
         ? names.albumFile
-        : existing?.assets?.albumArt || record.assets?.albumArt || null,
+        : clearAlbumArt ? null : existing?.assets?.albumArt || record.assets?.albumArt || null,
       background: assets.background
         ? {
             type: assets.background.type || record.assets?.background?.type || "image",
@@ -578,7 +579,7 @@ async function saveSongUnlocked(context, payload, options = {}) {
     ].filter(Boolean));
     const superseded = [
       assets.audio ? existing?.assets?.audio : "",
-      assets.albumArt ? existing?.assets?.albumArt : "",
+      assets.albumArt || clearAlbumArt ? existing?.assets?.albumArt : "",
       assets.background || clearBackground ? existing?.assets?.background?.file : "",
     ].filter((name) => name && !retained.has(name));
     for (const oldName of new Set(superseded)) {

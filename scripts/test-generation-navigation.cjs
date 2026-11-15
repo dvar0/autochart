@@ -93,11 +93,16 @@ async function main() {
       await waitFor(() => evaluate(`Boolean(${selector})`), `button ${text}`);
       await evaluate(`(() => { ${selector}.click(); return true; })()`);
     };
+    const removeBackground = `document.querySelector('button[title="Remove background"]')`;
+    const clickRemoveBackground = async () => {
+      await waitFor(() => evaluate(`Boolean(${removeBackground})`), "button Remove background");
+      await evaluate(`(() => { ${removeBackground}.click(); return true; })()`);
+    };
     const running = () => evaluate(`Boolean([...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Stop'))`);
     await click("Open project");
     await waitFor(() => evaluate('Boolean(document.querySelector("img.bg-layer"))'), "saved background visible");
     await click("Song");
-    await click("Remove background");
+    await clickRemoveBackground();
     await waitFor(() => evaluate('!document.querySelector(".bg-layer")'), "background cleared immediately");
     await click("Save");
     await waitFor(async () => (await library.getSong(context, seed.id)).assets.background === null, "background removal saved");
@@ -105,7 +110,7 @@ async function main() {
     await click("Library");
     await click("Open project");
     await click("Song");
-    assert.equal(await evaluate(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === "Remove background").disabled`), true, "background restored after reopening");
+    assert.equal(await evaluate(`${removeBackground}.disabled`), true, "background restored after reopening");
     // Picking another image after clearing is allowed; clearing it before
     // generation must also discard the pending upload.
     await evaluate(`(() => {
@@ -116,7 +121,7 @@ async function main() {
       input.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
     await waitFor(() => evaluate('Boolean(document.querySelector("img.bg-layer"))'), "replacement image visible");
-    await click("Remove background");
+    await clickRemoveBackground();
     await waitFor(() => evaluate('!document.querySelector(".bg-layer")'), "pending background cleared");
     await click("Generate chart");
     await waitFor(() => jobs.length === 1, "job started");

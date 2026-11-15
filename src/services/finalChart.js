@@ -112,6 +112,16 @@ export function inferFinalSlots(versions = [], order = FINAL_SLOT_ORDER) {
     const difficulty = getVersionDifficulty(version);
     if (difficulty in slots && !slots[difficulty]) slots[difficulty] = version.id;
   }
+  // …then edited takes, so a project whose only take of a difficulty is an
+  // edit can still export it. An edit of an imported chart is left out: it
+  // doesn't say which of the chart's difficulties it changed.
+  for (const version of versions) {
+    if (version.id === FINAL_VERSION_ID || version.source !== "generated" || version.status !== "draft") continue;
+    const parent = versions.find((item) => item.id === version.parentId);
+    if (parent?.source === "imported-chart") continue;
+    const difficulty = getVersionDifficulty(version);
+    if (difficulty in slots && !slots[difficulty]) slots[difficulty] = version.id;
+  }
   // …then the difficulties the imported chart already ships fill what is left.
   // The whole point of importing is keeping the original difficulties (many
   // songs ship Expert only) next to the generated easier ones, so without this
@@ -121,6 +131,52 @@ export function inferFinalSlots(versions = [], order = FINAL_SLOT_ORDER) {
     if (!slots[difficulty] && seed[difficulty]) slots[difficulty] = seed[difficulty];
   }
   return slots;
+}
+
+// The final chart after `source` is first edited into the new take `edit`
+// (difficulty: the one edited). What the source held goes to the edit, since
+// an edit is what's meant to be exported; an imported chart only gives up the
+// difficulty that was edited. An edit holding nothing takes the edited
+// difficulty if no take has it, as a new generated take would.
+export function slotsAfterEdit(slots = {}, source = null, edit = null, difficulty = "", versions = [], order = FINAL_SLOT_ORDER) {
+  const next = { ...emptyFinalSlots(order), ...slots };
+  if (!edit) return cleanFinalSlots(next, versions, order);
+  const imported = source?.source === "imported-chart";
+  for (const slot of order) {
+    if (source && next[slot] === source.id && (!imported || slot === difficulty)) next[slot] = edit.id;
+  }
+  if (difficulty in next && !next[difficulty] && !order.some((slot) => next[slot] === edit.id)) next[difficulty] = edit.id;
+  return cleanFinalSlots(next, versions, order);
+}
+
+// The final chart after the take `removed` is deleted (versions: the takes
+// left). Each difficulty it held goes to the newest edit made from it, else to
+// the take the project would pick on its own, so deleting a take doesn't
+// quietly leave nothing to export. A generated take still holds one
+// difficulty at most.
+export function slotsAfterRemoval(slots = {}, removed = null, versions = [], order = FINAL_SLOT_ORDER) {
+  const next = cleanFinalSlots(slots, versions, order);
+  if (!removed) return next;
+  const used = () => new Set(order.map((slot) => next[slot]).filter(Boolean));
+  const edits = versions
+    .filter((version) => version.parentId === removed.id || version.meta?.editedFromId === removed.id)
+    .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+  // A removed edit hands its place back to the take it was made from.
+  const parentId = removed.meta?.editedFromId || removed.parentId;
+  const parent = parentId ? versions.find((version) => version.id === parentId) : null;
+  const inferred = inferFinalSlots(versions, order);
+  const fits = (version, slot, taken) =>
+    version && (version.source === "imported-chart" || (!taken.has(version.id) && getVersionDifficulty(version) === slot));
+  for (const slot of order) {
+    if (slots?.[slot] !== removed.id) continue;
+    const taken = used();
+    const heir = edits.find((version) => fits(version, slot, taken) && version.source !== "imported-chart");
+    const pick = versions.find((version) => version.id === inferred[slot]);
+    if (heir) next[slot] = heir.id;
+    else if (fits(parent, slot, taken)) next[slot] = parent.id;
+    else if (pick && (pick.source === "imported-chart" || !taken.has(pick.id))) next[slot] = pick.id;
+  }
+  return next;
 }
 
 export function finalSlotsFromRecord(record, versions = [], { infer = true, order = FINAL_SLOT_ORDER } = {}) {

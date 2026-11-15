@@ -2679,6 +2679,10 @@ video.bg-layer {
   padding: var(--sp-3) var(--sp-5);
 }
 .project-bar-art {
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  transition: box-shadow .12s, transform .12s;
   width: 40px;
   height: 40px;
   flex: none;
@@ -2700,6 +2704,29 @@ video.bg-layer {
   display: block;
 }
 .project-bar-art svg { width: 18px; height: 18px; }
+.project-bar-art:hover,
+.project-bar-art.open { box-shadow: inset 0 0 0 1px var(--art-ring), 0 0 0 2px var(--purple-bd); }
+.project-bar-art:active { transform: scale(.96); }
+/* the cover's menu opens from the left edge of the bar */
+.bar-pop.bar-pop-cover {
+  left: 0;
+  right: auto;
+  width: 280px;
+  transform-origin: top left;
+}
+.bar-pop-cover-preview {
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--r-box);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--art-ring);
+  display: grid;
+  place-items: center;
+  color: var(--purple);
+}
+.bar-pop-cover-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bar-pop-cover-preview svg { width: 32px; height: 32px; }
 .project-id {
   min-width: 120px;
   flex: 1 1 0;
@@ -2837,7 +2864,52 @@ video.bg-layer {
   gap: 8px;
   margin-top: 4px;
 }
-.bar-pop-wide { grid-column: 1 / -1; }
+.bar-pop-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* the Song menu: the media file, then cover, background and details as
+   labeled groups set apart by space, their buttons side by side */
+.bar-pop.song-pop { width: 360px; gap: 14px; padding: 14px; }
+.song-pop-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.song-pop-label {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.song-pop-cover { display: flex; gap: 8px; }
+.song-pop-thumb {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--r-box);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--art-ring);
+  display: grid;
+  place-items: center;
+  color: var(--purple);
+}
+.song-pop-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.song-pop-thumb svg { width: 16px; height: 16px; }
+.song-pop-buttons {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 8px;
+}
+.song-pop-buttons .bar-pop-btn { justify-content: center; padding: 0 8px; gap: 7px; }
+.song-pop-buttons .bar-pop-btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song-pop .bar-pop-fields { margin-top: 0; }
 /* ---------- preview stage (monitor) ---------- */
 .gen-preview-card {
   grid-area: stage;
@@ -3356,15 +3428,8 @@ video.bg-layer {
   background: var(--surface-2);
   color: var(--text-dim);
 }
-.ac-app[data-theme="dark"] .demucs-stem-grid button {
-  background: var(--surface-2);
-  color: var(--text-dim);
-  border: 1px solid var(--border-soft);
-}
 .ac-app[data-theme="dark"] .demucs-stage-stems button:hover:not(:disabled),
-.ac-app[data-theme="dark"] .demucs-stage-stems button.active,
-.ac-app[data-theme="dark"] .demucs-stem-grid button:hover:not(:disabled),
-.ac-app[data-theme="dark"] .demucs-stem-grid button.active {
+.ac-app[data-theme="dark"] .demucs-stage-stems button.active {
   background: var(--purple-bg);
   color: var(--purple);
 }
@@ -4904,98 +4969,146 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .take-pip.on.tone-amber { background: var(--amber-solid); color: #fff; }
 .take-pip.on.tone-peach { background: var(--peach-solid); color: #fff; }
 .take-pip.on.tone-red   { background: var(--red-solid);   color: #fff; }
+/* Export with nothing assigned: the pips (and the Final strip) bounce once
+   in their own colors, left to right, twice. */
+.take-pip.tone-green, .final-chip.tone-green { --pip: var(--green-solid); }
+.take-pip.tone-amber, .final-chip.tone-amber { --pip: var(--amber-solid); }
+.take-pip.tone-peach, .final-chip.tone-peach { --pip: var(--peach-solid); }
+.take-pip.tone-red,   .final-chip.tone-red   { --pip: var(--red-solid); }
+.take-pips.is-nudged .take-pip:not(:disabled),
+.final-strip.is-nudged .final-chip {
+  animation: pip-nudge .7s cubic-bezier(.3,1.4,.5,1) 2 both;
+}
+.take-pips.is-nudged .take-pip:nth-child(2), .final-strip.is-nudged .final-chip:nth-of-type(2) { animation-delay: .07s; }
+.take-pips.is-nudged .take-pip:nth-child(3), .final-strip.is-nudged .final-chip:nth-of-type(3) { animation-delay: .14s; }
+.take-pips.is-nudged .take-pip:nth-child(4), .final-strip.is-nudged .final-chip:nth-of-type(4) { animation-delay: .21s; }
+@keyframes pip-nudge {
+  0%, 100% { transform: none; }
+  35% { transform: translateY(-3px) scale(1.18); background: var(--pip); color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pip) 30%, transparent); }
+  70% { transform: none; background: color-mix(in srgb, var(--pip) 35%, var(--surface-2)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .take-pips.is-nudged .take-pip:not(:disabled),
+  .final-strip.is-nudged .final-chip { animation: none; box-shadow: 0 0 0 2px var(--pip); }
+}
 .take-pip.wide {
   min-width: 74px;
   height: 24px;
   padding: 0 10px;
   font: 600 var(--fs-xs) var(--font-ui);
 }
-/* Which separation new charts read: the purple of a selection. */
-.take-pip.use-pip { background: var(--purple); color: var(--purple-fg); }
-.take-pip.use-pip:hover:not(:disabled):not(.on) { filter: brightness(1.06); background: var(--purple); color: var(--purple-fg); }
-.take-pip.use-pip.on { background: var(--purple-bg); color: var(--purple); }
-.take-pip.use-pip:disabled { opacity: 1; }
-.take-pip.use-pip:disabled:not(.on) { background: var(--surface-2); color: var(--text-faint); }
-.demucs-row .take-card { flex-basis: 248px; }
-.demucs-card { cursor: default; }
-.demucs-stem-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.demucs-stem-grid button {
+/* Separation tab: one card per lead-in, in the same strip and shape as the
+   take cards; its stems drawn as small lanes in their colors. */
+.sep-list {
+  flex: 1;
+  min-height: 0;
   min-width: 0;
-  min-height: 30px;
-  padding: 0 8px;
-  border: none;
-  border-radius: var(--r-box);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: var(--surface-2);
-  color: var(--text-dim);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  cursor: pointer;
-  transition: .12s;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  /* same as .takes-row: padding (offset by negative margins) keeps the
+     selected ring and focus outline uncut */
+  padding: 5px 4px 6px;
+  margin: -5px -4px 0;
 }
-.demucs-stem-grid button svg { width: 11px; height: 11px; }
-.demucs-stem-grid button:hover:not(:disabled),
-.demucs-stem-grid button.active {
-  background: var(--purple-bg);
-  color: var(--purple);
-}
-.demucs-stem-grid button:disabled { opacity: .5; cursor: not-allowed; }
-/* A separation can hold one stem set per model; each gets its own row. */
-.demucs-set {
+.sep-card {
+  flex: 0 0 248px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .12s, background-color .12s;
 }
-.demucs-set-label {
-  color: var(--text-faint);
+.sep-card:hover:not(.is-empty) { border-color: var(--border); background: color-mix(in srgb, var(--surface-2) 45%, var(--surface)); }
+.sep-card.selected,
+.sep-card.selected:hover { border-color: var(--purple); }
+.sep-card.is-empty {
+  cursor: default;
+  border: var(--bw) dashed var(--border);
+  background: transparent;
+}
+.sep-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 22px;
+}
+.sep-card-top b {
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sep-card-use {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--purple-bg);
+  color: var(--purple);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* one grid for all lanes, so the names share a column as wide as the longest */
+.sep-lanes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.sep-lane { display: contents; }
+.sep-lane-name {
+  min-width: 0;
   font-size: var(--fs-xs);
   font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-/* Cards listing two stem sets are wider and keep each set on one row. */
-.demucs-row .take-card.demucs-card.multi { flex-basis: 336px; }
-.demucs-card.multi { gap: 7px; }
-.demucs-stem-grid.compact {
-  grid-template-columns: repeat(var(--stem-cols, 4), minmax(0, 1fr));
-  gap: 4px;
+.sep-lane-bars { width: 100%; height: 100%; display: block; fill: var(--stem); }
+.sep-lane.is-missing .sep-lane-name { color: var(--text-faint); text-decoration: line-through; }
+.sep-lane.is-missing .sep-lane-bars {
+  height: 0;
+  border-top: 1px dashed var(--border);
 }
-.demucs-stem-grid.compact button {
-  min-height: 26px;
-  padding: 0 4px;
+.sep-card-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
 }
-.demucs-set-missing {
-  min-height: 26px;
+.sep-card-empty b { font-size: var(--fs-sm); font-weight: 700; color: var(--text); }
+.sep-card-empty .gen-progressbar { width: 100%; }
+.sep-card-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 4px 0 10px;
-  border-radius: var(--r-box);
-  background: var(--surface-2);
-  color: var(--text-faint);
-  font-size: var(--fs-xs);
-  font-weight: 700;
+  min-height: 28px;
 }
-.demucs-set-missing .take-pip {
-  background: var(--surface);
-  color: var(--text-dim);
-}
-.demucs-set-missing .take-pip:hover:not(:disabled) {
-  background: var(--purple-bg);
-  color: var(--purple);
-}
-.demucs-card-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: auto;
-}
-.demucs-new-card { justify-content: center; }
+.sep-card-takes { font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+.sep-card-takes.faint { color: var(--text-faint); }
+.sep-card-foot .take-action { white-space: nowrap; }
 .demucs-error {
   flex: none;
   display: inline-flex;
@@ -5013,35 +5126,8 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
   background: var(--red-bg);
   color: var(--red-fg);
 }
-.ac-app[data-theme="dark"] .demucs-row .take-card {
-  background: var(--surface);
-  border-color: var(--border-soft);
-}
-.ac-app[data-theme="dark"] .demucs-row .take-card:hover {
-  border-color: var(--purple-bd);
-}
-.ac-app[data-theme="dark"] .demucs-row .take-card.selected {
-  border-color: var(--purple-bri);
-  box-shadow: inset 0 0 0 1px rgba(168, 182, 224, 0.22);
-}
-.ac-app[data-theme="dark"] .demucs-row .take-card.placeholder {
-  background: rgba(49, 58, 82, 0.52);
-  border-color: var(--border);
-}
-.ac-app[data-theme="dark"] .demucs-row .take-name {
-  color: var(--text);
-}
-.ac-app[data-theme="dark"] .demucs-row .take-meta {
-  color: var(--text-dim);
-}
-.ac-app[data-theme="dark"] .demucs-row .take-tag {
-  background: var(--surface-2);
-  color: var(--text-dim);
-}
-.ac-app[data-theme="dark"] .demucs-row .take-tag.mod {
-  background: var(--purple-bg);
-  color: var(--text);
-}
+.ac-app[data-theme="dark"] .sep-card.selected { border-color: var(--purple-bri); }
+.ac-app[data-theme="dark"] .sep-card-use { color: var(--text); }
 
 @media (max-width: 1180px) {
   .seed-row {
@@ -5927,22 +6013,6 @@ button.take-card.placeholder:disabled { opacity: .55; cursor: not-allowed; }
 .ms-row-control select:focus { border-color: var(--purple-bd); }
 .ms-row-control input:disabled,
 .ms-row-control select:disabled { opacity: .55; cursor: not-allowed; }
-.ms-link-btn {
-  min-height: 32px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 8px 0 12px;
-  border: 0;
-  border-radius: var(--r-box);
-  background: var(--purple-bg);
-  color: var(--purple);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  cursor: pointer;
-}
-.ms-link-btn svg { width: 14px; height: 14px; }
-.ms-link-btn:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 1000px) {
   .more-settings {
     position: fixed;
@@ -6658,7 +6728,6 @@ a.release-link svg { width: 12px; height: 12px; }
 .bar-btn,
 .take-action,
 .compare-pill,
-.ms-link-btn,
 .ms-reset,
 .folder-row-actions .settings-secondary {
   min-height: 30px;
@@ -6674,7 +6743,6 @@ a.release-link svg { width: 12px; height: 12px; }
 .bar-btn:disabled,
 .take-action:disabled,
 .compare-pill:disabled,
-.ms-link-btn:disabled,
 .ms-reset:disabled,
 .edit-icon-btn:disabled,
 .model-switch:disabled,
@@ -6772,8 +6840,6 @@ a.release-link svg { width: 12px; height: 12px; }
 .piano-roll-side { width: 40px; }
 .pr-strip-label { letter-spacing: 0; }
 
-/* A new separation says what it would do in full. */
-.demucs-new-card .take-meta { white-space: normal; }
 
 /* One dimmed page behind whatever opens over it. */
 :root { --scrim: rgba(12, 16, 28, .5); }
@@ -6792,4 +6858,124 @@ a.release-link svg { width: 12px; height: 12px; }
   .seed-mode { grid-template-columns: auto auto; }
   .seed-mode button { padding: 0 var(--sp-2); }
   .seed-row input { padding-inline: var(--sp-2); font-size: var(--fs-sm); }
+}
+
+/* Separation stage: every stem's mel graph stacked, the heard one grown.
+   The plate stays dark in both themes, like the highway, so the graphs read. */
+.stem-stack-panel {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  padding: 46px 10px 10px;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: #0d1220;
+  border: 1px solid var(--border-soft);
+}
+.stem-stack-hint {
+  position: absolute;
+  top: 18px;
+  right: 14px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: rgba(214, 222, 245, 0.62);
+}
+.stem-stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.stem-row {
+  appearance: none;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--stem) 9%, #0d1220);
+  cursor: pointer;
+  transition: flex-grow .28s cubic-bezier(.3, .7, .2, 1), box-shadow .2s;
+}
+.stem-row.on {
+  flex-grow: 3.4;
+  cursor: text;
+  box-shadow: inset 0 0 0 2px var(--stem);
+}
+/* several stems heard together share the room */
+.stem-stack.is-layered .stem-row.on { flex-grow: 2.2; }
+.stem-row.is-off { cursor: default; }
+.stem-row.is-off .stem-row-tag { opacity: .55; }
+/* the selected model hasn't separated this song: say so where the stems go */
+.stem-stack-panel.stem-stack-empty {
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  text-align: center;
+  color: #aeb6cc;
+  font-size: var(--fs-sm);
+}
+.stem-stack-empty b { color: #e3e7f5; font-size: var(--fs-md); }
+.stem-stack-empty .transport-btn { margin-top: 8px; }
+.stem-row:focus-visible { outline: 2px solid var(--purple-bri); outline-offset: 1px; }
+.stem-row img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  opacity: .62;
+  filter: saturate(.85);
+  pointer-events: none;
+  transition: opacity .2s, filter .2s;
+}
+.stem-row:not(.on):not(.is-off):hover img { opacity: .85; filter: none; }
+.stem-row.on img { opacity: 1; filter: none; }
+.stem-row-tag {
+  position: absolute;
+  z-index: 1;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 6px;
+  border-radius: 4px;
+  background: rgba(8, 11, 20, 0.82);
+  color: rgba(214, 222, 245, 0.72);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  pointer-events: none;
+}
+.stem-row.on .stem-row-tag { top: 6px; transform: none; color: #f2f5ff; }
+.stem-row-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--stem);
+}
+.stem-row-tag .cta-spinner { width: 10px; height: 10px; border-width: 2px; }
+.stem-stack-playhead {
+  position: absolute;
+  z-index: 2;
+  top: -4px;
+  bottom: -4px;
+  left: calc(var(--at) * 100%);
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 10px rgba(255, 255, 255, .45);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stem-row { transition: none; }
 }

@@ -1,8 +1,7 @@
 import { t } from "../../i18n/index.js";
 
-// Separation names and lead-in labels are saved in English with the project
-// ("Regenerated separation 2 (+2s lead-in)"); these show them in the current
-// language. Names someone typed stay as they are.
+// Lead-in labels are saved in English with the project ("+2s lead-in"); these
+// show them in the current language.
 
 export function leadInText(label) {
   const text = String(label || "").trim();
@@ -11,20 +10,9 @@ export function leadInText(label) {
   return seconds ? t("+{seconds}s lead-in", { seconds: seconds[1] }) : text;
 }
 
-function baseName(base) {
-  if (/^default separation$/i.test(base)) return t("Default separation");
-  if (/^demucs separation$/i.test(base)) return t("Demucs separation");
-  if (/^selected separation$/i.test(base)) return t("Selected separation");
-  const regenerated = base.match(/^regenerated separation\s*(\d*)$/i);
-  if (regenerated) {
-    return regenerated[1] ? t("Remade separation {number}", { number: regenerated[1] }) : t("Remade separation");
-  }
-  return base;
-}
-
-export function separationName(name) {
-  const text = String(name || "Default separation").trim();
-  const lead = text.match(/\s*\(([^)]*lead-in[^)]*)\)\s*$/i);
-  const shown = baseName(lead ? text.slice(0, lead.index).trim() : text);
-  return lead ? `${shown} (${leadInText(lead[1])})` : shown;
+// A separation goes by its lead-in: separating the song again gives the same
+// stems, so that's all that tells two apart.
+export function separationLeadInName(artifact) {
+  const ms = Number(artifact?.sourceTransform?.leadInSilenceMs ?? String(artifact?.sourceVariantKey || "").match(/lead-in:(\d+)/)?.[1] ?? 0);
+  return ms > 0 ? t("+{seconds}s lead-in", { seconds: String(ms / 1000) }) : t("No lead-in");
 }

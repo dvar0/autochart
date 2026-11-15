@@ -17,33 +17,18 @@ import {
   demucsAuditionKey,
   fmtTime,
   generatorStemSetId,
+  separationLeadInSeconds,
 } from "./useGenerateProject.js";
 import { useOwnedFullscreen } from "../../hooks/useOwnedFullscreen.js";
 import { msg, t } from "../../i18n/index.js";
-import { separationName } from "./separationNames.js";
+import { separationLeadInName } from "./separationNames.js";
+import StemMelStack from "./StemMelStack.jsx";
+import { loadStemMelGraphs } from "./stemMelGraphs.js";
+import StemLivePlayer, { decodeSongPcm } from "./stemLivePlayer.js";
+import { MIX_GRAPH_COLOR } from "../../data/notePalette.js";
+import { stemParts, stemRowsFor } from "./stemSets.js";
 
 const HIGHWAY_VOLUME_KEY = "highway.volume";
-const DEMUCS_STEMS = [
-  { id: "other", label: msg("Guitar / other") },
-  { id: "drums", label: msg("Drums") },
-  { id: "bass", label: msg("Bass") },
-  { id: "vocals", label: msg("Vocals") },
-];
-
-// The six-stem models separate with htdemucs_6s: guitar gets its own stem and
-// other holds the rest (piano included).
-const SIX_STEM_DEMUCS_STEMS = [
-  { id: "guitar", label: msg("Guitar") },
-  { id: "other", label: msg("Other") },
-  { id: "drums", label: msg("Drums") },
-  { id: "bass", label: msg("Bass") },
-  { id: "vocals", label: msg("Vocals") },
-];
-
-function demucsStemsFor(generator) {
-  return generatorStemSetId(generator) === "htdemucs_6s" ? SIX_STEM_DEMUCS_STEMS : DEMUCS_STEMS;
-}
-
 function loadHighwayVolume() {
   try {
     const raw = localStorage.getItem(HIGHWAY_VOLUME_KEY);
@@ -183,7 +168,7 @@ function decodeWaveformData(data) {
 function DemucsCompareLane({
   slot,
   lane,
-  stems = DEMUCS_STEMS,
+  stems = stemRowsFor("htdemucs"),
   stemSetId = "htdemucs",
   artifacts,
   loadingKey,
@@ -243,7 +228,7 @@ function DemucsCompareLane({
             disabled={loading}
           >
             {artifacts.map((item) => (
-              <option key={item.id} value={item.id}>{separationName(item.name)}</option>
+              <option key={item.id} value={item.id}>{separationLeadInName(item)}</option>
             ))}
           </select>
         </label>
@@ -292,15 +277,19 @@ function DemucsAuditionStage({ project }) {
   const {
     demucsAudition,
     demucsAuditionLoadingKey,
-    demucsArtifacts,
+    separationLeadIns,
     activeDemucsArtifact,
     auditionDemucsStem,
     loadDemucsStem,
     demucsAuditionMode,
     selectedGenerator,
+    listenLive,
+    stopDemucsAudition,
+    songBytes,
+    demucsViewId,
   } = project;
-  const stemChoices = demucsStemsFor(selectedGenerator);
   const stemSetId = generatorStemSetId(selectedGenerator);
+  const stemChoices = stemRowsFor(stemSetId);
   const audioRef = useRef(null);
   const compareAudioRefs = useRef({});
   const compareLanesRef = useRef([]);
@@ -319,12 +308,143 @@ function DemucsAuditionStage({ project }) {
     { id: "B", artifactId: "", stem: "", audition: null, peaks: [], duration: 0, muted: false, solo: false },
   ]);
   const auditionMode = demucsAuditionMode || "single";
+  // Where a stem switch picks up: the moment the last stem was at.
+  const resumeAtRef = useRef(0);
+  const [graphs, setGraphs] = useState(null);
 
+  // The selected model's separations, one per lead-in; the one picked in the
+  // deck, else the one being heard, else the one new charts use.
+  const usableArtifacts = separationLeadIns.filter((row) => row.separated).map((row) => row.artifact);
   const activeArtifact =
-    demucsArtifacts.find((artifact) => artifact.id === demucsAudition?.id) ||
-    activeDemucsArtifact ||
-    demucsArtifacts[0];
-  const fallbackCompareArtifactId = activeDemucsArtifact?.id || demucsArtifacts[0]?.id || "";
+    usableArtifacts.find((artifact) => artifact.id === demucsViewId) ||
+    usableArtifacts.find((artifact) => artifact.id === demucsAudition?.id) ||
+    usableArtifacts.find((artifact) => artifact.id === activeDemucsArtifact?.id) ||
+    usableArtifacts[0] ||
+    null;
+  const melTablesPath = activeArtifact?.stemSets?.[stemSetId]?.melTables?.path || "";
+  const stackGraphs = graphs?.path === melTablesPath ? graphs : null;
+  const showStack = auditionMode === "single" && Boolean(melTablesPath);
+  const auditionBelongs = Boolean(demucsAudition) && demucsAudition.id === activeArtifact?.id &&
+    (demucsAudition.stem === "mix" || (demucsAudition.stemSet || "htdemucs") === stemSetId);
+  const heardStem = auditionBelongs ? demucsAudition.stem : null;
+  const timeRef = useRef(0);
+  timeRef.current = time;
+
+  // The stack plays live: StemLivePlayer runs the song through the heard
+  // stem's mask as it plays, so a pick, a switch or a seek starts at once.
+  // Only the song's first decode and the tables wait.
+  const [player] = useState(() => new StemLivePlayer());
+  const [songPcm, setSongPcm] = useState(null);
+  const live = showStack && auditionMode === "single";
+  const liveAudition = Boolean(demucsAudition?.live);
+  const stackPowers = stackGraphs?.powers || null;
+  const liveReady = Boolean(songPcm && stackPowers);
+  const playWhenReadyRef = useRef(false);
+
+  useEffect(() => () => player.dispose(), [player]);
+
+  useEffect(() => {
+    const sync = () => {
+      setTime(player.currentTime);
+      setPlaying(!player.paused);
+    };
+    const events = ["play", "pause", "ended", "timeupdate"];
+    events.forEach((type) => player.addEventListener(type, sync));
+    return () => events.forEach((type) => player.removeEventListener(type, sync));
+  }, [player]);
+
+  useEffect(() => {
+    setSongPcm(null);
+    if (!songBytes || !showStack) return undefined;
+    let cancelled = false;
+    decodeSongPcm(songBytes)
+      .then((pcm) => {
+        if (!cancelled) setSongPcm(pcm);
+      })
+      .catch((err) => console.warn("[separation] Couldn't decode the song:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [songBytes, showStack]);
+
+  const leadInSeconds = separationLeadInSeconds(activeArtifact);
+  useEffect(() => {
+    if (!live || !liveReady) return;
+    player.setSource({ song: songPcm, leadIn: leadInSeconds, powers: stackPowers });
+    setDuration(player.duration);
+    if (playWhenReadyRef.current && liveAudition) {
+      playWhenReadyRef.current = false;
+      player.setHeard(heardStem);
+      player.play().catch((err) => console.warn("[separation] Couldn't play:", err));
+    }
+  }, [live, liveReady, songPcm, stackPowers, leadInSeconds]);
+
+  useEffect(() => {
+    if (liveAudition && heardStem) player.setHeard(heardStem);
+  }, [liveAudition, heardStem]);
+
+  // Leaving the stack, or the audition ending, stops the live stream.
+  useEffect(() => {
+    if (!live || !liveAudition) {
+      playWhenReadyRef.current = false;
+      player.pause();
+    }
+  }, [live, liveAudition]);
+
+  const listenTo = (stem) => {
+    listenLive(activeArtifact, stem);
+    if (!player.ready || !liveReady) {
+      playWhenReadyRef.current = true;
+      return;
+    }
+    player.setHeard(stem);
+    if (player.paused) player.play().catch((err) => console.warn("[separation] Couldn't play:", err));
+  };
+
+  useEffect(() => {
+    if (!melTablesPath) return undefined;
+    let cancelled = false;
+    loadStemMelGraphs(melTablesPath, stemRowsFor(stemSetId), MIX_GRAPH_COLOR)
+      .then((next) => {
+        if (!cancelled) setGraphs({ ...next, path: melTablesPath });
+      })
+      .catch((err) => console.warn("[separation] Stem graphs unavailable:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [melTablesPath, stemSetId]);
+
+  // Picking another separation (or model) keeps the stem being heard, from
+  // the same moment; a stem the new one doesn't have stops.
+  const viewKey = `${activeArtifact?.id || ""}|${stemSetId}`;
+  const viewKeyRef = useRef(viewKey);
+  useEffect(() => {
+    if (viewKeyRef.current === viewKey) return;
+    viewKeyRef.current = viewKey;
+    if (!demucsAudition || auditionBelongs || auditionMode !== "single") return;
+    const stem = demucsAudition.stem;
+    const hasStem = stem === "mix" || stemParts(stem).every((id) => stemChoices.some((row) => row.id === id));
+    // The stack carries on live from the same moment once the new tables are in.
+    if (activeArtifact && hasStem && showStack) {
+      audioRef.current?.pause?.();
+      if (!liveAudition) {
+        player.currentTime = timeRef.current;
+        playWhenReadyRef.current = playing;
+      }
+      listenLive(activeArtifact, stem);
+      return;
+    }
+    audioRef.current?.pause?.();
+    player.pause();
+    if (!activeArtifact || !hasStem || stem === "mix") {
+      resumeAtRef.current = 0;
+      stopDemucsAudition();
+      return;
+    }
+    resumeAtRef.current = timeRef.current;
+    auditionDemucsStem(activeArtifact, stem).catch((err) => console.warn("[separation] Couldn't switch stems:", err));
+  }, [viewKey]);
+  const fallbackCompareArtifactId = activeArtifact?.id || "";
   const anySolo = compareLanes.some((lane) => lane.audition && lane.solo);
   const compareDuration = Math.max(...compareLanes.map((lane) => lane.duration || 0), 0);
   const activeDuration = auditionMode === "compare" ? compareDuration : duration;
@@ -343,8 +463,9 @@ function DemucsAuditionStage({ project }) {
   }, [fallbackCompareArtifactId]);
 
   useEffect(() => {
+    if (demucsAudition?.live) return undefined;
     setPlaying(false);
-    setTime(0);
+    setTime(resumeAtRef.current);
     setDuration(0);
     setPeaks([]);
     if (!demucsAudition?.data) {
@@ -373,6 +494,11 @@ function DemucsAuditionStage({ project }) {
   }, [volume, muted, demucsAudition?.url]);
 
   useEffect(() => {
+    player.volume = volume;
+    player.muted = muted || volume <= 0;
+  }, [player, volume, muted]);
+
+  useEffect(() => {
     if (!demucsAudition?.url) return undefined;
     const timer = setTimeout(() => {
       audioRef.current?.play?.()
@@ -399,6 +525,8 @@ function DemucsAuditionStage({ project }) {
       Object.values(compareAudioRefs.current).forEach((node) => {
         if (node) node.currentTime = Math.min(safe, node.duration || safe);
       });
+    } else if (live) {
+      player.currentTime = safe;
     } else if (audioRef.current) {
       audioRef.current.currentTime = safe;
     }
@@ -431,6 +559,11 @@ function DemucsAuditionStage({ project }) {
         nodes.forEach((node) => node.pause());
         setPlaying(false);
       }
+      return;
+    }
+    if (live) {
+      if (!player.paused) player.pause();
+      else if (liveReady) listenTo(heardStem || "mix");
       return;
     }
     const node = audioRef.current;
@@ -514,6 +647,7 @@ function DemucsAuditionStage({ project }) {
   useEffect(() => {
     if (auditionMode === "compare") {
       audioRef.current?.pause?.();
+      player.pause();
     } else {
       Object.values(compareAudioRefs.current).forEach((node) => node?.pause?.());
     }
@@ -532,7 +666,7 @@ function DemucsAuditionStage({ project }) {
       {auditionMode === "compare" ? (
         <div className="demucs-compare-stack">
           {compareLanes.map((lane) => {
-            const artifact = demucsArtifacts.find((item) => item.id === lane.artifactId) || activeArtifact;
+            const artifact = usableArtifacts.find((item) => item.id === lane.artifactId) || activeArtifact;
             return (
               <DemucsCompareLane
                 key={lane.id}
@@ -540,7 +674,7 @@ function DemucsAuditionStage({ project }) {
                 lane={{ ...lane, artifactId: artifact?.id || lane.artifactId }}
                 stems={stemChoices}
                 stemSetId={stemSetId}
-                artifacts={demucsArtifacts}
+                artifacts={usableArtifacts}
                 loadingKey={demucsAuditionLoadingKey}
                 audioRef={(node) => {
                   compareAudioRefs.current[lane.id] = node;
@@ -565,6 +699,36 @@ function DemucsAuditionStage({ project }) {
             );
           })}
         </div>
+      ) : !activeArtifact ? (
+        <div className="stem-stack-panel stem-stack-empty">
+          <b>{t("No {model} separation yet", { model: selectedGenerator?.label || t("this model") })}</b>
+          <span>{t("Its first chart separates the song, or separate it below.")}</span>
+        </div>
+      ) : showStack ? (
+        <StemMelStack
+          graphs={stackGraphs}
+          rows={[
+            {
+              id: "mix",
+              label: t("Mix"),
+              color: MIX_GRAPH_COLOR,
+              disabled: !songBytes,
+              title: t("The song isn't loaded yet"),
+            },
+            ...stemChoices.map((stem) => ({
+              id: stem.id,
+              label: t(stem.label),
+              color: stem.color,
+              disabled: !stackGraphs || !stackGraphs.images[stem.id],
+              title: stackGraphs ? t("This separation was made before {stem} had its own stem. Separate again to hear it.", { stem: t(stem.label).toLowerCase() }) : "",
+            })),
+          ]}
+          heard={heardStem}
+          loading={liveAudition && heardStem && !liveReady ? heardStem : ""}
+          progress={stackGraphs?.seconds ? time / stackGraphs.seconds : 0}
+          onPick={listenTo}
+          onSeek={(fraction) => seekTo(fraction * (stackGraphs?.seconds || duration))}
+        />
       ) : (
         <div
           className="demucs-wave-panel"
@@ -591,7 +755,7 @@ function DemucsAuditionStage({ project }) {
       )}
 
       <div className="demucs-stage-transport">
-        <button className="transport-btn" onClick={togglePlay} disabled={auditionMode === "compare" ? !compareLanes.some((lane) => lane.audition) : !demucsAudition?.url}>
+        <button className="transport-btn" onClick={togglePlay} disabled={auditionMode === "compare" ? !compareLanes.some((lane) => lane.audition) : live ? !liveReady : !demucsAudition?.url}>
           {playing ? <><I.pause /> {t("Pause")}</> : <><I.play /> {t("Play")}</>}
         </button>
         <button className="transport-btn ghost" onClick={() => seekTo(Math.max(0, time - 10))} disabled={!activeDuration}>-10s</button>
@@ -633,7 +797,7 @@ function DemucsAuditionStage({ project }) {
         </div>
       </div>
 
-      {auditionMode === "single" && <div className="demucs-stage-stems" aria-label={t("Stems from the selected separation")}>
+      {auditionMode === "single" && activeArtifact && !showStack && <div className="demucs-stage-stems" aria-label={t("Stems from the selected separation")}>
         {stemChoices.map((stem) => {
           const loading = demucsAuditionLoadingKey === demucsAuditionKey(activeArtifact?.id, stemSetId, stem.id);
           const active = demucsAudition?.id === activeArtifact?.id && demucsAudition?.stem === stem.id &&
@@ -659,6 +823,10 @@ function DemucsAuditionStage({ project }) {
           onLoadedMetadata={(e) => {
             const audioDuration = e.currentTarget.duration || 0;
             setDuration((prev) => prev || audioDuration);
+            if (resumeAtRef.current > 0) {
+              e.currentTarget.currentTime = Math.min(resumeAtRef.current, audioDuration || resumeAtRef.current);
+              resumeAtRef.current = 0;
+            }
           }}
           onTimeUpdate={(e) => setTime(e.currentTarget.currentTime || 0)}
           onPlay={() => setPlaying(true)}
@@ -980,8 +1148,8 @@ export default function PreviewStage({ project, ws, highwayRef, onOpenSongFolder
       {/* What's on stage sits on the highway; the stage itself gets the room. */}
       <div className="stage-overlay">
         {showingDemucsStage ? (
-          <div className="stage-label" title={demucsAudition?.label || (activeDemucsArtifact ? separationName(activeDemucsArtifact.name) : t("Audio separation"))}>
-            <span className="stage-label-name">{demucsAudition?.label || (activeDemucsArtifact ? separationName(activeDemucsArtifact.name) : t("Audio separation"))}</span>
+          <div className="stage-label" title={demucsAudition?.label || t("Audio separation")}>
+            <span className="stage-label-name">{demucsAudition?.label || t("Audio separation")}</span>
           </div>
         ) : track && !inCompare && !showingLiveStage && selectedSingleVersion ? (
           <div className="stage-label" title={selectedSingleVersion.name}>

@@ -203,5 +203,8 @@ export function createStft(nfft, hop) {
     return y;
   }
 
-  return { analysis, synthesis, bins };
+  // One frame at a time: forward(src, offset) fills xr/xi (scaled, windowed);
+  // inverse() turns xr/xi back into re/im (sample 2j in re[j], 2j+1 in im[j]),
+  // to be overlap-added with synthWindow and divided by the summed squared window.
+  return { analysis, synthesis, bins, forward, inverse, xr, xi, re, im, window, synthWindow };
 }

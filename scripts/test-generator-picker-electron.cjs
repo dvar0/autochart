@@ -5,8 +5,9 @@
 // - once Fretformer 2 is downloaded it generates, with no badge or note;
 // - picking the six-stem model swaps the Style faders to its set and the
 //   generate payload carries its generator id and knob names;
-// - separation cards list each model's stems only where that separation has
-//   them (three lead-in separations, only one separated for the six-stem set);
+// - the Separation tab lists one row per lead-in the selected model has stems
+//   for, plus the lead-in in use (three lead-in separations, only one
+//   separated for the six-stem set);
 // - a model that marks solos shows Mark solos and Force a solo in More
 //   settings, and the payload carries both;
 // - the Inpaint model is listed as Beta only while "Write whole charts" is on;
@@ -182,7 +183,7 @@ async function main() {
       if (!screenshotDir) return;
       await fs.mkdir(screenshotDir, { recursive: true });
       await new Promise((resolve) => setTimeout(resolve, 250));
-      const rect = await evaluate('(() => { const r = document.querySelector(".demucs-row").getBoundingClientRect(); return { x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height) }; })()');
+      const rect = await evaluate('(() => { const r = document.querySelector(".sep-list").getBoundingClientRect(); return { x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height) }; })()');
       const image = await win.webContents.capturePage(rect);
       await fs.writeFile(path.join(screenshotDir, `${name}.png`), image.toPNG());
     };
@@ -288,22 +289,21 @@ async function main() {
     assert.equal(await evaluate('Boolean(document.querySelector(".model-plate-badge, .model-plate-note"))'), false, "no badge or note");
     await screenshot("3-six-stem-selected");
 
-    // Separation cards: only the +0.5s separation has six-stem stems.
-    const cards = () => evaluate(`[...document.querySelectorAll(".demucs-card")].map((card) => ({
-      name: card.querySelector(".take-name").textContent.trim(),
-      labels: [...card.querySelectorAll(".demucs-set-label")].map((n) => n.textContent.trim()),
-      missing: [...card.querySelectorAll(".demucs-set-missing")].length,
-      buttons: [...card.querySelectorAll(".demucs-stem-grid button")].map((b) => b.textContent.trim()),
+    // Separation cards: only the +0.5s separation has six-stem stems; the
+    // lead-in in use (none) is listed too, not separated yet.
+    const rows = () => evaluate(`[...document.querySelectorAll(".sep-card")].map((row) => ({
+      name: row.querySelector(".sep-card-top b").textContent.trim(),
+      current: row.classList.contains("is-current"),
+      separated: !row.classList.contains("is-empty"),
+      stems: [...row.querySelectorAll(".sep-lane-name")].map((n) => n.textContent.trim()),
+      action: row.querySelector(".sep-card-foot button")?.textContent.trim() || "",
     }))`);
     await evaluate('[...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("Separation")).click()');
-    await waitFor(async () => (await cards()).length === 3, "three separation cards");
-    const sixStemCards = Object.fromEntries((await cards()).map((card) => [card.name, card]));
-    assert.deepEqual(sixStemCards["Default · +0.5s"].labels, ["Fretformer 1 · 4 stems", `${SIX_STEM.label} · 5 stems`]);
-    assert.deepEqual(sixStemCards["Default · +0.5s"].buttons, ["Other", "Drums", "Bass", "Vocals", "Guitar", "Other", "Drums", "Bass", "Vocals"]);
-    for (const name of ["Default", "Default · +1s"]) {
-      assert.equal(sixStemCards[name].missing, 1, `${name} says it has no six-stem stems yet`);
-      assert.deepEqual(sixStemCards[name].buttons, ["Other", "Drums", "Bass", "Vocals"], `${name} plays only its v1 stems`);
-    }
+    await waitFor(async () => (await rows()).length === 2, "two separation cards");
+    assert.deepEqual(await rows(), [
+      { name: "No lead-in", current: true, separated: false, stems: [], action: "Separate now" },
+      { name: "+0.5s lead-in", current: false, separated: true, stems: ["Guitar", "Other", "Drums", "Bass", "Vocals"], action: "" },
+    ]);
     await screenshotDeck("4-separations-six-stem");
 
     await openMoreSettings();
@@ -348,7 +348,7 @@ async function main() {
     assert.equal(payloads[2].generation.controls.solos, false, "payload carries solos=false");
     assert.equal(payloads[2].generation.resolved.forceSolo, false, "Force a solo is off while Mark solos is off");
 
-    // Back on v1, cards without six-stem stems look exactly as before.
+    // Back on v1, every lead-in has its four stems.
     await evaluate(`(() => {
       const select = document.querySelector(".model-plate-picker select");
       const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
@@ -356,12 +356,15 @@ async function main() {
       select.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     })()`);
-    await waitFor(async () => (await cards()).every((card) => card.missing === 0), "v1 cards");
-    const v1Cards = Object.fromEntries((await cards()).map((card) => [card.name, card]));
-    assert.deepEqual(v1Cards.Default.labels, [], "plain v1 card has no model rows");
-    assert.equal(v1Cards["Default · +0.5s"].labels.length, 2, "existing six-stem stems stay listed");
+    const v1Rows = ["Guitar / other", "Drums", "Bass", "Vocals"];
+    await waitFor(async () => (await rows()).length === 3, "three v1 rows");
+    assert.deepEqual(await rows(), [
+      { name: "No lead-in", current: true, separated: true, stems: v1Rows, action: "" },
+      { name: "+0.5s lead-in", current: false, separated: true, stems: v1Rows, action: "" },
+      { name: "+1s lead-in", current: false, separated: true, stems: v1Rows, action: "" },
+    ]);
     await screenshotDeck("5-separations-v1");
-    console.log("generator picker: listed before download, downloaded model default, six-stem knobs and payload, Mark solos and Force a solo, Beta label passed");
+    console.log("generator picker: listed before download, downloaded model default, six-stem knobs and payload, separation rows, Mark solos and Force a solo, Beta label passed");
   } finally {
     win?.destroy();
     await fs.rm(temp, { recursive: true, force: true });

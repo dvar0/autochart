@@ -59,6 +59,9 @@ import {
   emptyFinalSlots,
   finalSlotsFromRecord,
   finalValidationMessage,
+  getVersionDifficulty,
+  slotsAfterEdit,
+  slotsAfterRemoval,
   versionSourceVariantKey,
 } from "../../services/finalChart.js";
 import {
@@ -100,7 +103,9 @@ import {
   sourceChartPayloadFromVersions,
 } from "../../services/projectRun.js";
 import { msg, t } from "../../i18n/index.js";
-import { leadInText, separationName } from "./separationNames.js";
+import { separationLeadInName } from "./separationNames.js";
+import { renderStemWav } from "./stemRender.js";
+import { stemParts, stemRowsFor } from "./stemSets.js";
 
 export { generatorStemSetId, hasSeparation, separationStemSet };
 
@@ -132,6 +137,12 @@ function normalizeSourceArtifactsState(sourceArtifacts = {}) {
       items: Array.isArray(demucs.items) ? demucs.items.filter(Boolean) : [],
     },
   };
+}
+
+// The seconds of silence a separation put in front of the song.
+export function separationLeadInSeconds(artifact) {
+  const transform = artifact?.sourceTransform || sourceTransformFromKey(artifact?.sourceVariantKey);
+  return transform.leadInSilenceSeconds || 0;
 }
 
 function sourceTransformFromKey(key = "lead-in:0") {
@@ -318,6 +329,17 @@ function demucsArtifactFromResult(result, fallback = {}) {
 
 function sourceVariantKeyFromArtifact(artifact = null) {
   return artifact?.sourceVariantKey || artifact?.sourceTransform?.key || "lead-in:0";
+}
+
+// The separation a lead-in's charts use, from its separations (all made with
+// that lead-in): the first of `preferredIds` that holds the stem set, else the
+// newest that does, else the first preferred one (to be filled by the run).
+export function separationForLeadIn(artifacts, preferredIds, stemSetId) {
+  const preferred = preferredIds.map((id) => artifacts.find((artifact) => artifact.id === id)).filter(Boolean);
+  const holds = (artifact) => hasSeparation(artifact, stemSetId);
+  const made = (artifact) => Number(artifact.updatedAt || artifact.createdAt || 0);
+  const newest = artifacts.filter(holds).sort((a, b) => made(b) - made(a))[0];
+  return preferred.find(holds) || newest || preferred[0] || null;
 }
 
 function newDemucsId() {
@@ -589,6 +611,14 @@ function stemDisplayName(stem, stemSetId = "htdemucs") {
   return names[stem] ? t(names[stem]) : t("{stem} stem", { stem });
 }
 
+// Stems heard together ("guitar+drums") read as "Guitar + Drums".
+function stemsDisplayName(stem, stemSetId = "htdemucs") {
+  const parts = stemParts(stem);
+  if (parts.length < 2) return stemDisplayName(stem, stemSetId);
+  const rows = stemRowsFor(stemSetId);
+  return parts.map((id) => t(rows.find((row) => row.id === id)?.label || id)).join(" + ");
+}
+
 function versionForSave(version) {
   if (!version) return null;
   const { track, difficulty, noteCount, ...rest } = version;
@@ -679,6 +709,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [pendingAudioFile, setPendingAudioFile] = useState(null);
   const [pendingAlbumFile, setPendingAlbumFile] = useState(null);
   const [pendingAlbumUrl, setPendingAlbumUrl] = useState(null);
+  // The saved cover was taken off (the generated one shows); the next save
+  // removes it from the project.
+  const [albumCleared, setAlbumCleared] = useState(false);
   const [background, setBackground] = useState(null);
   const [pendingBgFile, setPendingBgFile] = useState(null);
   const [pendingBgFromAudio, setPendingBgFromAudio] = useState(false);
@@ -706,6 +739,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [editorPlayRequest, setEditorPlayRequest] = useState(null);
   const [editorPlaying, setEditorPlaying] = useState(false);
   const editorSavingRef = useRef(false);
+  // Edits made this session whose place in the final chart isn't saved yet.
+  const editSlotsUnsavedRef = useRef(new Set());
   const editorRevisionRef = useRef(0);
   editorRevisionRef.current = editorState.revision;
   const [localVersions, setLocalVersions] = useState([]);
@@ -723,6 +758,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const [demucsAudition, setDemucsAudition] = useState(null);
   const [demucsAuditionLoadingKey, setDemucsAuditionLoadingKey] = useState("");
   const [demucsAuditionMode, setDemucsAuditionMode] = useState("single");
+  // The separation the Separation stage shows (its card is picked in the deck).
+  const [demucsViewId, setDemucsViewId] = useState("");
   const pendingAlbumUrlRef = useRef(null);
   const pendingBgUrlRef = useRef(null);
   const demucsAuditionUrlRef = useRef(null);
@@ -929,6 +966,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       setDetails(EMPTY_DETAILS);
       setPendingAudioFile(null);
       setPendingAlbumFile(null);
+      setAlbumCleared(false);
       setPendingAlbumUrl(null);
       setBackground(null);
       setPendingBgFile(null);
@@ -969,6 +1007,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setBackground(importedSong.background || null);
     setPendingAudioFile(null);
     setPendingAlbumFile(null);
+    setAlbumCleared(false);
     setPendingAlbumUrl(null);
     setPendingBgFromAudio(false);
     const versions = importedSong.versions || [];
@@ -1024,7 +1063,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   // Cover extraction follows video readiness without holding up import,
   // playback, or generation. A source change/unmount discards stale results.
   useEffect(() => {
-    if (background?.type !== "video" || importedSong?.albumUrl || pendingAlbumUrlRef.current) return;
+    if (background?.type !== "video" || importedSong?.albumUrl || pendingAlbumUrlRef.current || albumCleared) return;
     let active = true;
     (async () => {
       try {
@@ -1048,7 +1087,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       }
     })();
     return () => { active = false; };
-  }, [background, importedSong?.albumUrl, songId]);
+  }, [background, importedSong?.albumUrl, songId, albumCleared]);
 
   const pickBackground = (kind) => (e) => {
     const f = e.target.files?.[0];
@@ -1061,6 +1100,36 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setPendingBgFile(f);
     setPendingBgFromAudio(false);
     setBackground({ type, url, file: f });
+  };
+
+  // A cover picked for the song; saved with the project, like its details.
+  const pickAlbumArt = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || busy) return;
+    if (!/^image\/(png|jpe?g|gif|webp)$/i.test(f.type || "") && !/\.(png|jpe?g|gif|webp)$/i.test(f.name || "")) {
+      setStatusMsg(t("Pick a PNG, JPEG, GIF or WebP image for the cover."));
+      return;
+    }
+    if (f.size > 24 * 1024 * 1024) {
+      setStatusMsg(t("That image is too big for a cover (24 MB at most)."));
+      return;
+    }
+    revokeObjectUrlRef(pendingAlbumUrlRef);
+    const url = URL.createObjectURL(f);
+    pendingAlbumUrlRef.current = url;
+    setPendingAlbumFile(f);
+    setPendingAlbumUrl(url);
+    setAlbumCleared(false);
+  };
+
+  // Back to the generated cover.
+  const clearAlbumArt = () => {
+    if (busy) return;
+    revokeObjectUrlRef(pendingAlbumUrlRef);
+    setPendingAlbumFile(null);
+    setPendingAlbumUrl(null);
+    setAlbumCleared(true);
   };
 
   const clearBackground = () => {
@@ -1144,9 +1213,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         const albumUrl = URL.createObjectURL(info.albumBlob);
         pendingAlbumUrlRef.current = albumUrl;
         setPendingAlbumFile(info.albumBlob);
+        setAlbumCleared(false);
         setPendingAlbumUrl(albumUrl);
       } else {
         setPendingAlbumFile(null);
+        setAlbumCleared(false);
         setPendingAlbumUrl(null);
       }
 
@@ -1224,7 +1295,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     : DEFAULT_TIMING_DETECTOR_ID;
   const usesSourceChartSync = generationControls.timingDetector === SOURCE_CHART_TIMING_DETECTOR_ID;
   const sourceAudioBuffer = importedSong?.audioBuffer || null;
-  const albumUrl = pendingAlbumUrl || importedSong?.albumUrl || null;
+  const albumUrl = albumCleared ? null : pendingAlbumUrl || importedSong?.albumUrl || null;
   const sourceAudioFile = pendingAudioFile || importedSong?.audioFile || null;
   const sourceAudioName = pendingAudioFile?.name || importedSong?.audioName || "";
   const sourceAudioMeta = pendingAudioFile
@@ -1247,10 +1318,15 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     normalizedSourceArtifacts.demucs.activeBySourceVariant?.[currentSourceTransform.key] ||
     (currentSourceTransform.key === "lead-in:0" ? normalizedSourceArtifacts.demucs.activeId : "") ||
     defaultCurrentDemucsId;
-  const activeDemucsArtifact =
-    compatibleDemucsArtifacts.find((artifact) => artifact.id === preferredDemucsId) ||
-    compatibleDemucsArtifacts.find((artifact) => artifact.id === defaultCurrentDemucsId) ||
-    defaultDemucsArtifact(null, currentSourceTransform);
+  // New charts use this lead-in's separation. Separating again gives the same
+  // stems, so one per lead-in is enough; of older duplicates, the picked one
+  // wins unless only another holds the selected model's stems.
+  const chartStemSetId = generatorStemSetId(effectiveGenerator(generators, generatorId, generatorPreferences));
+  const activeDemucsArtifact = separationForLeadIn(
+    compatibleDemucsArtifacts,
+    [preferredDemucsId, defaultCurrentDemucsId],
+    chartStemSetId
+  ) || defaultDemucsArtifact(null, currentSourceTransform);
   const activeDemucsId = activeDemucsArtifact.id;
 
   const versionOptions = localVersions.length
@@ -1316,11 +1392,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       const sourceVersions = versionOptions.filter(
         (item) => item.id !== version.id && item.id !== FINAL_VERSION_ID
       );
-      const nextSlots = FINAL_SLOT_ORDER.reduce((slots, difficulty) => {
-        slots[difficulty] = finalSlots[difficulty] === version.id ? "" : finalSlots[difficulty] || "";
-        return slots;
-      }, {});
-      const cleanSlots = cleanFinalSlots(nextSlots, sourceVersions);
+      const cleanSlots = slotsAfterRemoval(finalSlots, version, sourceVersions);
       const fallbackVersion =
         sourceVersions.find((item) => item.source === "generated") ||
         sourceVersions.find((item) => item.source === "imported-chart") ||
@@ -1419,6 +1491,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       if (pendingAlbumFile) {
         blobPatch.albumArt = pendingAlbumFile;
         assetPatch.albumArt = pendingAlbumFile.name || "album.bin";
+      } else if (albumCleared) {
+        blobPatch.albumArt = null;
+        assetPatch.albumArt = null;
       }
       if (pendingBgFile) {
         const bgType = isVideoMedia(pendingBgFile) ? "video" : "image";
@@ -1434,6 +1509,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       }
       await updateSongRecord(songId, patch);
       await refreshImportedSong(saveVersionId);
+      // The shown cover stays as picked (the project as opened still has the old one).
       setPendingAlbumFile(null);
       setPendingBgFile(null);
       setPendingBgFromAudio(false);
@@ -1467,7 +1543,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     return { source: null, persisted: false };
   };
 
-  const selectDemucsSeparation = async (id, { quiet = false } = {}) => {
+  const selectDemucsSeparation = async (id) => {
     const nextId = id || defaultDemucsIdForSourceVariant(currentSourceTransform.key);
     const artifact = demucsArtifacts.find((item) => item.id === nextId) || null;
     const sourceVariantKey = artifact?.sourceVariantKey || currentSourceTransform.key;
@@ -1484,8 +1560,6 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     };
     setSourceArtifacts(nextArtifacts);
     await persistSourceArtifacts(nextArtifacts);
-    if (quiet) return;
-    setStatusMsg(t("{name} ({leadIn}) is in use for new charts.", { name: separationName(artifact?.name || "Selected separation"), leadIn: leadInText(compactSourceVariantLabel(artifact?.sourceTransform || currentSourceTransform)) }));
   };
 
   // `generator` picks the separation model (its stem set); the selected model by
@@ -1513,7 +1587,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     const generatedIndex = demucsArtifacts.filter(
       (artifact) => (artifact.engineId || artifact.id) !== DEFAULT_DEMUCS_ID && artifact.sourceVariantKey === runSourceTransform.key
     ).length + 1;
-    const separationName =
+    const runName =
       name ||
       existing?.name ||
       ((existing?.engineId || separationId) === DEFAULT_DEMUCS_ID
@@ -1533,7 +1607,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         audioSource: runAudioResolution.source,
         generatorId: generator?.id || generatorId,
         separationId: existing?.engineId || separationId,
-        name: separationName,
+        name: runName,
         metadata: details,
         sourceTransform: runSourceTransform,
         needStems,
@@ -1541,7 +1615,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       const artifact = demucsArtifactFromResult(result, {
         ...existing,
         id: separationId,
-        name: separationName,
+        name: runName,
         sourceTransform: runSourceTransform,
         sourceVariantKey: runSourceTransform.key,
       });
@@ -1552,9 +1626,8 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       );
       setSourceArtifacts(nextArtifacts);
       if (songId) await persistSourceArtifacts(nextArtifacts);
-      setStatusMsg(makeActive
-        ? t("{name} ({leadIn}) is ready and in use for new charts.", { name: separationName(artifact.name), leadIn: leadInText(compactSourceVariantLabel(artifact.sourceTransform)) })
-        : t("{name} ({leadIn}) is ready.", { name: separationName(artifact.name), leadIn: leadInText(compactSourceVariantLabel(artifact.sourceTransform)) }));
+      setDemucsViewId(artifact.id);
+      setStatusMsg(t("Stems ready ({leadIn}).", { leadIn: separationLeadInName(artifact) }));
       return artifact;
     } catch (err) {
       setStatusMsg(err.message || t("Separation failed."));
@@ -1565,37 +1638,43 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   };
 
   // stemSetId says which model's stems to play (defaults to the selected
-  // model's); a missing set is separated on demand with the model that makes it.
+  // model's). Kept stem files play as they are; otherwise the stem is made
+  // from the separation's mel tables, never by separating again.
   const loadDemucsStem = async (artifact, stem, { activate = false, stemSetId = generatorStemSetId(selectedGenerator) } = {}) => {
     if (!artifact) return null;
     const key = demucsAuditionKey(artifact.id, stemSetId, stem);
-    setDeckTab("demucs");
     setDemucsAuditionLoadingKey(key);
     setStatusMsg("");
     try {
-      let readyArtifact = artifact;
-      if (!separationStemSet(readyArtifact, stemSetId)?.[stem]?.path) {
-        readyArtifact = await prepareDemucsSeparation({
-          id: artifact.id,
-          name: artifact.name,
-          makeActive: artifact.id === activeDemucsId,
-          sourceTransform: artifact.sourceTransform || sourceTransformFromKey(artifact.sourceVariantKey),
-          generator: generatorForStemSet(stemSetId) || selectedGenerator,
-          needStems: true,
+      // Stems heard together are made from the tables even when kept as files.
+      const stemInfo = stemParts(stem).length > 1 ? null : separationStemSet(artifact, stemSetId)?.[stem];
+      const tablesPath = artifact.stemSets?.[stemSetId]?.melTables?.path || "";
+      let data;
+      let mime;
+      if (stemInfo?.path) {
+        data = await readDemucsStem(stemInfo.path);
+        mime = stemInfo.mime || (stemInfo.format === "wav" ? "audio/wav" : "audio/flac");
+      } else if (tablesPath && sourceAudioBuffer) {
+        const transform = artifact.sourceTransform || sourceTransformFromKey(artifact.sourceVariantKey);
+        data = await renderStemWav({
+          songBytes: sourceAudioBuffer,
+          leadInSeconds: transform.leadInSilenceSeconds || 0,
+          tablesPath,
+          rows: stemRowsFor(stemSetId),
+          stem,
         });
+        mime = "audio/wav";
+      } else {
+        throw new Error(t("This separation has no {stem} stem.", { stem: stemsDisplayName(stem, stemSetId).toLowerCase() }));
       }
-      const stemInfo = separationStemSet(readyArtifact, stemSetId)?.[stem];
-      if (!stemInfo?.path) throw new Error(t("{stem} wasn't found in {separation}.", { stem: stemDisplayName(stem, stemSetId).toLowerCase(), separation: readyArtifact?.name ? separationName(readyArtifact.name) : t("this separation") }));
-      const data = await readDemucsStem(stemInfo.path);
-      const mime = stemInfo.mime || (stemInfo.format === "wav" ? "audio/wav" : "audio/flac");
       const url = URL.createObjectURL(new Blob([data], { type: mime }));
       const nextAudition = {
-        id: readyArtifact.id,
-        name: readyArtifact.name,
+        id: artifact.id,
+        name: artifact.name,
         stem,
         stemSet: stemSetId,
-        stemName: stemDisplayName(stem, stemSetId),
-        label: `${separationName(readyArtifact.name)} · ${stemDisplayName(stem, stemSetId)}`,
+        stemName: stemsDisplayName(stem, stemSetId),
+        label: `${separationLeadInName(artifact)} · ${stemsDisplayName(stem, stemSetId)}`,
         url,
         data,
         mime,
@@ -1614,8 +1693,31 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     }
   };
 
+  const stopDemucsAudition = () => {
+    revokeObjectUrlRef(demucsAuditionUrlRef);
+    setDemucsAudition(null);
+  };
+
   const auditionDemucsStem = (artifact, stem, stemSetId) =>
     loadDemucsStem(artifact, stem, { activate: true, ...(stemSetId ? { stemSetId } : {}) });
+
+  // A stem (or "mix", or ids joined with "+") heard live on the Separation
+  // stage: StemLivePlayer streams it from the song and the tables, so nothing
+  // is loaded here.
+  const listenLive = (artifact, stem, stemSetId = generatorStemSetId(selectedGenerator)) => {
+    if (!artifact) return;
+    const stemName = stem === "mix" ? t("Full song") : stemsDisplayName(stem, stemSetId);
+    revokeObjectUrlRef(demucsAuditionUrlRef);
+    setDemucsAudition({
+      id: artifact.id,
+      name: artifact.name,
+      stem,
+      stemSet: stemSetId,
+      stemName,
+      label: `${separationLeadInName(artifact)} · ${stemName}`,
+      live: true,
+    });
+  };
 
   const handleGenerate = async ({ hardwareMode, settingsSnapshot, sourceSnapshot } = {}) => {
     if (generationInFlightRef.current) return;
@@ -1720,6 +1822,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         if (pendingAlbumFile) {
           mediaPatch._blobs.albumArt = pendingAlbumFile;
           mediaPatch.assets.albumArt = pendingAlbumFile.name || "album.bin";
+        } else if (albumCleared) {
+          mediaPatch._blobs.albumArt = null;
+          mediaPatch.assets.albumArt = null;
         }
         if (pendingBgFile) {
           const type = isVideoMedia(pendingBgFile) ? "video" : "image";
@@ -1860,6 +1965,9 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
         if (pendingAlbumFile) {
           blobPatch.albumArt = pendingAlbumFile;
           assetPatch.albumArt = pendingAlbumFile.name || "album.bin";
+        } else if (albumCleared) {
+          blobPatch.albumArt = null;
+          assetPatch.albumArt = null;
         }
         if (pendingBgFile) {
           const bgType = isVideoMedia(pendingBgFile) ? "video" : "image";
@@ -2204,7 +2312,7 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     setGenerationControls(controls);
     const demucsId = version.meta?.demucsId || version.provenance?.sourceSeparation?.id || version.settings?.demucsSeparation?.id || "";
     if (demucsId && demucsArtifacts.some((artifact) => artifact.id === demucsId) && demucsId !== activeDemucsArtifact?.id) {
-      void selectDemucsSeparation(demucsId, { quiet: true });
+      void selectDemucsSeparation(demucsId);
     }
     const decorated = decoratedVersions.find((v) => v.id === version.id);
     setReusedFrom({
@@ -2226,6 +2334,44 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
   const resolvedSettings = currentGeneration.resolved;
   const selectedGeneratorLabel = selectedGenerator?.label || TRANSCRIBER_MODEL.label;
   const selectedGeneratorSetup = selectedGenerator?.setup || null;
+
+  // The Separation tab: one row per lead-in the selected model has stems for,
+  // plus the current lead-in's (charts use it; it may not be separated yet).
+  const separationLeadIns = (() => {
+    const stemSetId = generatorStemSetId(selectedGenerator);
+    const keys = new Set([currentSourceTransform.key]);
+    for (const artifact of demucsArtifacts) {
+      if (hasSeparation(artifact, stemSetId)) keys.add(sourceVariantKeyFromArtifact(artifact));
+    }
+    const takesBy = new Map();
+    for (const version of candidateVersions) {
+      if (version.source !== "generated") continue;
+      const takeGeneratorId = version.meta?.generatorId || version.settings?.generation?.generatorId || "";
+      if (generatorStemSetId(generators.find((item) => item.id === takeGeneratorId)) !== stemSetId) continue;
+      const key = versionSourceVariantKey(version);
+      takesBy.set(key, (takesBy.get(key) || 0) + 1);
+    }
+    return [...keys]
+      .map((key) => {
+        const current = key === currentSourceTransform.key;
+        const artifact = current
+          ? activeDemucsArtifact
+          : separationForLeadIn(
+            demucsArtifacts.filter((item) => sourceVariantKeyFromArtifact(item) === key),
+            [normalizedSourceArtifacts.demucs.activeBySourceVariant?.[key], defaultDemucsIdForSourceVariant(key)].filter(Boolean),
+            stemSetId
+          );
+        return {
+          key,
+          transform: current ? currentSourceTransform : sourceTransformFromKey(key),
+          artifact,
+          separated: hasSeparation(artifact, stemSetId),
+          current,
+          takes: takesBy.get(key) || 0,
+        };
+      })
+      .sort((a, b) => a.transform.leadInSilenceMs - b.transform.leadInSilenceMs);
+  })();
   // The picked model isn't on this computer yet: Generate offers its download.
   const missingFamily = !isWebApp() && selectedGeneratorSetup && !selectedGeneratorSetup.ready
     && selectedGeneratorSetup.status !== "unsupported"
@@ -2489,6 +2635,11 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     const chartText = doc ? writeEditableChart(doc.chartText, doc.difficulty, doc) : source.chart.text;
     const draft = makeEditedVersion(source, chartText, nextEditName(source, editorVersionOptions.map((v) => v.name)), doc, editorVersionOptions);
     setLocalVersions((prev) => [...(prev.length ? prev : versionOptions), draft]);
+    // The edit takes over its source's place in the final chart; the first
+    // save writes it down.
+    const difficulty = doc?.difficulty || getVersionDifficulty(source);
+    setFinalSlots((slots) => slotsAfterEdit(slots, source, draft, difficulty, [...editorVersionOptions, draft]));
+    editSlotsUnsavedRef.current.add(draft.id);
     setEditorDraftVersionId(draft.id);
     setSingleVersion(draft.id);
     return draft.id;
@@ -2530,15 +2681,27 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
       const nextVersions = existing
         ? editorVersionOptions.map((v) => (v.id === draftId ? draft : v))
         : [...editorVersionOptions, draft];
+      // A new edit takes over its source's place in the final chart, in the
+      // same save that first writes it.
+      const firstSave = !existing || editSlotsUnsavedRef.current.has(draftId);
+      const nextSlots = firstSave ? slotsAfterEdit(finalSlots, source, draft, doc.difficulty, nextVersions) : null;
       if (songId) {
         await updateSongRecord(songId, {
           versions: nextVersions.map(versionForSave).filter(Boolean),
           settings: { ...(importedSong?.settings || {}), activeVersionId: draftId },
+          ...(nextSlots
+            ? {
+              arrangements: buildSongFinalArrangementList(nextSlots, nextVersions),
+              meta: { availableDifficulties: FINAL_SLOT_ORDER.filter((difficulty) => nextSlots[difficulty]) },
+            }
+            : {}),
         });
         await refreshImportedSong();
       } else {
         setLocalVersions(nextVersions);
       }
+      if (nextSlots) setFinalSlots(nextSlots);
+      editSlotsUnsavedRef.current.delete(draftId);
       setEditorDraftVersionId(draftId);
       // The draft takes over the selection only while the edited take is
       // still the one selected; a save that lands after the user picked
@@ -2756,11 +2919,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     pickAudio,
     pickBackground,
     clearBackground,
+    pickAlbumArt,
+    clearAlbumArt,
     handleMediaFile,
     // status
     busy,
     busyAction,
     statusMsg,
+    setStatusMsg,
     engineError,
     setupStatus,
     setupBlocking,
@@ -2847,8 +3013,14 @@ export default function useGenerateProject({ importedSong, onSaved, onGeneratedS
     demucsAuditionLoadingKey,
     demucsAuditionMode,
     setDemucsAuditionMode,
+    demucsViewId,
+    separationLeadIns,
+    setDemucsViewId,
     loadDemucsStem,
     auditionDemucsStem,
+    stopDemucsAudition,
+    listenLive,
+    songBytes: sourceAudioBuffer,
     prepareDemucsSeparation,
     selectDemucsSeparation,
     // versions
