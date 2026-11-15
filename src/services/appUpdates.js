@@ -21,3 +21,17 @@ export const openUpdatePage = call("openPage");
 export function onUpdateState(callback) {
   return updatesAvailable() ? electronUpdates().onState(callback) : () => {};
 }
+
+// The offered update's text in the app's language, when its feed has it
+// (update.json "translations"); any part it doesn't translate stays English.
+export function updateInLanguage(update, language) {
+  const text = update?.translations?.[language];
+  if (!text) return update;
+  return {
+    ...update,
+    headline: text.headline || update.headline,
+    sub: text.sub || update.sub,
+    features: (update.features || []).map((feature, index) => ({ ...feature, ...(text.features?.[index] || {}) })),
+    fixes: text.fixes?.length ? text.fixes : update.fixes,
+  };
+}

@@ -8,6 +8,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const {
   compareVersions, createAppUpdates, detectInstallMode, relaunchAppImage, replaceAppImage, verifyFeed,
 } = require("../electron/appUpdates.cjs");
@@ -106,6 +107,29 @@ async function main() {
   // The shipped key is a real Ed25519 key, and a test-signed feed doesn't pass it.
   assert.throws(() => verifyFeed(signed(feed())), /signature/);
 
+  // Translations: kept per language, checked like the English text.
+  const spanish = { headline: " Grande ", sub: "Todo.", features: [{ title: "Más rápido", text: "Todo lo es." }], fixes: ["Un arreglo", " "] };
+  assert.deepEqual(verifyFeed(signed(feed({ translations: { es: spanish, "pt-BR": { sub: "Tudo." } } })), PUBLIC).feed.translations, {
+    es: { headline: "Grande", sub: "Todo.", features: [{ title: "Más rápido", text: "Todo lo es." }], fixes: ["Un arreglo"] },
+    "pt-BR": { headline: "", sub: "Tudo.", features: [], fixes: [] },
+  });
+  assert.deepEqual(verifyFeed(signed(feed()), PUBLIC).feed.translations, {});
+  assert.throws(() => verifyFeed(signed(feed({ translations: { "../es": { sub: "x" } } })), PUBLIC), /translations/);
+  assert.throws(() => verifyFeed(signed(feed({ translations: ["es"] })), PUBLIC), /translations/);
+  assert.throws(() => verifyFeed(signed(feed({ translations: { es: { features: [{ title: "a" }, { title: "b" }] } } })), PUBLIC), /translations/);
+  assert.throws(() => verifyFeed(signed(feed({ translations: { es: { headline: "x".repeat(81) } } })), PUBLIC), /translations/);
+  assert.throws(() => verifyFeed(signed(feed({ translations: { es: { fixes: [3] } } })), PUBLIC), /translations/);
+
+  // The update window's text in the app's language, English where untranslated.
+  const { updateInLanguage } = await import(pathToFileURL(path.join(__dirname, "..", "src", "services", "appUpdates.js")).href);
+  const offered = { version: "0.3.0", headline: "Big", sub: "All.", features: [{ icon: "spark", title: "Faster", text: "Everything is." }], fixes: ["One fix"],
+    translations: { es: { headline: "", sub: "Todo.", features: [{ title: "Más rápido", text: "Todo lo es." }], fixes: [] } } };
+  assert.equal(updateInLanguage(offered, "pt-BR"), offered);
+  assert.deepEqual(updateInLanguage(offered, "es"), {
+    ...offered, sub: "Todo.", features: [{ icon: "spark", title: "Más rápido", text: "Todo lo es." }],
+  });
+  assert.equal(updateInLanguage(null, "es"), null);
+
   // Install modes
   assert.equal(detectInstallMode({ packaged: false, platform: "linux", env: { APPIMAGE: "/x" } }), "page");
   assert.equal(detectInstallMode({ packaged: true, platform: "linux", env: { APPIMAGE: "/x" } }), "replace");
@@ -153,6 +177,7 @@ async function main() {
     assert.deepEqual(state.update.features, [{ icon: "spark", title: "Faster", text: "Everything is." }]);
     assert.deepEqual(state.update.fixes, ["One fix"]);
     assert.equal(state.update.notesUrl, "https://example.com/releases/tag/v0.3.0");
+    assert.deepEqual(state.update.translations, {});
     assert.equal(state.announce, true);
     assert.equal(state.dismissed, false);
     assert.equal((await instance.markAnnounced()).announce, false);
@@ -326,7 +351,10 @@ async function main() {
     await fs.writeFile(path.join(dir, "hero.webp"), BYTES);
     const { text } = await makeUpdateFeed({
       dir,
-      notes: { headline: "Big", features: [{ title: "One", text: "Line." }], fixes: ["Fix"], image: "hero.webp" },
+      notes: {
+        headline: "Big", features: [{ title: "One", text: "Line." }], fixes: ["Fix"], image: "hero.webp",
+        translations: { es: { headline: "Grande", features: [{ title: "Uno", text: "Línea." }], fixes: ["Arreglo"] } },
+      },
       privateKeyPem: PRIVATE,
       version: "0.3.0",
     });
@@ -340,6 +368,7 @@ async function main() {
     assert.match(verified.page, /\/releases\/tag\/v0\.3\.0$/);
     assert.equal(verified.notesUrl, verified.page);
     assert.deepEqual(verified.fixes, ["Fix"]);
+    assert.deepEqual(verified.translations.es.fixes, ["Arreglo"]);
     await assert.rejects(
       makeUpdateFeed({ dir: await tempDir(), privateKeyPem: PRIVATE, version: "0.3.0" }),
       /ENOENT/

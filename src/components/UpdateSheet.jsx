@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { I } from "../icons.jsx";
-import { msg, t, tn } from "../i18n/index.js";
+import { msg, t, tn, useLanguage } from "../i18n/index.js";
 import ProgressRing from "./ProgressRing.jsx";
 import ReleaseCard, { ReleaseContent, ReleaseNotesLink } from "./ReleaseCard.jsx";
 import {
-  checkForUpdate, downloadUpdate, getUpdateImage, installUpdate, openUpdatePage,
+  checkForUpdate, downloadUpdate, getUpdateImage, installUpdate, openUpdatePage, updateInLanguage,
 } from "../services/appUpdates.js";
 
 const INSTALL_LABEL = {
@@ -30,7 +30,8 @@ function checkedLabel(at) {
 export default function UpdateSheet({ state, busy, onClose, onWhatsNew }) {
   const [error, setError] = useState("");
   const [image, setImage] = useState("");
-  const update = state?.update;
+  const language = useLanguage();
+  const update = state?.update ? updateInLanguage(state.update, language) : null;
   const download = state?.download || {};
   const mode = update?.installMode || "page";
 

@@ -72,10 +72,13 @@ from the new tagged commit.
 4. Verify the output checksums. Keep native input directories as private build
    evidence. Omit unused update blockmaps from the public release. Put the
    unsigned Windows/macOS warning and opening steps in the release description.
-5. Make the update feed: write two to five short user-facing lines in a
-   `notes.json` (`{ "notes": [...], "important": false }`; set `important` only
-   when older versions break, since it opens the update sheet once at launch),
-   then run
+5. Make the update feed: write the update window's text in a `notes.json`
+   (a `sub` line, up to eight `features` and short `fixes` lines, an optional
+   `headline` and `image`; the full shape is at the top of
+   `scripts/make-update-feed.cjs`). Add the same text in Spanish and Brazilian
+   Portuguese under `translations` (`es`, `pt-BR`); anything left out shows in
+   English. Set `important` only when older versions break, since it opens the
+   update window once at launch. Then run
    `AUTOCHART_UPDATE_SIGNING_KEY=/path/to/update-signing-key.pem node scripts/make-update-feed.cjs /new/output notes.json`.
    It writes `update.json` next to the downloads, signed with the key whose
    public half is in `electron/appUpdates.cjs`, and refuses a key that doesn't

@@ -8,7 +8,7 @@ const path = require("path");
 // only says what would happen.
 const PREVIEW_BYTES = Buffer.from("Autochart update preview\n");
 // Any picture does; this one is already in the repository.
-const PREVIEW_IMAGE = path.join(__dirname, "..", "docs", "screenshots", "generate-dark.png");
+const PREVIEW_IMAGE = path.join(__dirname, "..", "docs", "screenshots", "compare-dark.png");
 
 function createUpdatePreview({ runningVersion = "0.2.0", offeredVersion = "0.3.0", important = true, platform, arch }) {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
@@ -41,6 +41,25 @@ function createUpdatePreview({ runningVersion = "0.2.0", offeredVersion = "0.3.0
       "The take list remembers where you scrolled.",
       "Exports keep the album art's colors.",
     ],
+    // Only Spanish, so the preview in Portuguese shows the English fallback.
+    translations: {
+      es: {
+        headline: "Llegó Fretformer 3",
+        sub: "Charts que suenan hechos a mano, en todas las dificultades.",
+        features: [
+          { title: "Fretformer 3", text: "Mejores acordes y notas largas, y charts de verdad en Fácil y Medio." },
+          { title: "Charts de batería", text: "Genera batería junto a la guitarra, de la misma canción." },
+        ],
+        fixes: [
+          "Inpaint mantiene los solos al rehacer una sección.",
+          "Separación más rápida en GPU AMD.",
+          "Arreglada la letra en las exportaciones a YARG.",
+          "Las canciones largas ya no dejan de chartear a los seis minutos.",
+          "La lista de tomas recuerda dónde te quedaste.",
+          "Las exportaciones mantienen los colores de la portada.",
+        ],
+      },
+    },
     notesUrl: "https://github.com/dvar0/autochart/releases",
     page: "https://github.com/dvar0/autochart/releases",
     files: {

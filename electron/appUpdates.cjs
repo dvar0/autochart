@@ -26,6 +26,10 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const VERSION = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 const INSTALL_EXTENSIONS = { replace: ".AppImage", installer: ".exe", dmg: ".dmg" };
 const HEADLINE_MAX_CHARS = 80;
+// The release text in other languages: { es: { headline, sub, features, fixes } }.
+// Features translate the English ones in order (icons and pictures stay).
+const LANGUAGE = /^[a-z]{2,3}(?:-[A-Z]{2})?$/;
+const LANGUAGE_LIMIT = 12;
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const IMAGE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
 
@@ -128,6 +132,7 @@ function validateFeed(feed) {
   for (const [target, file] of Object.entries(feed.files || {})) files[target] = validateFile(file, target);
   const headline = feed.headline == null ? "" : feed.headline;
   if (typeof headline !== "string" || headline.length > HEADLINE_MAX_CHARS) throw new Error("Update feed headline is invalid.");
+  const translations = validateTranslations(feed.translations, features.length, line);
   let image = null;
   if (feed.image != null) {
     image = validateFile(feed.image, "image");
@@ -148,10 +153,41 @@ function validateFeed(feed) {
     }))
       .filter((feature) => feature.title),
     fixes: fixes.map((fix) => fix.trim()).filter(Boolean),
+    translations,
     page: httpsUrl(feed.page, "Update page"),
     notesUrl: feed.notesUrl == null ? "" : httpsUrl(feed.notesUrl, "Release notes URL"),
     files,
   };
+}
+
+function validateTranslations(value, featureCount, line) {
+  if (value == null) return {};
+  const invalid = () => new Error("Update feed translations are invalid.");
+  if (typeof value !== "object" || Array.isArray(value)) throw invalid();
+  const entries = Object.entries(value);
+  if (entries.length > LANGUAGE_LIMIT) throw invalid();
+  const translations = {};
+  for (const [language, text] of entries) {
+    if (!LANGUAGE.test(language) || !text || typeof text !== "object" || Array.isArray(text)) throw invalid();
+    const features = text.features == null ? [] : text.features;
+    const fixes = text.fixes == null ? [] : text.fixes;
+    if (
+      (text.headline != null && !line(text.headline, HEADLINE_MAX_CHARS)) ||
+      (text.sub != null && !line(text.sub)) ||
+      !Array.isArray(features) || (features.length && features.length !== featureCount) ||
+      features.some((feature) => !line(feature?.title, TITLE_MAX_CHARS) || !line(feature?.text ?? "")) ||
+      !Array.isArray(fixes) || fixes.length > FIX_LIMIT || fixes.some((fix) => !line(fix))
+    ) {
+      throw invalid();
+    }
+    translations[language] = {
+      headline: String(text.headline || "").trim(),
+      sub: String(text.sub || "").trim(),
+      features: features.map((feature) => ({ title: feature.title.trim(), text: String(feature.text || "").trim() })),
+      fixes: fixes.map((fix) => fix.trim()).filter(Boolean),
+    };
+  }
+  return translations;
 }
 
 // How this copy can update itself. Anything unrecognised (a portable zip, a
@@ -236,6 +272,7 @@ function createAppUpdates({
         hasImage: imageReady,
         features: update.features,
         fixes: update.fixes,
+        translations: update.translations || {},
         notesUrl: update.notesUrl || update.page,
         important: update.important,
         size: file()?.size || 0,

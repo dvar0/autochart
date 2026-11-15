@@ -4,11 +4,15 @@
 // Writes the signed update.json for a staged release (see docs/github-release.md).
 // Usage: AUTOCHART_UPDATE_SIGNING_KEY=/path/to/key.pem \
 //   node scripts/make-update-feed.cjs /staged/release notes.json
-// notes.json (everything but features is optional):
+// notes.json (every field is optional):
 //   { "headline": "Fretformer 3 is here", "sub": "One line under it.",
 //     "features": [{ "icon": "music", "title": "Drum charts", "text": "One line." }],
 //     "fixes": ["Smaller change or fix.", ...],
-//     "image": "update-hero.webp", "notesUrl": "https://…", "important": false }
+//     "image": "update-hero.webp", "notesUrl": "https://…", "important": false,
+//     "translations": { "es": { "headline": "…", "sub": "…",
+//       "features": [{ "title": "…", "text": "…" }], "fixes": ["…"] }, "pt-BR": { … } } }
+// A translation gives any of those parts in that language; its features
+// follow the English ones in order. Versions before 0.2.1 show English.
 // The image is a file in the staged release (at most 2 MB, png/jpg/webp) and
 // is uploaded with it. notesUrl defaults to the GitHub release page.
 const crypto = require("node:crypto");
@@ -35,7 +39,7 @@ function checksums(text) {
 }
 
 async function makeUpdateFeed({ dir, notes = {}, privateKeyPem, version, repo = REPO }) {
-  const { headline = "", sub = "", features = [], fixes = [], image = "", notesUrl = "", important = false } = notes;
+  const { headline = "", sub = "", features = [], fixes = [], image = "", notesUrl = "", important = false, translations = {} } = notes;
   const sums = checksums(await fs.readFile(path.join(dir, "SHA256SUMS.txt"), "utf8"));
   const files = {};
   for (const [target, suffix] of Object.entries(TARGET_FILES)) {
@@ -69,6 +73,7 @@ async function makeUpdateFeed({ dir, notes = {}, privateKeyPem, version, repo = 
     ...(imageEntry ? { image: imageEntry } : {}),
     features,
     fixes,
+    ...(Object.keys(translations).length ? { translations } : {}),
     page: `${repo}/releases/tag/v${version}`,
     notesUrl: notesUrl || `${repo}/releases/tag/v${version}`,
     files,
