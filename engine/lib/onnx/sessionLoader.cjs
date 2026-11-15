@@ -261,6 +261,10 @@ async function createSession(onnxPath, options = {}) {
   const sessionOptions = {
     executionProviders: [resolvedDevice],
     graphOptimizationLevel: options.graphOptimizationLevel || "all",
+    // Idle threads sleep instead of spinning. Spinning threads fight every
+    // other busy thread on the machine (and each other across sessions): with
+    // the CPU loaded, charting ran 2-4x slower. Results are the same.
+    extra: { session: { intra_op: { allow_spinning: "0" }, inter_op: { allow_spinning: "0" } } },
   };
   if (resolvedDevice === "webgpu" && options.preferredOutputLocation) {
     sessionOptions.preferredOutputLocation = options.preferredOutputLocation;
