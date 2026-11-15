@@ -13,8 +13,8 @@ import {
   removeModelFolder, storageRoom,
 } from "../../engine/web/modelStore.mjs";
 import {
-  clearLeftovers, clearStems, hasMelTables, readStoredAudio, removeStemsExcept, removeStoredStems, saveAnalysisAudio,
-  saveMelTables, stemKey, stemPaths, storedStemBytes, storedStemNames,
+  clearLeftovers, clearStems, hasMelTables, loadMelTables, melTablesKeyOf, melTablesPath, readStoredAudio, removeStemsExcept,
+  removeStoredStems, saveAnalysisAudio, saveMelTables, stemKey, stemPaths, storedStemBytes, storedStemNames,
 } from "../../engine/web/stemStore.mjs";
 import { getAppSettings } from "../services/appSettings.js";
 import { tablesFileHeader } from "../../shared/projectFile.js";
@@ -334,7 +334,7 @@ async function separationStemSets(audioSha256, sourceTransform, separationId) {
     if (names?.length || melTables) {
       stemSets[stemSet] = {
         stems: names?.length ? stemPaths(key, names) : {},
-        ...(melTables ? { melTables: { path: `opfs:${key}` } } : {}),
+        ...(melTables ? { melTables: { path: melTablesPath(key) } } : {}),
       };
     }
   }
@@ -614,6 +614,13 @@ async function readDemucsStem({ path } = {}) {
     const blob = runAudio.get(String(path).slice(RUN_AUDIO_PREFIX.length));
     if (!blob) throw new Error(t("This run's audio is no longer loaded."));
     return blob.arrayBuffer();
+  }
+  // A separation's mel tables (the Separation tab draws and plays from them).
+  const tablesKey = melTablesKeyOf(path);
+  if (tablesKey) {
+    const bytes = await loadMelTables(tablesKey);
+    if (!bytes) throw new Error("This separation is no longer stored in the browser.");
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   }
   return readStoredAudio(path);
 }

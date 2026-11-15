@@ -175,6 +175,17 @@ export function isStemPath(path) {
   return String(path || "").startsWith(PREFIX);
 }
 
+// What the app records for a separation's mel tables, and back: the key such
+// a path names, or null for any other path (a stem's has its name after a /).
+export function melTablesPath(key) {
+  return `${PREFIX}${key}`;
+}
+
+export function melTablesKeyOf(path) {
+  const rest = isStemPath(path) ? String(path).slice(PREFIX.length) : "";
+  return rest && !rest.includes("/") ? rest : null;
+}
+
 // Stereo float audio as a 16-bit WAV.
 function encodeWav16(left, right, rate) {
   const frames = left.length;
