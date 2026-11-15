@@ -434,7 +434,9 @@ function JoinedHighwayCompare(
         };
         motionMq.addEventListener("change", onMotionPref);
 
-        const baseTrack = states[0].track;
+        // The engine hands its notes back to the first lane, so give it the lane's flagged notes
+        // (HOPO/tap kind, star marks), not the raw track's.
+        const baseTrack = { ...states[0].track, notes: states[0].renderNotes };
         engine.setTrack(baseTrack);
         engine.setChartTimeOffset(states[0].compareOffset || 0);
         engine.seek(Math.max(0, Math.min(Number(initialTimeRef.current) || 0, engine.duration || 0)));
